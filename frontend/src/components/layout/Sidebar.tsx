@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Rocket, Container, Server, Github,
+  LayoutDashboard, Rocket, Container, Github,
   ScrollText, BarChart2, Bot, AlertTriangle, Users, Settings,
   ChevronLeft, ChevronRight, Zap, User, Sparkles,
 } from 'lucide-react';
@@ -16,9 +16,8 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
   { section: 'Infrastructure',
     items: [
       { to: '/deployments', icon: <Rocket size={15} />, label: 'Deployments' },
-      { to: '/deploy',       icon: <Sparkles size={15} />, label: 'AI Deploy' },
+      { to: '/deploy',      icon: <Sparkles size={15} />, label: 'Smart Deploy' },
       { to: '/containers',  icon: <Container size={15} />, label: 'Containers' },
-      { to: '/hosting',     icon: <Server size={15} />,    label: 'Hosting' },
     ]},
   { section: 'Developer',
     items: [

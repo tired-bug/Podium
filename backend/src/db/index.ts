@@ -334,7 +334,7 @@ function applyDefaults() {
     ['anomaly_detection', 'true'],
     ['cpu_threshold', '90'],
     ['memory_threshold_mb', '900'],
-    ['app_url', 'http:
+    ['app_url', 'http://localhost:4000'],
     ['smtp_host', ''],
     ['smtp_port', '587'],
     ['smtp_user', ''],
@@ -371,10 +371,10 @@ function seedDemoData(): void {
 
   const { v4: uuid } = require('uuid');
   const demos = [
-    { id: uuid(), name: 'api-gateway',    status: 'running', repo_url: 'https:
-    { id: uuid(), name: 'frontend-app',   status: 'running', repo_url: 'https:
-    { id: uuid(), name: 'auth-service',   status: 'stopped', repo_url: 'https:
-    { id: uuid(), name: 'worker-service', status: 'failed',  repo_url: 'https:
+    { id: uuid(), name: 'api-gateway',    status: 'running', repo_url: 'https://github.com/example/api-gateway', branch: 'main', image: 'node:20' },
+    { id: uuid(), name: 'frontend-app',   status: 'running', repo_url: 'https://github.com/example/frontend', branch: 'main', image: 'nginx:alpine' },
+    { id: uuid(), name: 'auth-service',   status: 'stopped', repo_url: 'https://github.com/example/auth', branch: 'main', image: 'node:20' },
+    { id: uuid(), name: 'worker-service', status: 'failed',  repo_url: 'https://github.com/example/worker', branch: 'main', image: 'python:3.12' },
   ];
 
   const ins = _local.prepare('INSERT OR IGNORE INTO deployments (id, name, status, repo_url, branch, image) VALUES (?, ?, ?, ?, ?, ?)');

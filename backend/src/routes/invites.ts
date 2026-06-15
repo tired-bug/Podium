@@ -22,7 +22,7 @@ async function sendInviteEmail(
   const pass     = getSetting('smtp_pass');
   const fromName = getSetting('platform_name') || 'Podium';
   const fromAddr = getSetting('smtp_from') || user;
-  const appUrl   = getSetting('app_url') || 'http:
+  const appUrl   = getSetting('app_url') || 'http://localhost:4000';
 
   if (!host || !user || !pass) {
     throw new Error('SMTP not configured. Add SMTP settings in Settings → Notifications.');

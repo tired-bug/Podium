@@ -90,7 +90,7 @@ async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string,
   }
 
   const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-  if (!match) throw new Error('Invalid GitHub URL — must be https:
+  if (!match) throw new Error('Invalid GitHub URL — must be https://github.com/owner/repo');
   const [, owner, repo] = match;
 
   const buildDir = path.join(process.cwd(), 'data', 'builds', cloudId);
@@ -98,7 +98,7 @@ async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string,
 
   
   appendCloudLog(cloudId, `Downloading ${owner}/${repo}@${branch}...`);
-  const zipUrl = `https:
+  const zipUrl = `https://api.github.com/repos/${owner}/${repo}/zipball/${branch}`;
   let zipData: Buffer;
   try {
     const resp = await axios.get(zipUrl, { responseType: 'arraybuffer', timeout: 60000 });
@@ -153,7 +153,7 @@ async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string,
 async function getNgrokUrl(hostPort: number): Promise<string | null> {
   try {
     
-    const { data } = await axios.get('http:
+    const { data } = await axios.get('http://localhost:4040/api/tunnels');
     const tunnel = (data.tunnels || []).find((t: any) =>
       t.proto === 'https' && String(t.config?.addr || '').includes(String(hostPort))
     ) || (data.tunnels || [])[0];
@@ -240,7 +240,7 @@ async function deploySelfHosted(cloudId: string): Promise<void> {
     
     const ngrokUrl  = await getNgrokUrl(hostPort);
     const manualUrl = getSetting('selfhosted_ngrok_url');
-    const publicUrl = ngrokUrl || manualUrl || `http:
+    const publicUrl = ngrokUrl || manualUrl || `http://localhost:${hostPort}`;
 
     setCloudStatus(cloudId, 'running', publicUrl);
     appendCloudLog(cloudId, `✓ Live at ${publicUrl}`);
@@ -270,7 +270,7 @@ router.get('/status', requireAuth, async (_req, res) => {
   const docker = await dockerAvailable();
   let ngrok = false;
   try {
-    await axios.get('http:
+    await axios.get('http://localhost:4040/api/tunnels');
     ngrok = true;
   } catch {}
   const ngrokUrl = getSetting('selfhosted_ngrok_url');

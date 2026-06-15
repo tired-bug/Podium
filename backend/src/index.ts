@@ -174,7 +174,7 @@ async function bootstrap() {
   ensureExtendedSchema(); 
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[podium] Backend on http:
+    console.log(`[podium] Backend on http://localhost:${PORT}`);
   });
 }
 

@@ -23,43 +23,53 @@ const STEPS = ['Source', 'Configuration', 'Resources', 'Review'];
 
 const EMPTY_FORM = {
   name: '', repo_url: '', branch: 'main', dockerfile_path: 'Dockerfile', image: '',
-  ports: [{ host: '', container: '' }],
-  env_vars: [{ key: '', value: '' }],
+  ports: [{ _id: '1', host: '', container: '' }],
+  env_vars: [{ _id: '1', key: '', value: '' }],
   memory_limit: '512m', cpu_limit: '0.5', restart_policy: 'unless-stopped', replicas: 1,
   health_check: '', volumes: '',
 };
 
-function PortRow({ port, index, ports, onChange }: { port: {host:string;container:string}; index: number; ports: any[]; onChange: (v: any[]) => void }) {
+function PortRow({ port, index, ports, onChange }: { port: {_id:string;host:string;container:string}; index: number; ports: any[]; onChange: (v: any[]) => void }) {
+  const updateField = (field: string, val: string) => {
+    const a = ports.map((p, i) => i === index ? { ...p, [field]: val } : p);
+    onChange(a);
+  };
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-      <Input
+      <input
+        className="podium-input"
         placeholder="Host port (e.g. 8080)"
         value={port.host}
-        onChange={e => { const a = [...ports]; a[index] = { ...a[index], host: e.target.value }; onChange(a); }}
+        onChange={e => updateField('host', e.target.value)}
       />
-      <Input
+      <input
+        className="podium-input"
         placeholder="Container port (e.g. 80)"
         value={port.container}
-        onChange={e => { const a = [...ports]; a[index] = { ...a[index], container: e.target.value }; onChange(a); }}
+        onChange={e => updateField('container', e.target.value)}
       />
       <Button variant="ghost" size="sm" onClick={() => onChange(ports.filter((_, j) => j !== index))}>✕</Button>
     </div>
   );
 }
 
-function EnvRow({ env, index, envs, onChange }: { env: {key:string;value:string}; index: number; envs: any[]; onChange: (v: any[]) => void }) {
+function EnvRow({ env, index, envs, onChange }: { env: {_id:string;key:string;value:string}; index: number; envs: any[]; onChange: (v: any[]) => void }) {
+  const updateField = (field: string, val: string) => {
+    onChange(envs.map((e, i) => i === index ? { ...e, [field]: val } : e));
+  };
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-      <Input
+      <input
+        className="podium-input podium-mono"
         placeholder="KEY"
         value={env.key}
-        onChange={e => { const a = [...envs]; a[index] = { ...a[index], key: e.target.value }; onChange(a); }}
-        style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+        onChange={e => updateField('key', e.target.value)}
       />
-      <Input
+      <input
+        className="podium-input"
         placeholder="value"
         value={env.value}
-        onChange={e => { const a = [...envs]; a[index] = { ...a[index], value: e.target.value }; onChange(a); }}
+        onChange={e => updateField('value', e.target.value)}
       />
       <Button variant="ghost" size="sm" onClick={() => onChange(envs.filter((_, j) => j !== index))}>✕</Button>
     </div>
@@ -175,9 +185,9 @@ function NewDeploymentModal({ open, onClose, onCreated }: { open: boolean; onClo
               Port Mappings <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— host:container</span>
             </div>
             {form.ports.map((p, i) => (
-              <PortRow key={i} port={p} index={i} ports={form.ports} onChange={v => update('ports', v)} />
+              <PortRow key={p._id || i} port={p} index={i} ports={form.ports} onChange={v => update('ports', v)} />
             ))}
-            <Button size="sm" variant="ghost" onClick={() => update('ports', [...form.ports, { host: '', container: '' }])}>+ Add Port</Button>
+            <Button size="sm" variant="ghost" onClick={() => update('ports', [...form.ports, { _id: String(Date.now()), host: '', container: '' }])}>+ Add Port</Button>
           </div>
 
           <div>
@@ -185,9 +195,9 @@ function NewDeploymentModal({ open, onClose, onCreated }: { open: boolean; onClo
               Environment Variables
             </div>
             {form.env_vars.map((e, i) => (
-              <EnvRow key={i} env={e} index={i} envs={form.env_vars} onChange={v => update('env_vars', v)} />
+              <EnvRow key={e._id || i} env={e} index={i} envs={form.env_vars} onChange={v => update('env_vars', v)} />
             ))}
-            <Button size="sm" variant="ghost" onClick={() => update('env_vars', [...form.env_vars, { key: '', value: '' }])}>+ Add Variable</Button>
+            <Button size="sm" variant="ghost" onClick={() => update('env_vars', [...form.env_vars, { _id: String(Date.now()), key: '', value: '' }])}>+ Add Variable</Button>
           </div>
 
           <Input label="Volume Mounts (optional)" value={form.volumes} onChange={e => update('volumes', e.target.value)} placeholder="/host/path:/container/path" hint="Persist data between restarts" />
