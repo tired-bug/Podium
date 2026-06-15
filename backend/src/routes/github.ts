@@ -56,7 +56,7 @@ router.post('/repos/:id/pull', requireAuth, async (req, res: Response) => {
     const axios = require('axios');
     const headers: Record<string, string> = { 'User-Agent': 'Podium/4.0' };
     if (repo.token) headers['Authorization'] = `token ${repo.token}`;
-    const resp = await axios.get(`https://api.github.com/repos/${repoPath}/commits/${branch || 'main'}`, { headers });
+    const resp = await axios.get(`https://api.github.com/repos/${repoPath}/commits/${repo.branch || 'main'}`, { headers });
     commitSha = resp.data.sha?.slice(0, 7);
     commitMessage = resp.data.commit?.message?.split('\n')[0];
   } catch (err: any) {
