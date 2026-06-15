@@ -82,8 +82,7 @@ async function collectMetrics() {
   for (const dep of running) {
     try {
       const docker = new Docker({
-        socketPath: process.platform === 'win32' ? '
-      });
+        socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
       const stats = await new Promise<any>((resolve, reject) => {
         docker.getContainer(dep.container_id).stats({ stream: false }, (err: any, data: any) => {
           if (err) reject(err); else resolve(data);
@@ -176,7 +175,7 @@ async function bootstrap() {
   ensureExtendedSchema(); 
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[podium] Backend on http:
+    console.log(`[podium] Backend on http://0.0.0.0:${PORT}`);
   });
 }
 

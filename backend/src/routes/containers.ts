@@ -7,7 +7,7 @@ let docker: Docker | null = null;
 
 function getDocker(): Docker {
   if (!docker) {
-    docker = new Docker({ socketPath: process.platform === 'win32' ? '
+    docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
   }
   return docker;
 }
@@ -19,7 +19,7 @@ router.get('/', requireAuth, async (_req, res: Response) => {
     const formatted = containers.map(c => ({
       id: c.Id,
       shortId: c.Id.slice(0, 12),
-      name: c.Names[0]?.replace(/^\
+      name: c.Names[0]?.replace(/^\//, '') ?? c.Id.slice(0, 12),
       image: c.Image,
       status: c.State,
       statusText: c.Status,

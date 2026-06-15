@@ -264,7 +264,142 @@ function AvatarEditor({ profile, username, onSaved }: {
               }
             </div>
           </div>
-          <input ref={fileRef} type="file" accept="image}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleFile}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Profile Photo</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: 320, lineHeight: 1.5 }}>
+            Click the avatar to upload a new photo. JPG, PNG or GIF, up to 5MB.
+          </div>
+          {shown && (
+            <Button
+              size="sm" variant="ghost" icon={<Trash2 size={13} />}
+              loading={removing} onClick={handleRemove}
+              style={{ alignSelf: 'flex-start', color: 'var(--accent-red)' }}
+            >
+              Remove Photo
+            </Button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function StatCard({ label, value, delay = 0 }: { label: string; value: string; delay?: number }) {
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: 'var(--r-md)',
+      background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+      animation: `float-up 300ms ease-out ${delay}ms both`,
+    }}>
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{value}</div>
+    </div>
+  );
+}
+
+export default function Profile() {
+  const { success, error: showError } = useToast();
+  const { refresh: refreshProfile } = useProfile();
+  const [data, setData]   = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab]     = useState<Tab>('overview');
+  const [saving, setSaving] = useState(false);
+  const [form, setForm]   = useState<Record<string, any>>({});
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/profile');
+      setData(data);
+      const prof = data.profile || {};
+      setForm({
+        display_name: prof.display_name || '',
+        username: data.username || '',
+        email: data.email || '',
+        job_title: prof.job_title || '',
+        company: prof.company || '',
+        location: prof.location || '',
+        bio: prof.bio || '',
+        website: prof.website || '',
+        github_username: prof.github_username || '',
+        timezone: prof.timezone || 'Africa/Tunis',
+        notification_email: prof.notification_email !== 0,
+        notification_deployments: prof.notification_deployments !== 0,
+        notification_anomalies: prof.notification_anomalies !== 0,
+        notification_team: prof.notification_team !== 0,
+      });
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setLoading(false); }
+  }, [showError]);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  useEffect(() => {
+    api.get('/api/profile/sessions').then(r => setSessions(r.data)).catch(() => setSessions([]));
+  }, []);
+
+  const up = (key: string, value: any) => setForm(f => ({ ...f, [key]: value }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.put('/api/profile', form);
+      success('Profile updated');
+      await fetchProfile();
+      await refreshProfile();
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setSaving(false); }
+  };
+
+  const handleChangePassword = async () => {
+    if (pwForm.newPw !== pwForm.confirm) { showError('Passwords do not match'); return; }
+    setPwLoading(true); setPwSuccess(false);
+    try {
+      await api.put('/api/auth/password', { currentPassword: pwForm.current, newPassword: pwForm.newPw });
+      setPwSuccess(true);
+      setPwForm({ current: '', newPw: '', confirm: '' });
+      setTimeout(() => setPwSuccess(false), 3000);
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setPwLoading(false); }
+  };
+
+  if (loading || !data) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Skeleton height={180} />
+        <Skeleton height={48} />
+        <Skeleton height={240} />
+      </div>
+    );
+  }
+
+  const p = data.profile || {};
+  const displayName = p.display_name;
+  const gradIdx  = (data.username?.charCodeAt(0) || 0) % GRADIENTS.length;
+  const initials = ((displayName || data.username || '?').slice(0, 2)).toUpperCase();
+
+  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'overview',      label: 'Overview',      icon: <User size={13} /> },
+    { id: 'edit',          label: 'Edit Profile',  icon: <Edit2 size={13} /> },
+    { id: 'notifications', label: 'Notifications', icon: <Bell size={13} /> },
+    { id: 'security',      label: 'Security',      icon: <Shield size={13} /> },
+    { id: 'sessions',      label: 'Sessions',      icon: <Monitor size={13} /> },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{
         borderRadius: 'var(--r-xl)', overflow: 'hidden',
         border: '1px solid var(--border)',
@@ -372,7 +507,7 @@ function AvatarEditor({ profile, username, onSaved }: {
               {p.website && (
                 <a href={p.website} target="_blank" rel="noopener noreferrer"
                   style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--accent-blue-2)' }}>
-                  <Globe size={11} />{p.website.replace(/https?:\/\
+                  <Globe size={11} />{p.website.replace(/^https?:\/\//, '')}
                 </a>
               )}
               {p.github_username && (

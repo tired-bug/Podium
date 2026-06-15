@@ -101,7 +101,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
 
   try {
     const response = await axios.post(
-      'https:
+      'https://api.groq.com/openai/v1/chat/completions',
       {
         model: getModel(),
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
@@ -210,7 +210,7 @@ Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join(';
   if (!apiKey) return res.status(400).json({ error: 'Groq API key not configured' });
 
   try {
-    const resp = await axios.post('https:
+    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: getModel(),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -244,7 +244,7 @@ ${logs.map(l => `[${l.level}] ${l.message}`).join('\n') || 'No error logs found.
 Provide a concise fix recommendation with exact commands or config changes needed.`;
 
   try {
-    const resp = await axios.post('https:
+    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: getModel(),
       messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: prompt }],
       max_tokens: 800,
@@ -268,7 +268,7 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
   }`;
 
   try {
-    const resp = await axios.post('https:
+    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
       model: getModel(),
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 500,
@@ -308,7 +308,7 @@ export default router;
 async function groqChat(systemPrompt: string, userPrompt: string, maxTokens = 1200): Promise<string> {
   const apiKey = getGroqKey();
   if (!apiKey) throw new Error('Groq API key not configured');
-  const resp = await axios.post('https:
+  const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
     model: getModel(),
     messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
     max_tokens: maxTokens,

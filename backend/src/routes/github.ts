@@ -18,14 +18,14 @@ router.post('/connect', requireAuth, requireRole('admin','developer'), async (re
   if (existing) return res.status(409).json({ error: 'Repository already connected' });
 
   
-  const repoPath = repo_url.replace('https:
+  const repoPath = repo_url.replace('https://github.com/', '');
   let commitSha = null, commitMessage = null;
 
   try {
     const axios = require('axios');
     const headers: Record<string, string> = { 'User-Agent': 'Podium/4.0' };
     if (token) headers['Authorization'] = `token ${token}`;
-    const resp = await axios.get(`https:
+    const resp = await axios.get(`https://api.github.com/repos/${repoPath}/commits/${branch}`, { headers });
     commitSha = resp.data.sha?.slice(0, 7);
     commitMessage = resp.data.commit?.message?.split('\n')[0];
   } catch {}
@@ -49,14 +49,14 @@ router.post('/repos/:id/pull', requireAuth, async (req, res: Response) => {
   const repo = getDb().prepare('SELECT * FROM github_repos WHERE id = ?').get(req.params.id) as any;
   if (!repo) return res.status(404).json({ error: 'Repo not found' });
 
-  const repoPath = repo.repo_url.replace('https:
+  const repoPath = repo.repo_url.replace('https://github.com/', '');
   let commitSha = null, commitMessage = null;
 
   try {
     const axios = require('axios');
     const headers: Record<string, string> = { 'User-Agent': 'Podium/4.0' };
     if (repo.token) headers['Authorization'] = `token ${repo.token}`;
-    const resp = await axios.get(`https:
+    const resp = await axios.get(`https://api.github.com/repos/${repoPath}/commits/${repo.branch}`, { headers });
     commitSha = resp.data.sha?.slice(0, 7);
     commitMessage = resp.data.commit?.message?.split('\n')[0];
   } catch (err: any) {

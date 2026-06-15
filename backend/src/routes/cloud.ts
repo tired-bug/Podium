@@ -40,12 +40,12 @@ function setStatus(id: string, status: string, url?: string) {
 
 async function getAzureToken(): Promise<string> {
   const r = await axios.post(
-    `https:
+    `https://login.microsoftonline.com/${get('azure_tenant_id')}/oauth2/v2.0/token`,
     new URLSearchParams({
       grant_type: 'client_credentials',
       client_id:  get('azure_client_id'),
       client_secret: get('azure_client_secret'),
-      scope: 'https:
+      scope: 'https://management.azure.com/.default',
     }),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
@@ -64,7 +64,7 @@ async function deployAzure(id: string, name: string, image: string, region: stri
 
     appendLog(id, `Ensuring resource group "${rg}" in ${loc}...`);
     await axios.put(
-      `https:
+      `https://management.azure.com/subscriptions/${sub}/resourceGroups/${rg}?api-version=2021-04-01`,
       { location: loc },
       { headers: { Authorization: `Bearer ${token}` } }
     );
@@ -74,7 +74,7 @@ async function deployAzure(id: string, name: string, image: string, region: stri
     setStatus(id, 'deploying');
 
     await axios.put(
-      `https:
+      `https://management.azure.com/subscriptions/${sub}/resourceGroups/${rg}/providers/Microsoft.ContainerInstance/containerGroups/${cName}?api-version=2021-10-01`,
       {
         location: loc,
         properties: {
@@ -103,7 +103,7 @@ async function deployAzure(id: string, name: string, image: string, region: stri
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 6000));
       const s = await axios.get(
-        `https:
+        `https://management.azure.com/subscriptions/${sub}/resourceGroups/${rg}/providers/Microsoft.ContainerInstance/containerGroups/${cName}?api-version=2021-10-01`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const state = s.data.properties?.provisioningState;
@@ -111,7 +111,7 @@ async function deployAzure(id: string, name: string, image: string, region: stri
       const ip    = s.data.properties?.ipAddress?.ip;
       appendLog(id, `Azure state: ${state}${fqdn ? ` - ${fqdn}` : ''}`);
       if (state === 'Succeeded') {
-        const url = fqdn ? `http:
+        const url = fqdn ? `http://${fqdn}` : (ip ? `http://${ip}` : '');
         setStatus(id, 'running', url);
         appendLog(id, `- Live${url ? ': ' + url : ''}!`);
         return;
@@ -170,7 +170,7 @@ async function deployAWS(id: string, name: string, image: string, region: string
       InstanceConfiguration: { Cpu: '1 vCPU', Memory: '2 GB' },
     });
 
-    const url = `https:
+    const url = `https://apprunner.${awsRegion}.amazonaws.com/prod/service`;
     const { date, auth } = awsSign('POST', url, awsRegion, 'apprunner', serviceBody, accessKey, secretKey);
 
     appendLog(id, 'Creating AWS App Runner service...');
@@ -201,8 +201,8 @@ async function deployAWS(id: string, name: string, image: string, region: string
         appendLog(id, `AWS App Runner: ${svcStatus}`);
         if (svcStatus === 'RUNNING') {
           const svcUrl = descResp.data.Service?.ServiceUrl || statusUrl;
-          setStatus(id, 'running', svcUrl ? `https:
-          appendLog(id, `- Service live${svcUrl ? ': https:
+          setStatus(id, 'running', svcUrl ? `https://${svcUrl}` : undefined);
+          appendLog(id, `- Service live${svcUrl ? ': https://' + svcUrl : ''}!`);
           return;
         }
         if (['CREATE_FAILED', 'DELETED'].includes(svcStatus)) throw new Error(`App Runner status: ${svcStatus}`);
@@ -230,7 +230,7 @@ async function deployVercel(id: string, name: string, image: string, region: str
     appendLog(id, 'Connecting to Vercel API...');
     setStatus(id, 'deploying');
 
-    const me = await axios.get('https:
+    const me = await axios.get('https://api.vercel.com/v2/user', { headers });
     appendLog(id, `Authenticated as ${me.data.user?.username || me.data.user?.email}`);
 
     const projectName = `podium-${name}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 52);
@@ -238,7 +238,7 @@ async function deployVercel(id: string, name: string, image: string, region: str
     
     let project: any;
     try {
-      const projResp = await axios.post(`https:
+      const projResp = await axios.post(`https://api.vercel.com/v9/projects${teamId ? `?teamId=${teamId}` : ''}`, {
         name: projectName,
         ...(teamId ? { teamId } : {}),
       }, { headers });
@@ -246,7 +246,7 @@ async function deployVercel(id: string, name: string, image: string, region: str
       appendLog(id, `Project created: ${project.id}`);
     } catch (e: any) {
       if (e.response?.status === 409) {
-        const existing = await axios.get(`https:
+        const existing = await axios.get(`https://api.vercel.com/v9/projects/${projectName}${teamId ? `?teamId=${teamId}` : ''}`, { headers });
         project = existing.data;
         appendLog(id, `Using existing project: ${project.id}`);
       } else throw e;
@@ -257,7 +257,7 @@ async function deployVercel(id: string, name: string, image: string, region: str
       !['github_repo','branch','framework','plan','resource_group','cpu','memory'].includes(k)
     );
     if (cleanEnv.length > 0) {
-      await axios.post(`https:
+      await axios.post(`https://api.vercel.com/v9/projects/${project.id}/env${teamId ? `?teamId=${teamId}` : ''}`,
         cleanEnv.map(([key, value]) => ({ key, value, type: 'plain', target: ['production','preview','development'] })),
         { headers }
       ).catch(() => {});
@@ -266,13 +266,13 @@ async function deployVercel(id: string, name: string, image: string, region: str
     
     if (githubRepo && githubRepo.includes('github.com')) {
       const match = githubRepo.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-      if (!match) throw new Error('Invalid GitHub repo URL — use https:
+      if (!match) throw new Error('Invalid GitHub repo URL — use https://github.com/owner/repo');
       const [, repoOwner, repoName] = match;
 
       appendLog(id, `Downloading ${repoOwner}/${repoName}@${branch} from GitHub...`);
 
       
-      const zipUrl = `https:
+      const zipUrl = `https://codeload.github.com/${repoOwner}/${repoName}/zip/refs/heads/${branch}`;
       const zipResp = await axios.get(zipUrl, { responseType: 'arraybuffer' });
       const zipBuffer = Buffer.from(zipResp.data);
       appendLog(id, `Downloaded ${(zipBuffer.length / 1024).toFixed(0)} KB — extracting files...`);
@@ -329,13 +329,13 @@ async function deployVercel(id: string, name: string, image: string, region: str
 
       
       if (framework) {
-        await axios.patch(`https:
+        await axios.patch(`https://api.vercel.com/v9/projects/${project.id}${teamId ? `?teamId=${teamId}` : ''}`,
           { framework }, { headers }
         ).catch(() => {});
       }
 
       
-      const depResp = await axios.post(`https:
+      const depResp = await axios.post(`https://api.vercel.com/v13/deployments${teamId ? `?teamId=${teamId}` : ''}`, {
         name: projectName,
         project: project.id,
         target: 'production',
@@ -350,19 +350,19 @@ async function deployVercel(id: string, name: string, image: string, region: str
 
       for (let i = 0; i < 40; i++) {
         await new Promise(r => setTimeout(r, 6000));
-        const statusResp = await axios.get(`https:
+        const statusResp = await axios.get(`https://api.vercel.com/v13/deployments/${depId}${teamId ? `?teamId=${teamId}` : ''}`, { headers });
         const state = statusResp.data.readyState || statusResp.data.state;
         const url   = statusResp.data.url || depUrl;
         appendLog(id, `Vercel: ${state}`);
         if (state === 'READY') {
-          setStatus(id, 'running', `https:
-          appendLog(id, `- Live: https:
+          setStatus(id, 'running', `https://${url}`);
+          appendLog(id, `- Live: https://${url}`);
           return;
         }
         if (['ERROR', 'CANCELED'].includes(state)) {
           
           try {
-            const errResp = await axios.get(`https:
+            const errResp = await axios.get(`https://api.vercel.com/v13/deployments/${depId}/events${teamId ? `?teamId=${teamId}` : ''}`, { headers });
             const errors = errResp.data?.filter((e: any) => e.type === 'stderr').slice(-5);
             errors?.forEach((e: any) => appendLog(id, `  ${e.text || e.payload?.text || ''}`));
           } catch {}
@@ -374,7 +374,7 @@ async function deployVercel(id: string, name: string, image: string, region: str
 
     
     appendLog(id, 'No GitHub repo provided — deploying placeholder page...');
-    const depResp = await axios.post(`https:
+    const depResp = await axios.post(`https://api.vercel.com/v13/deployments${teamId ? `?teamId=${teamId}` : ''}`, {
       name: projectName, project: project.id, target: 'production',
       files: [{ file: 'index.html', data: `<!DOCTYPE html><html><head><title>${name}</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0a0a0f;color:#fff}h1{background:linear-gradient(135deg,#6366f1,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}</style></head><body><h1>${name} — deployed via Podium</h1></body></html>` }],
       ...(teamId ? { teamId } : {}),
@@ -386,11 +386,11 @@ async function deployVercel(id: string, name: string, image: string, region: str
 
     for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 5000));
-      const statusResp = await axios.get(`https:
+      const statusResp = await axios.get(`https://api.vercel.com/v13/deployments/${depId}${teamId ? `?teamId=${teamId}` : ''}`, { headers });
       const state = statusResp.data.readyState || statusResp.data.state;
       const url   = statusResp.data.url || depUrl;
       appendLog(id, `Vercel: ${state}`);
-      if (state === 'READY') { setStatus(id, 'running', `https:
+      if (state === 'READY') { setStatus(id, 'running', `https://${url}`); return; }
       if (['ERROR', 'CANCELED'].includes(state)) throw new Error(`Vercel deployment ${state}`);
     }
     throw new Error('Timed out');
@@ -413,7 +413,7 @@ async function deployRender(id: string, name: string, image: string, region: str
     appendLog(id, 'Connecting to Render API...');
     setStatus(id, 'deploying');
 
-    const me = await axios.get('https:
+    const me = await axios.get('https://api.render.com/v1/owners', {
       headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
     });
     const owner = me.data?.[0]?.owner;
@@ -424,7 +424,7 @@ async function deployRender(id: string, name: string, image: string, region: str
 
     
     
-    const createResp = await axios.post('https:
+    const createResp = await axios.post('https://api.render.com/v1/services', {
       type: 'web_service',
       name: serviceName,
       ownerId,
@@ -441,14 +441,14 @@ async function deployRender(id: string, name: string, image: string, region: str
     });
 
     const serviceId  = createResp.data.service?.id;
-    const serviceUrl = createResp.data.service?.serviceDetails?.url || `https:
+    const serviceUrl = createResp.data.service?.serviceDetails?.url || `https://${serviceName}.onrender.com`;
     appendLog(id, `Service created: ${serviceId}`);
     appendLog(id, 'Waiting for deployment to go live (free tier takes 3-5 min)...');
 
     for (let i = 0; i < 40; i++) {
       await new Promise(r => setTimeout(r, 9000));
       try {
-        const deploysResp = await axios.get(`https:
+        const deploysResp = await axios.get(`https://api.render.com/v1/services/${serviceId}/deploys`, {
           headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
         });
         const latest = deploysResp.data?.[0]?.deploy;
@@ -487,7 +487,7 @@ function simulateDeploy(id: string, provider: string, name: string) {
   ];
   for (const s of steps) setTimeout(() => appendLog(id, s.msg), s.d);
   setTimeout(() => {
-    setStatus(id, 'running', `https:
+    setStatus(id, 'running', `https://${name}.example.com`);
     appendLog(id, '[Demo] Deployment live! Add real credentials in Settings - Cloud to deploy for real.');
   }, 12000);
 }
@@ -503,7 +503,7 @@ async function dispatch(id: string, provider: string, name: string, image: strin
       cfg.env = envVars;
       getDb().prepare("UPDATE cloud_deployments SET config=? WHERE id=?").run(JSON.stringify(cfg), id);
       await axios.post(
-        `http:
+        `http://localhost:${process.env.PORT || 4000}/api/selfhosted/run/${id}`,
         {},
         { headers: { 'x-internal': 'podium-selfhosted' } }
       );

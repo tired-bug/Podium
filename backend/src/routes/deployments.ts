@@ -12,8 +12,7 @@ async function checkDocker(): Promise<boolean> {
   try {
     const Docker = require('dockerode');
     const d = new Docker({
-      socketPath: process.platform === 'win32' ? '
-    });
+      socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
     await new Promise<void>((resolve, reject) => {
       d.ping((err: any) => err ? reject(err) : resolve());
     });
@@ -80,8 +79,7 @@ function simulateStop(id: string, name: string) {
 async function startDockerDeployment(dep: any): Promise<void> {
   const Docker = require('dockerode');
   const docker = new Docker({
-    socketPath: process.platform === 'win32' ? '
-  });
+    socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
 
   const id = dep.id;
   getDb().prepare("UPDATE deployments SET status='building', updated_at=datetime('now') WHERE id=?").run(id);
@@ -248,7 +246,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), async (req, res: Respon
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
       const c = docker.getContainer(dep.container_id);
       await c.stop().catch(() => {});
       await c.remove().catch(() => {});
@@ -267,7 +265,7 @@ router.post('/:id/start', requireAuth, requireRole('admin','developer'), async (
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
       await docker.getContainer(dep.container_id).start();
       getDb().prepare("UPDATE deployments SET status='running', updated_at=datetime('now') WHERE id=?").run(dep.id);
       return res.json({ ok: true });
@@ -285,7 +283,7 @@ router.post('/:id/stop', requireAuth, requireRole('admin','developer'), async (r
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
       await docker.getContainer(dep.container_id).stop();
     } catch {}
   } else {
@@ -305,7 +303,7 @@ router.post('/:id/restart', requireAuth, requireRole('admin','developer'), async
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
       await docker.getContainer(dep.container_id).restart();
       getDb().prepare("UPDATE deployments SET status='running', updated_at=datetime('now') WHERE id=?").run(dep.id);
       logToDb(dep.id, 'info', 'Deployment restarted');
@@ -327,7 +325,7 @@ router.post('/:id/rebuild', requireAuth, requireRole('admin','developer'), async
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
       const c = docker.getContainer(dep.container_id);
       await c.stop().catch(() => {});
       await c.remove().catch(() => {});
