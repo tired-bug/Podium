@@ -15,6 +15,12 @@ interface SyncDb {
 let _local: any = null;
 let _turso: any = null;
 
+/* ---------------- EXTENDED SCHEMA EXPORT ---------------- */
+
+export function ensureExtendedSchema(): void {
+  applyExtendedSchema();
+}
+
 /* ---------------- DB PATH (DEV ONLY) ---------------- */
 
 function getDbPath(): string {
@@ -23,18 +29,19 @@ function getDbPath(): string {
   return path.join(dataDir, 'podium.db');
 }
 
-/* ---------------- TURSO CLIENT ---------------- */
+/* ---------------- TURSO INIT ---------------- */
 
 async function initTurso() {
   const tursoUrl = process.env.TURSO_DATABASE_URL;
   const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
   if (!tursoUrl || !tursoToken) {
-    console.log('[db] No Turso credentials → local only mode');
+    console.log('[db] No Turso → local dev mode only');
     return;
   }
 
   const { createClient } = require('@libsql/client');
+
   _turso = createClient({
     url: tursoUrl,
     authToken: tursoToken,
@@ -52,17 +59,21 @@ function initLocal() {
   _local = new sqlite.DatabaseSync(dbPath);
   _local.exec('PRAGMA journal_mode = WAL');
   _local.exec('PRAGMA foreign_keys = ON');
-  _local.exec('PRAGMA synchronous = NORMAL');
 
-  console.log(`[db] Local SQLite ready → ${dbPath}`);
+  console.log(`[db] Local SQLite → ${dbPath}`);
 }
 
-/* ---------------- DB SHIM ---------------- */
+/* ---------------- DB LAYER (IMPORTANT FIX) ---------------- */
 
 function createDb(): SyncDb {
+  const isProd = process.env.NODE_ENV === 'production';
+
   return {
     exec(sql: string) {
-      _local?.exec(sql);
+      // DEV ONLY: local schema sync
+      if (!isProd) _local?.exec(sql);
+
+      // ALWAYS: apply to Turso if available
       if (_turso) {
         _turso.executeMultiple(sql).catch(console.error);
       }
@@ -75,15 +86,24 @@ function createDb(): SyncDb {
         /^\s*(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|REPLACE)/i.test(sql);
 
       return {
-        get: (...args: any[]) => localStmt?.get(...args),
-        all: (...args: any[]) => localStmt?.all(...args),
+        get: (...args: any[]) => {
+          if (!isProd) return localStmt?.get(...args);
+          return null;
+        },
+
+        all: (...args: any[]) => {
+          if (!isProd) return localStmt?.all(...args);
+          return [];
+        },
 
         run: (...args: any[]) => {
-          const result = localStmt?.run(...args);
+          let result = null;
 
-          // write-through to Turso ONLY for production sync
-          if (isWrite && _turso) {
-            _turso.execute({ sql, args }).catch(console.error);
+          // 🔥 SINGLE SOURCE OF TRUTH = TURSO
+          if (_turso) {
+            result = _turso.execute({ sql, args }).catch(console.error);
+          } else if (!isProd) {
+            result = localStmt?.run(...args);
           }
 
           return result;
@@ -96,7 +116,7 @@ function createDb(): SyncDb {
 /* ---------------- PUBLIC API ---------------- */
 
 export function getDb(): SyncDb {
-  if (!_local && !_turso) {
+  if (!_turso && !process.env.NODE_ENV) {
     throw new Error('Database not initialized — call initDb() first');
   }
   return createDb();
@@ -107,18 +127,17 @@ export function getDb(): SyncDb {
 export async function initDb(): Promise<void> {
   const isProd = process.env.NODE_ENV === 'production';
 
-  // ALWAYS init Turso first (source of truth)
   await initTurso();
 
-  // Local DB only for dev
   if (!isProd) {
     initLocal();
   }
 
   applySchema();
   applyDefaults();
+  applyExtendedSchema();
 
-  console.log('[db] Ready (Turso-first mode)');
+  console.log('[db] Ready (Turso-first)');
 }
 
 /* ---------------- SCHEMA ---------------- */
@@ -150,8 +169,11 @@ function applySchema() {
     );
   `;
 
+  // DEV only local schema
   _local?.exec(sql);
-  _turso?.executeMultiple(sql);
+
+  // PROD source of truth
+  _turso?.executeMultiple(sql).catch(console.error);
 }
 
 /* ---------------- DEFAULTS ---------------- */
@@ -163,20 +185,22 @@ function applyDefaults() {
     ['app_url', 'http://localhost:3000'],
   ];
 
-  const stmt = _local?.prepare(
-    'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)'
-  );
-
   for (const [k, v] of defaults) {
-    stmt?.run(k, v);
-  }
-
-  if (_turso) {
-    for (const [k, v] of defaults) {
+    if (_turso) {
       _turso.execute({
         sql: 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)',
         args: [k, v],
       }).catch(console.error);
+    } else {
+      _local?.prepare(
+        'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)'
+      ).run(k, v);
     }
   }
+}
+
+/* ---------------- EXTENSION HOOK ---------------- */
+
+function applyExtendedSchema() {
+  // safe placeholder for future migrations
 }
