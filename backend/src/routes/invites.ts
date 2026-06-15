@@ -125,7 +125,7 @@ router.post('/', requireAuth, requireRole('admin'), async (req: AuthRequest, res
 
   return res.status(201).json({
     ...invite,
-    link: `podium:
+    link: `/invite?code=${code}`,
     emailSent,
     emailError,
   });

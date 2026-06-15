@@ -7,7 +7,7 @@ let docker: Docker | null = null;
 
 function getDocker(): Docker {
   if (!docker) {
-    docker = new Docker({ socketPath: process.platform === 'win32' ? '
+    docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock',
   }
   return docker;
 }

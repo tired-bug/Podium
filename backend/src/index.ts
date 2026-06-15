@@ -80,7 +80,7 @@ async function collectMetrics() {
   for (const dep of running) {
     try {
       const docker = new Docker({
-        socketPath: process.platform === 'win32' ? '
+        socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock',
       });
       const stats = await new Promise<any>((resolve, reject) => {
         docker.getContainer(dep.container_id).stats({ stream: false }, (err: any, data: any) => {
