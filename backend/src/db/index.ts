@@ -1,23 +1,52 @@
 /**
- * Database layer — uses Node.js built-in node:sqlite
- * Zero native compilation. Works on Node 22+ and Node 24+.
+ * Database layer — Turso (libSQL) with synchronous-style API shim
+ *
+ * Uses a local SQLite cache that is flushed synchronously, backed by
+ * Turso in production. All routes call the same .prepare().get/all/run()
+ * interface — zero route changes required.
+ *
+ * Strategy:
+ *   - In production: use @libsql/client remote (Turso)
+ *   - In development / fallback: use node:sqlite local file
+ *
+ * The shim wraps Turso's async client into a synchronous interface by
+ * using node:sqlite as the local cache and syncing to Turso via a
+ * background flush queue. For reads we use local SQLite; writes go to
+ * both local SQLite (immediate) and Turso (async, queued).
+ *
+ * This means:
+ *   - Zero latency for reads (local)
+ *   - Zero API changes in routes
+ *   - Persistent data via Turso survives redeploys
  */
 
-// Suppress the "SQLite is experimental" warning on Node 22
+import path from 'path';
+import fs from 'fs';
+
+// ── Suppress Node 22 SQLite experimental warning ──────────────────────────────
 const _origEmit = process.emitWarning.bind(process);
 (process as any).emitWarning = (msg: string, ...args: any[]) => {
   if (typeof msg === 'string' && msg.includes('SQLite')) return;
   _origEmit(msg, ...args);
 };
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const sqlite = require('node:sqlite');
-const DatabaseSync = sqlite.DatabaseSync;
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface SyncStatement {
+  get(...params: any[]): any;
+  all(...params: any[]): any[];
+  run(...params: any[]): { changes: number; lastInsertRowid: number | bigint };
+}
 
-import path from 'path';
-import fs from 'fs';
+interface SyncDb {
+  prepare(sql: string): SyncStatement;
+  exec(sql: string): void;
+}
 
-let _db: any = null;
+// ── Local SQLite (node:sqlite) ────────────────────────────────────────────────
+let _local: any = null;
+let _turso: any = null;
+let _writeQueue: Array<{ sql: string; params: any[] }> = [];
+let _flushing = false;
 
 function getDbPath(): string {
   const dataDir = process.env.PODIUM_DATA_DIR || path.join(process.cwd(), 'data');
@@ -25,20 +54,149 @@ function getDbPath(): string {
   return path.join(dataDir, 'podium.db');
 }
 
-export function getDb(): any {
-  if (!_db) throw new Error('Database not initialized — call initDb() first');
-  return _db;
+// ── Turso write queue flush ───────────────────────────────────────────────────
+async function flushQueue() {
+  if (_flushing || !_turso || _writeQueue.length === 0) return;
+  _flushing = true;
+  const batch = [..._writeQueue];
+  _writeQueue = [];
+  try {
+    await _turso.batch(
+      batch.map(({ sql, params }) => ({ sql, args: params })),
+      'write'
+    );
+  } catch (err) {
+    console.error('[turso] Batch write error:', err);
+    // Re-queue on failure
+    _writeQueue = [...batch, ..._writeQueue];
+  } finally {
+    _flushing = false;
+  }
 }
 
-export function initDb(): void {
+// Flush every 500ms
+setInterval(() => flushQueue().catch(() => {}), 500);
+
+// ── Sync DB shim ──────────────────────────────────────────────────────────────
+function createShim(local: any): SyncDb {
+  return {
+    exec(sql: string) {
+      local.exec(sql);
+      // Queue DDL to Turso too
+      if (_turso) {
+        _turso.executeMultiple(sql).catch((e: any) => {
+          // Ignore "already exists" errors on CREATE TABLE IF NOT EXISTS
+          if (!String(e).includes('already exists')) {
+            console.error('[turso] exec error:', e);
+          }
+        });
+      }
+    },
+    prepare(sql: string): SyncStatement {
+      const isWrite = /^\s*(INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|REPLACE)/i.test(sql);
+      const localStmt = local.prepare(sql);
+
+      return {
+        get(...params: any[]) {
+          return localStmt.get(...params) ?? null;
+        },
+        all(...params: any[]) {
+          return localStmt.all(...params);
+        },
+        run(...params: any[]) {
+          const result = localStmt.run(...params);
+          if (isWrite && _turso) {
+            _writeQueue.push({ sql, params });
+          }
+          return result;
+        },
+      };
+    },
+  };
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+export function getDb(): SyncDb {
+  if (!_local) throw new Error('Database not initialized — call initDb() first');
+  return createShim(_local);
+}
+
+export async function initDb(): Promise<void> {
+  // 1. Always init local SQLite first (instant, synchronous)
+  const sqlite = require('node:sqlite');
   const dbPath = getDbPath();
-  _db = new DatabaseSync(dbPath);
+  _local = new sqlite.DatabaseSync(dbPath);
+  _local.exec('PRAGMA journal_mode = WAL');
+  _local.exec('PRAGMA foreign_keys = ON');
+  _local.exec('PRAGMA synchronous = NORMAL');
 
-  _db.exec("PRAGMA journal_mode = WAL");
-  _db.exec("PRAGMA foreign_keys = ON");
-  _db.exec("PRAGMA synchronous = NORMAL");
+  // 2. Connect to Turso if credentials present
+  const tursoUrl   = process.env.TURSO_DATABASE_URL;
+  const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
-  _db.exec(`
+  if (tursoUrl && tursoToken) {
+    try {
+      const { createClient } = require('@libsql/client');
+      _turso = createClient({ url: tursoUrl, authToken: tursoToken });
+
+      // Pull latest data from Turso into local SQLite on startup
+      await syncFromTurso();
+      console.log('[turso] Connected and synced ✓');
+    } catch (err) {
+      console.error('[turso] Connection failed, running local-only:', err);
+      _turso = null;
+    }
+  } else {
+    console.log('[db] No Turso credentials — using local SQLite only');
+  }
+
+  // 3. Run schema
+  applySchema();
+  applyDefaults();
+  migrateModels();
+  applyExtendedSchema();
+
+  if (process.env.NODE_ENV === 'development') seedDemoData();
+
+  console.log(`[db] Ready — ${dbPath}`);
+}
+
+// ── Pull data from Turso into local SQLite on startup ────────────────────────
+async function syncFromTurso() {
+  if (!_turso) return;
+  const TABLES = [
+    'users', 'invites', 'deployments', 'cloud_deployments',
+    'metrics', 'build_logs', 'ai_conversations', 'anomalies',
+    'settings', 'selfhosted_deployments', 'github_repos',
+    'user_profiles', 'notifications',
+  ];
+
+  for (const table of TABLES) {
+    try {
+      const result = await _turso.execute(`SELECT * FROM ${table}`);
+      if (!result.rows || result.rows.length === 0) continue;
+
+      const cols = result.columns;
+      const placeholders = cols.map(() => '?').join(', ');
+      const insertSql = `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`;
+      const stmt = _local.prepare(insertSql);
+
+      for (const row of result.rows) {
+        stmt.run(...cols.map((c: string) => row[c]));
+      }
+      console.log(`[turso] Synced ${result.rows.length} rows from ${table}`);
+    } catch (e: any) {
+      // Table may not exist on Turso yet — that's fine
+      if (!String(e).includes('no such table')) {
+        console.error(`[turso] Sync error for ${table}:`, e);
+      }
+    }
+  }
+}
+
+// ── Schema ────────────────────────────────────────────────────────────────────
+function applySchema() {
+  _local.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
@@ -164,10 +322,41 @@ export function initDb(): void {
       status TEXT NOT NULL DEFAULT 'connected',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      user_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      bio TEXT,
+      job_title TEXT,
+      company TEXT,
+      location TEXT,
+      website TEXT,
+      github_username TEXT,
+      avatar TEXT,
+      timezone TEXT DEFAULT 'Africa/Tunis',
+      theme_preference TEXT DEFAULT 'dark',
+      notification_email INTEGER DEFAULT 1,
+      notification_deployments INTEGER DEFAULT 1,
+      notification_anomalies INTEGER DEFAULT 1,
+      notification_team INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      link TEXT,
+      read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_notif ON notifications(user_id, read, created_at);
   `);
+}
 
-  // Default settings
-  const setStmt = _db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+function applyDefaults() {
+  const stmt = _local.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   const defaults: [string, string][] = [
     ['platform_name', 'Podium'],
     ['groq_model', 'llama-3.3-70b-versatile'],
@@ -188,35 +377,27 @@ export function initDb(): void {
     ['cloudflare_tunnel_token', ''],
     ['cloudflare_tunnel_domain', ''],
   ];
-  for (const [k, v] of defaults) setStmt.run(k, v);
-
-
-  // ── Migrate deprecated Groq model names ───────────────────────────────────
-  const DEPRECATED_MODELS = ['llama3-70b-8192', 'llama3-8b-8192', 'gemma-7b-it', 'llama3-groq-70b-8192-tool-use-preview'];
-  const currentModel = (_db!.prepare("SELECT value FROM settings WHERE key='groq_model'").get() as any)?.value;
-  if (currentModel && DEPRECATED_MODELS.includes(currentModel)) {
-    _db!.prepare("UPDATE settings SET value='llama-3.3-70b-versatile' WHERE key='groq_model'").run();
-    console.log(`[db] Migrated deprecated model "${currentModel}" → llama-3.3-70b-versatile`);
-  }
-
-  // ── Migrate deprecated Groq model names ──────────────────────────────────
-  {
-    const DEPRECATED = ['llama3-70b-8192', 'llama3-8b-8192', 'gemma-7b-it'];
-    const row = _db!.prepare("SELECT value FROM settings WHERE key='groq_model'").get() as any;
-    if (row?.value && DEPRECATED.includes(row.value)) {
-      _db!.prepare("UPDATE settings SET value='llama-3.3-70b-versatile' WHERE key='groq_model'").run();
-      console.log(`[db] Migrated deprecated model "${row.value}" → llama-3.3-70b-versatile`);
-    }
-  }
-
-  if (process.env.NODE_ENV === 'development') seedDemoData();
-
-  console.log(`[db] Ready — ${dbPath}`);
+  for (const [k, v] of defaults) stmt.run(k, v);
 }
 
+function migrateModels() {
+  const DEPRECATED = ['llama3-70b-8192', 'llama3-8b-8192', 'gemma-7b-it', 'llama3-groq-70b-8192-tool-use-preview'];
+  const row = _local.prepare("SELECT value FROM settings WHERE key='groq_model'").get() as any;
+  if (row?.value && DEPRECATED.includes(row.value)) {
+    _local.prepare("UPDATE settings SET value='llama-3.3-70b-versatile' WHERE key='groq_model'").run();
+    if (_turso) _writeQueue.push({ sql: "UPDATE settings SET value='llama-3.3-70b-versatile' WHERE key='groq_model'", params: [] });
+    console.log(`[db] Migrated deprecated model "${row.value}" → llama-3.3-70b-versatile`);
+  }
+}
+
+// ── Extended schema (kept for backward compat) ────────────────────────────────
+export function ensureExtendedSchema(): void {
+  // Already applied in applySchema() above — no-op for backward compat
+}
+
+// ── Seed demo data ────────────────────────────────────────────────────────────
 function seedDemoData(): void {
-  const db = _db;
-  const row = db.prepare('SELECT COUNT(*) as c FROM deployments').get() as { c: number };
+  const row = _local.prepare('SELECT COUNT(*) as c FROM deployments').get() as { c: number };
   if (row.c > 0) return;
 
   const { v4: uuid } = require('uuid');
@@ -227,14 +408,10 @@ function seedDemoData(): void {
     { id: uuid(), name: 'worker-service', status: 'failed',  repo_url: 'https://github.com/org/worker',      branch: 'main',    image: 'worker:latest' },
   ];
 
-  const ins = db.prepare(
-    'INSERT OR IGNORE INTO deployments (id, name, status, repo_url, branch, image) VALUES (?, ?, ?, ?, ?, ?)'
-  );
+  const ins = _local.prepare('INSERT OR IGNORE INTO deployments (id, name, status, repo_url, branch, image) VALUES (?, ?, ?, ?, ?, ?)');
   for (const d of demos) ins.run(d.id, d.name, d.status, d.repo_url, d.branch, d.image);
 
-  const mIns = db.prepare(
-    'INSERT INTO metrics (deployment_id, timestamp, cpu, memory, network_in, network_out) VALUES (?, ?, ?, ?, ?, ?)'
-  );
+  const mIns = _local.prepare('INSERT INTO metrics (deployment_id, timestamp, cpu, memory, network_in, network_out) VALUES (?, ?, ?, ?, ?, ?)');
   const now = Date.now();
   for (const d of demos.filter(x => x.status === 'running')) {
     for (let i = 60; i >= 0; i--) {
@@ -247,46 +424,11 @@ function seedDemoData(): void {
     }
   }
 
-  const lIns = db.prepare('INSERT INTO build_logs (deployment_id, level, message) VALUES (?, ?, ?)');
+  const lIns = _local.prepare('INSERT INTO build_logs (deployment_id, level, message) VALUES (?, ?, ?)');
   for (const d of demos) lIns.run(d.id, 'info', `Deployment "${d.name}" created (demo mode)`);
 }
 
-// ── Additional tables (profile + notifications) ───────────────────────────
-export function ensureExtendedSchema(): void {
-  const db = _db;
-  if (!db) return;
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS user_profiles (
-      user_id TEXT PRIMARY KEY,
-      display_name TEXT,
-      bio TEXT,
-      job_title TEXT,
-      company TEXT,
-      location TEXT,
-      website TEXT,
-      github_username TEXT,
-      avatar TEXT,
-      timezone TEXT DEFAULT 'Africa/Tunis',
-      theme_preference TEXT DEFAULT 'dark',
-      notification_email INTEGER DEFAULT 1,
-      notification_deployments INTEGER DEFAULT 1,
-      notification_anomalies INTEGER DEFAULT 1,
-      notification_team INTEGER DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS notifications (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      title TEXT NOT NULL,
-      message TEXT NOT NULL,
-      link TEXT,
-      read INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-    CREATE INDEX IF NOT EXISTS idx_notif ON notifications(user_id, read, created_at);
-  `);
+// ── Keep applyExtendedSchema for legacy compat ────────────────────────────────
+function applyExtendedSchema() {
+  // Already in applySchema() — no-op
 }

@@ -27,14 +27,10 @@ import selfhostedRouter from './routes/selfhosted';
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000');
 
-// ── Init DB ───────────────────────────────────────────────────────────────────
-initDb();
-ensureExtendedSchema();
-
 // ── CORS ──────────────────────────────────────────────────────────────────────
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : true; // allow all in dev
+  : true;
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 
@@ -179,9 +175,19 @@ setInterval(() => collectMetrics().catch(() => {}), 10_000);
 setInterval(generateSimulatedMetrics, 12_000);
 setInterval(pruneOldData, 3_600_000);
 
-// ── Start ─────────────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[podium] Backend on http://localhost:${PORT} (${process.env.NODE_ENV})`);
+// ── Bootstrap: init DB (async for Turso sync), then start server ──────────────
+async function bootstrap() {
+  await initDb();
+  ensureExtendedSchema(); // no-op, schema already applied in initDb
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[podium] Backend on http://localhost:${PORT} (${process.env.NODE_ENV})`);
+  });
+}
+
+bootstrap().catch(err => {
+  console.error('[podium] Fatal startup error:', err);
+  process.exit(1);
 });
 
 export default app;
