@@ -1,8 +1,6 @@
 /// <reference types="vite/client" />
 import axios from 'axios';
 
-// In production (Cloudflare Pages), VITE_API_URL is set to the Render backend URL.
-// In dev, it's empty so the Vite proxy handles /api → localhost:4000.
 const BASE_URL = (import.meta.env.VITE_API_URL as string) || '';
 
 const api = axios.create({
@@ -18,7 +16,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 responses globally
+// Handle 401 responses
 api.interceptors.response.use(
   (response) => response,
   (error) => {

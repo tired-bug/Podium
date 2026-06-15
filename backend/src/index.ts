@@ -31,15 +31,9 @@ const PORT = parseInt(process.env.PORT || '4000');
 initDb();
 ensureExtendedSchema();
 
-// ── CORS ──────────────────────────────────────────────────────────────────────
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : true; // allow all in dev
-
-app.use(cors({ origin: allowedOrigins, credentials: true }));
-
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));

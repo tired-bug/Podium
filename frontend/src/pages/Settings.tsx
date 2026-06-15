@@ -584,7 +584,10 @@ export function SettingsPage() {
               {
                 name: 'Podium Self-Hosted', icon: '🏠', color: '#22c55e',
                 keys: [
-                  { key: 'selfhosted_ngrok_url', label: 'ngrok Public URL (optional)', placeholder: 'https://abc123.ngrok-free.app' },
+                  { key: 'selfhosted_domain', label: 'Local Domain', placeholder: 'localhost' },
+                  { key: 'cloudflare_tunnel_id', label: 'Cloudflare Tunnel ID', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+                  { key: 'cloudflare_tunnel_token', label: 'Tunnel Token', placeholder: 'eyJ...', masked: true },
+                  { key: 'cloudflare_tunnel_domain', label: 'Public Domain (via Tunnel)', placeholder: 'apps.yourdomain.com' },
                 ],
               },
               {
