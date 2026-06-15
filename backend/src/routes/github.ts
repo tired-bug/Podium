@@ -5,13 +5,11 @@ import { requireAuth, requireRole, AuthRequest } from '../auth';
 
 const router = Router();
 
-// GET /api/github/repos
 router.get('/repos', requireAuth, (_req, res: Response) => {
   const repos = getDb().prepare('SELECT * FROM github_repos ORDER BY created_at DESC').all();
   res.json(repos);
 });
 
-// POST /api/github/connect
 router.post('/connect', requireAuth, requireRole('admin','developer'), async (req: AuthRequest, res: Response) => {
   const { repo_url, branch = 'main', token, auto_deploy = false } = req.body;
   if (!repo_url) return res.status(400).json({ error: 'repo_url is required' });
@@ -19,15 +17,15 @@ router.post('/connect', requireAuth, requireRole('admin','developer'), async (re
   const existing = getDb().prepare('SELECT id FROM github_repos WHERE repo_url = ?').get(repo_url);
   if (existing) return res.status(409).json({ error: 'Repository already connected' });
 
-  // Validate repo by fetching API info
-  const repoPath = repo_url.replace('https://github.com/', '');
+  
+  const repoPath = repo_url.replace('https:
   let commitSha = null, commitMessage = null;
 
   try {
     const axios = require('axios');
     const headers: Record<string, string> = { 'User-Agent': 'Podium/4.0' };
     if (token) headers['Authorization'] = `token ${token}`;
-    const resp = await axios.get(`https://api.github.com/repos/${repoPath}/commits/${branch}`, { headers });
+    const resp = await axios.get(`https:
     commitSha = resp.data.sha?.slice(0, 7);
     commitMessage = resp.data.commit?.message?.split('\n')[0];
   } catch {}
@@ -42,25 +40,23 @@ router.post('/connect', requireAuth, requireRole('admin','developer'), async (re
   return res.status(201).json(repo);
 });
 
-// DELETE /api/github/repos/:id
 router.delete('/repos/:id', requireAuth, requireRole('admin'), (req, res: Response) => {
   getDb().prepare('DELETE FROM github_repos WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 
-// POST /api/github/repos/:id/pull
 router.post('/repos/:id/pull', requireAuth, async (req, res: Response) => {
   const repo = getDb().prepare('SELECT * FROM github_repos WHERE id = ?').get(req.params.id) as any;
   if (!repo) return res.status(404).json({ error: 'Repo not found' });
 
-  const repoPath = repo.repo_url.replace('https://github.com/', '');
+  const repoPath = repo.repo_url.replace('https:
   let commitSha = null, commitMessage = null;
 
   try {
     const axios = require('axios');
     const headers: Record<string, string> = { 'User-Agent': 'Podium/4.0' };
     if (repo.token) headers['Authorization'] = `token ${repo.token}`;
-    const resp = await axios.get(`https://api.github.com/repos/${repoPath}/commits/${repo.branch}`, { headers });
+    const resp = await axios.get(`https:
     commitSha = resp.data.sha?.slice(0, 7);
     commitMessage = resp.data.commit?.message?.split('\n')[0];
   } catch (err: any) {
@@ -74,15 +70,13 @@ router.post('/repos/:id/pull', requireAuth, async (req, res: Response) => {
   return res.json({ ok: true, commitSha, commitMessage });
 });
 
-// POST /api/github/repos/:id/build
 router.post('/repos/:id/build', requireAuth, (req, res: Response) => {
   const repo = getDb().prepare('SELECT * FROM github_repos WHERE id = ?').get(req.params.id) as any;
   if (!repo) return res.status(404).json({ error: 'Repo not found' });
-  // In production, trigger CI pipeline or clone + docker build
+  
   res.json({ ok: true, message: 'Build triggered', jobId: uuidv4() });
 });
 
-// POST /api/github/webhook [public] — receives GitHub push events
 router.post('/webhook', (req, res: Response) => {
   const event = req.headers['x-github-event'];
   if (event !== 'push') return res.json({ ok: true });

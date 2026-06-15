@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Rocket, Container, Cloud, Github,
+  LayoutDashboard, Rocket, Container, Server, Github,
   ScrollText, BarChart2, Bot, AlertTriangle, Users, Settings,
-  ChevronLeft, ChevronRight, Zap, User,
+  ChevronLeft, ChevronRight, Zap, User, Sparkles,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
 
@@ -15,9 +15,10 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
     items: [{ to: '/dashboard', icon: <LayoutDashboard size={15} />, label: 'Dashboard' }] },
   { section: 'Infrastructure',
     items: [
-      { to: '/deployments', icon: <Rocket size={15} />,   label: 'Deployments' },
+      { to: '/deployments', icon: <Rocket size={15} />, label: 'Deployments' },
+      { to: '/deploy',       icon: <Sparkles size={15} />, label: 'AI Deploy' },
       { to: '/containers',  icon: <Container size={15} />, label: 'Containers' },
-      { to: '/cloud',       icon: <Cloud size={15} />,     label: 'Cloud' },
+      { to: '/hosting',     icon: <Server size={15} />,    label: 'Hosting' },
     ]},
   { section: 'Developer',
     items: [
@@ -43,7 +44,6 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
     ]},
 ];
 
-// ── Magnetic nav item ──────────────────────────────────────────────────────────
 function NavItem({ to, icon, label, collapsed, index }: {
   to: string; icon: React.ReactNode; label: string;
   collapsed: boolean; index: number;
@@ -98,7 +98,7 @@ function NavItem({ to, icon, label, collapsed, index }: {
         boxShadow: active ? 'inset 0 0 20px rgba(99,102,241,0.08)' : 'none',
         position: 'relative', overflow: 'hidden',
       }}>
-        {/* Shimmer on hover */}
+        {}
         {hovered && !active && (
           <div style={{
             position: 'absolute', inset: 0,
@@ -114,7 +114,6 @@ function NavItem({ to, icon, label, collapsed, index }: {
   );
 }
 
-// ── Main sidebar ───────────────────────────────────────────────────────────────
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(() =>
     localStorage.getItem('podium-sidebar') === 'collapsed'
@@ -143,14 +142,14 @@ export function Sidebar() {
       overflow: 'hidden', height: '100%',
       position: 'relative',
     }}>
-      {/* Subtle gradient at top */}
+      {}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: 120,
         background: 'radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.08) 0%, transparent 70%)',
         pointerEvents: 'none', zIndex: 0,
       }} />
 
-      {/* Logo */}
+      {}
       <div style={{
         padding: collapsed ? '14px 0' : '14px 16px',
         display: 'flex', alignItems: 'center',
@@ -183,7 +182,7 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Nav */}
+      {}
       <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '10px 0', position: 'relative', zIndex: 1 }}>
         {nav.map(({ section, items }) => {
           if (!items.length) return null;
@@ -214,7 +213,7 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Collapse toggle */}
+      {}
       <button
         onClick={toggle}
         style={{

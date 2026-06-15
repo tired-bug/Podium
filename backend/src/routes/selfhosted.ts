@@ -1,14 +1,4 @@
-/**
- * selfhosted.ts  —  Podium Self-Hosted Provider
- *
- * Clean rewrite. Key design changes:
- *  - No separate selfhosted_deployments table → writes directly into cloud_deployments
- *    so the Cloud page shows live status, logs, and URL without any sync glue.
- *  - No Cloudflare / nginx dependency → uses ngrok's local API to auto-detect the
- *    public URL, or falls back to http://localhost:<port>
- *  - Uses adm-zip (pure JS) instead of the `unzip` shell command (broken on Windows)
- *  - Auth: internal header bypass OR normal JWT — no middleware ordering issues
- */
+
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../db';
@@ -25,8 +15,6 @@ const execP  = promisify(exec);
 
 const PORT_START = 3100;
 const PORT_END   = 3200;
-
-// ─── DB helpers ───────────────────────────────────────────────────────────────
 
 function getSetting(key: string): string {
   const row = getDb().prepare('SELECT value FROM settings WHERE key=?').get(key) as any;
@@ -51,10 +39,8 @@ function setCloudStatus(cloudId: string, status: string, url?: string) {
     .run(status, url || null, cloudId);
 }
 
-// ─── Port allocation ──────────────────────────────────────────────────────────
-
 function allocatePort(): number {
-  // Look at all cloud_deployments with provider='podium' that are not stopped
+  
   const used = getDb()
     .prepare("SELECT config FROM cloud_deployments WHERE provider='podium' AND status NOT IN ('stopped','failed','deleted')")
     .all()
@@ -68,8 +54,6 @@ function allocatePort(): number {
   }
   throw new Error('No free host ports available (3100-3200 exhausted)');
 }
-
-// ─── Docker helpers ───────────────────────────────────────────────────────────
 
 async function dockerAvailable(): Promise<boolean> {
   try {
@@ -98,25 +82,23 @@ async function pullImage(cloudId: string, image: string): Promise<void> {
   });
 }
 
-// ─── GitHub → Docker build (Windows-safe, pure JS extraction) ─────────────────
-
 async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string, imageName: string): Promise<void> {
-  // Dynamic require so the server still starts if adm-zip is not installed
+  
   let AdmZip: any;
   try { AdmZip = require('adm-zip'); } catch {
     throw new Error('adm-zip is not installed. Run: npm install adm-zip --legacy-peer-deps in the backend folder.');
   }
 
   const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
-  if (!match) throw new Error('Invalid GitHub URL — must be https://github.com/owner/repo');
+  if (!match) throw new Error('Invalid GitHub URL — must be https:
   const [, owner, repo] = match;
 
   const buildDir = path.join(process.cwd(), 'data', 'builds', cloudId);
   fs.mkdirSync(buildDir, { recursive: true });
 
-  // Download archive
+  
   appendCloudLog(cloudId, `Downloading ${owner}/${repo}@${branch}...`);
-  const zipUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
+  const zipUrl = `https:
   let zipData: Buffer;
   try {
     const resp = await axios.get(zipUrl, { responseType: 'arraybuffer', timeout: 60000 });
@@ -126,7 +108,7 @@ async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string,
   }
   appendCloudLog(cloudId, `Downloaded ${(zipData.length / 1024).toFixed(0)} KB`);
 
-  // Extract with adm-zip (pure JS — no shell commands)
+  
   const zip = new AdmZip(zipData);
   zip.extractAllTo(buildDir, true);
   fs.rmSync(path.join(buildDir, 'repo.zip'), { force: true });
@@ -138,7 +120,7 @@ async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string,
   const srcDir = path.join(buildDir, extracted);
   appendCloudLog(cloudId, `Extracted to ${extracted}/`);
 
-  // Auto-generate Dockerfile if missing
+  
   if (!fs.existsSync(path.join(srcDir, 'Dockerfile'))) {
     const hasPkg = fs.existsSync(path.join(srcDir, 'package.json'));
     if (hasPkg) {
@@ -155,7 +137,7 @@ async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string,
     }
   }
 
-  // Build image
+  
   appendCloudLog(cloudId, `Building Docker image "${imageName}"...`);
   await new Promise<void>((resolve, reject) => {
     const proc = spawn('docker', ['build', '-t', imageName, '.'], { cwd: srcDir, shell: true });
@@ -168,12 +150,10 @@ async function buildFromGitHub(cloudId: string, repoUrl: string, branch: string,
   appendCloudLog(cloudId, 'Build complete ✓');
 }
 
-// ─── ngrok public URL detection ───────────────────────────────────────────────
-
 async function getNgrokUrl(hostPort: number): Promise<string | null> {
   try {
-    // ngrok exposes its local API on port 4040
-    const { data } = await axios.get('http://localhost:4040/api/tunnels', { timeout: 2000 });
+    
+    const { data } = await axios.get('http:
     const tunnel = (data.tunnels || []).find((t: any) =>
       t.proto === 'https' && String(t.config?.addr || '').includes(String(hostPort))
     ) || (data.tunnels || [])[0];
@@ -182,8 +162,6 @@ async function getNgrokUrl(hostPort: number): Promise<string | null> {
     return null;
   }
 }
-
-// ─── Core deploy ──────────────────────────────────────────────────────────────
 
 async function deploySelfHosted(cloudId: string): Promise<void> {
   const db  = getDb();
@@ -197,24 +175,24 @@ async function deploySelfHosted(cloudId: string): Promise<void> {
   try {
     setCloudStatus(cloudId, 'building');
 
-    // 1. Docker check
+    
     appendCloudLog(cloudId, 'Checking Docker...');
     if (!await dockerAvailable()) {
       throw new Error('Docker Desktop is not running. Open Docker Desktop, wait for it to say "Running", then redeploy.');
     }
     appendCloudLog(cloudId, 'Docker is available ✓');
 
-    // 2. Allocate host port (persist in config)
+    
     const hostPort: number = cfg.host_port || allocatePort();
     const containerPort: number = cfg.container_port || 80;
     cfg.host_port = hostPort;
     db.prepare("UPDATE cloud_deployments SET config=? WHERE id=?").run(JSON.stringify(cfg), cloudId);
 
-    // 3. Stop & remove old container (if any) AND free the port if something else is using it
+    
     const containerName = `podium-${dep.name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 50)}`;
     try { await execP(`docker rm -f "${containerName}"`); } catch {}
 
-    // Free port: find and kill any container already bound to hostPort
+    
     try {
       const { stdout: psOut } = await execP(`docker ps -q --filter "publish=${hostPort}"`);
       const victims = psOut.trim().split('\n').filter(Boolean);
@@ -224,8 +202,8 @@ async function deploySelfHosted(cloudId: string): Promise<void> {
       }
     } catch {}
 
-    // 4. Build or pull image
-    // repo_url may be in the column OR stored in config.github_repo (set by cloud.ts dispatch)
+    
+    
     const repoUrl = dep.repo_url || cfg.github_repo || '';
     const repoBranch = cfg.branch || dep.deployment_id || 'main';
     let finalImage: string;
@@ -238,20 +216,20 @@ async function deploySelfHosted(cloudId: string): Promise<void> {
       await pullImage(cloudId, finalImage);
     }
 
-    // 5. Build env args — skip internal platform keys injected by cloud.ts dispatch
+    
     const SKIP_KEYS = new Set(['resource_group','cpu','memory','plan','github_repo','branch','container_port','host_port','env']);
     const envArgs = Object.entries(cfg.env || {})
       .filter(([k]) => !SKIP_KEYS.has(k))
       .map(([k, v]) => `-e "${k}=${String(v).replace(/"/g, '\\"')}"`)
       .join(' ');
 
-    // 6. Run container
+    
     appendCloudLog(cloudId, `Starting container "${containerName}" on host port ${hostPort}...`);
     const runCmd = `docker run -d --name "${containerName}" --restart unless-stopped ${envArgs} -p ${hostPort}:${containerPort} ${finalImage}`;
     await execP(runCmd, { timeout: 30000 });
     appendCloudLog(cloudId, `Container started ✓`);
 
-    // 7. Wait for it to stay up (5s)
+    
     await new Promise(r => setTimeout(r, 5000));
     const { stdout: state } = await execP(`docker inspect --format="{{.State.Status}}" "${containerName}"`).catch(() => ({ stdout: 'unknown' }));
     if (state.trim() !== 'running') {
@@ -259,10 +237,10 @@ async function deploySelfHosted(cloudId: string): Promise<void> {
       throw new Error(`Container exited immediately.\nLast logs:\n${logs}`);
     }
 
-    // 8. Determine public URL
+    
     const ngrokUrl  = await getNgrokUrl(hostPort);
     const manualUrl = getSetting('selfhosted_ngrok_url');
-    const publicUrl = ngrokUrl || manualUrl || `http://localhost:${hostPort}`;
+    const publicUrl = ngrokUrl || manualUrl || `http:
 
     setCloudStatus(cloudId, 'running', publicUrl);
     appendCloudLog(cloudId, `✓ Live at ${publicUrl}`);
@@ -279,11 +257,6 @@ async function deploySelfHosted(cloudId: string): Promise<void> {
   }
 }
 
-// ─── Internal deploy (called by cloud.ts dispatch) ────────────────────────────
-//
-// cloud.ts creates the cloud_deployments row and calls this with the row ID.
-// We just run deploySelfHosted(cloudId) — no second table needed.
-
 router.post('/run/:cloudId', (req: Request, res: Response) => {
   if (req.headers['x-internal'] !== 'podium-selfhosted') {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -293,21 +266,17 @@ router.post('/run/:cloudId', (req: Request, res: Response) => {
   return res.json({ ok: true, cloudId });
 });
 
-// ─── Public routes (need auth) ────────────────────────────────────────────────
-
-// GET /api/selfhosted/status — is Docker running? is ngrok up?
 router.get('/status', requireAuth, async (_req, res) => {
   const docker = await dockerAvailable();
   let ngrok = false;
   try {
-    await axios.get('http://localhost:4040/api/tunnels', { timeout: 1500 });
+    await axios.get('http:
     ngrok = true;
   } catch {}
   const ngrokUrl = getSetting('selfhosted_ngrok_url');
   res.json({ docker, ngrok, ngrokUrl });
 });
 
-// POST /api/selfhosted/:id/stop
 router.post('/:id/stop', requireAuth, async (req, res) => {
   const dep = getDb().prepare("SELECT * FROM cloud_deployments WHERE id=? AND provider='podium'").get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
@@ -319,11 +288,10 @@ router.post('/:id/stop', requireAuth, async (req, res) => {
   return res.json({ ok: true });
 });
 
-// POST /api/selfhosted/:id/restart
 router.post('/:id/restart', requireAuth, async (req, res) => {
   const dep = getDb().prepare("SELECT * FROM cloud_deployments WHERE id=? AND provider='podium'").get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
-  // Reset logs + status then re-run
+  
   getDb().prepare("UPDATE cloud_deployments SET status='queued', logs='[]', updated_at=datetime('now') WHERE id=?").run(dep.id);
   appendCloudLog(dep.id, 'Restarting...');
   deploySelfHosted(dep.id).catch(() => {});

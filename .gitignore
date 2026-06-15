@@ -1,64 +1,28 @@
-# ── Dependencies ──────────────────────────────────────────────────────────────
+# Dependencies
 node_modules/
-.pnp
-.pnp.js
+backend/node_modules/
+frontend/node_modules/
 
-# ── Build outputs ─────────────────────────────────────────────────────────────
-dist/
-dist-electron/
+# Build output
 backend/dist/
 frontend/dist/
+dist-electron/
 
-# ── Environment & secrets (NEVER commit these) ────────────────────────────────
-.env
+# Environment — NEVER commit this
 backend/.env
-*.env.local
-*.env.development.local
-*.env.test.local
-*.env.production.local
+.env
 
-# ── Database & user data ──────────────────────────────────────────────────────
-data/
-*.db
-*.db-shm
-*.db-wal
+# Database & runtime data
+backend/data/podium.db
+backend/data/podium.db-shm
+backend/data/podium.db-wal
+backend/data/builds/
 
-# ── Electron build cache ──────────────────────────────────────────────────────
-.electron-gyp/
-build/icon.icns
-build/icon.ico
-build/icon.png
-
-# ── OS files ─────────────────────────────────────────────────────────────────
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V8
-.Trashes
-ehthumbs.db
 Thumbs.db
-desktop.ini
 
-# ── Editor ───────────────────────────────────────────────────────────────────
-.vscode/settings.json
+# Editor
+.vscode/
 .idea/
 *.swp
-*.swo
-*~
-
-# ── Logs ─────────────────────────────────────────────────────────────────────
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# ── TypeScript cache ──────────────────────────────────────────────────────────
-*.tsbuildinfo
-
-# ── Test coverage ─────────────────────────────────────────────────────────────
-coverage/
-
-# ── Misc ─────────────────────────────────────────────────────────────────────
-.cache/
-.parcel-cache/

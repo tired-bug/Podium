@@ -4,7 +4,6 @@ import { requireAuth, AuthRequest, hashPassword, comparePassword } from '../auth
 
 const router = Router();
 
-// GET /api/profile
 router.get('/', requireAuth, (req: AuthRequest, res: Response) => {
   const db = getDb();
   const user = db.prepare(
@@ -15,7 +14,7 @@ router.get('/', requireAuth, (req: AuthRequest, res: Response) => {
 
   let profile = db.prepare('SELECT * FROM user_profiles WHERE user_id = ?').get(req.user!.sub) as any;
 
-  // Auto-create profile row if missing
+  
   if (!profile) {
     db.prepare(`
       INSERT OR IGNORE INTO user_profiles (user_id, display_name)
@@ -27,7 +26,6 @@ router.get('/', requireAuth, (req: AuthRequest, res: Response) => {
   return res.json({ ...user, profile: profile || {} });
 });
 
-// PUT /api/profile
 router.put('/', requireAuth, (req: AuthRequest, res: Response) => {
   const db = getDb();
   const {
@@ -36,7 +34,7 @@ router.put('/', requireAuth, (req: AuthRequest, res: Response) => {
     notification_email, notification_deployments, notification_anomalies, notification_team,
   } = req.body;
 
-  // Upsert profile
+  
   db.prepare(`
     INSERT INTO user_profiles (
       user_id, display_name, bio, job_title, company, location, website,
@@ -67,7 +65,7 @@ router.put('/', requireAuth, (req: AuthRequest, res: Response) => {
     notification_anomalies ? 1 : 0, notification_team ? 1 : 0,
   );
 
-  // Also allow updating username/email
+  
   const { username, email } = req.body;
   if (username || email) {
     const updates: string[] = [];
@@ -83,12 +81,11 @@ router.put('/', requireAuth, (req: AuthRequest, res: Response) => {
   res.json({ ok: true });
 });
 
-// PUT /api/profile/avatar
 router.put('/avatar', requireAuth, (req: AuthRequest, res: Response) => {
-  const { avatar } = req.body; // base64 data URL
+  const { avatar } = req.body; 
   if (!avatar) return res.status(400).json({ error: 'avatar required' });
 
-  // Limit size ~500KB
+  
   if (avatar.length > 700_000) return res.status(400).json({ error: 'Image too large (max ~500KB)' });
 
   const db = getDb();
@@ -101,14 +98,12 @@ router.put('/avatar', requireAuth, (req: AuthRequest, res: Response) => {
   res.json({ ok: true });
 });
 
-// DELETE /api/profile/avatar
 router.delete('/avatar', requireAuth, (req: AuthRequest, res: Response) => {
   getDb().prepare("UPDATE user_profiles SET avatar = NULL, updated_at = datetime('now') WHERE user_id = ?")
     .run(req.user!.sub);
   res.json({ ok: true });
 });
 
-// GET /api/profile/sessions — list active sessions (simplified: just returns current token info)
 router.get('/sessions', requireAuth, (req: AuthRequest, res: Response) => {
   res.json([{
     id: 'current',

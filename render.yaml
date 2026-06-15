@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: podium-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install --legacy-peer-deps && npm run build
+    startCommand: node --no-warnings dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false

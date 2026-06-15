@@ -35,7 +35,7 @@ export default function Metrics() {
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
-  // Auto-select first two running deployments
+  
   useEffect(() => {
     if (selectedIds.length === 0 && runningDeps.length > 0) {
       setSelectedIds(runningDeps.slice(0, 2).map(d => d.id));
@@ -79,7 +79,7 @@ export default function Metrics() {
     );
   };
 
-  // Build combined chart data — merge metrics from all selected deployments
+  
   const buildChartData = (key: string): any[] => {
     const allTimestamps = new Set<number>();
     for (const id of selectedIds) {
@@ -103,7 +103,7 @@ export default function Metrics() {
     return { key: dep?.name || id.slice(0, 8), label: dep?.name || id.slice(0, 8), color: CHART_COLORS[i % CHART_COLORS.length] };
   });
 
-  // Get latest metrics for summary table
+  
   const getLatest = (id: string) => {
     const pts = metricsMap[id] || [];
     return pts[pts.length - 1] || null;
@@ -125,9 +125,9 @@ export default function Metrics() {
         }
       />
 
-      {/* Controls */}
+      {}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        {/* Time range */}
+        {}
         <div>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Time Range</div>
           <div style={{ display: 'flex', gap: 4 }}>
@@ -147,7 +147,7 @@ export default function Metrics() {
           </div>
         </div>
 
-        {/* Deployment selector */}
+        {}
         <div>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Deployments</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -174,7 +174,7 @@ export default function Metrics() {
         </div>
       </div>
 
-      {/* Charts 2×2 */}
+      {}
       {loading && Object.keys(metricsMap).length === 0 ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {[1, 2, 3, 4].map(i => <Card key={i}><Skeleton height={200} /></Card>)}
@@ -196,7 +196,7 @@ export default function Metrics() {
         </div>
       )}
 
-      {/* Summary table */}
+      {}
       {selectedIds.length > 0 && (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', fontSize: '13px', fontWeight: 600 }}>

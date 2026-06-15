@@ -8,36 +8,33 @@ import path from 'path';
 const router = Router();
 const startTime = Date.now();
 
-// GET /api/settings [admin]
 router.get('/', requireAuth, requireRole('admin'), (_req, res: Response) => {
   const rows = getDb().prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
   const settings: Record<string, string> = {};
   for (const r of rows) {
-    // Mask sensitive keys
+    
     if (r.key.includes('key') || r.key.includes('secret') || r.key.includes('token') || r.key.includes('password')) {
       settings[r.key] = r.value ? '***masked***' : '';
     } else {
       settings[r.key] = r.value;
     }
   }
-  // Include env-based keys status
+  
   settings.groq_key_configured = (!!getDb().prepare("SELECT value FROM settings WHERE key = 'groq_api_key'").get() || !!process.env.GROQ_API_KEY) ? 'true' : 'false';
   res.json(settings);
 });
 
-// PUT /api/settings [admin]
 router.put('/', requireAuth, requireRole('admin'), (req: any, res: Response) => {
   const updates = req.body as Record<string, string>;
   const stmt = getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
 
   for (const [key, value] of Object.entries(updates)) {
-    if (value === '***masked***') continue; // Don't overwrite with mask
+    if (value === '***masked***') continue; 
     stmt.run(key, value);
   }
   res.json({ ok: true });
 });
 
-// GET /api/settings/health (also serves as /api/health)
 export function healthHandler(_req: any, res: Response) {
   const db = getDb();
   let dbSize = 0;

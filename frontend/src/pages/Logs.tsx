@@ -72,7 +72,7 @@ export default function Logs() {
 
   useEffect(() => { fetchLogs(true); }, [deploymentId, level]);
 
-  // Poll for new logs every 3 seconds
+  
   useEffect(() => {
     const interval = setInterval(() => {
       fetchLogs(true);
@@ -132,7 +132,7 @@ export default function Logs() {
         }
       />
 
-      {/* Filters */}
+      {}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <Select
           value={deploymentId}
@@ -161,9 +161,9 @@ export default function Logs() {
         </label>
       </div>
 
-      {/* Log viewer */}
+      {}
       <Card style={{ padding: 0, flex: 1, display: 'flex', flexDirection: 'column', minHeight: 500 }}>
-        {/* Header bar */}
+        {}
         <div style={{
           padding: '8px 16px', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', gap: 10,
@@ -190,7 +190,7 @@ export default function Logs() {
               background: 'var(--bg-primary)',
             }}
           >
-            {/* Load more */}
+            {}
             {logs.length < total && (
               <div style={{ textAlign: 'center', padding: '8px 0 16px' }}>
                 <Button size="sm" variant="ghost" icon={<ChevronDown size={13} />}
