@@ -28,14 +28,12 @@ You help DevOps engineers with:
 Be concise, precise, and actionable. Format code in markdown code blocks with language specifiers.
 When analyzing issues, provide step-by-step resolution plans.`;
 
-// GET /api/ai/model
 router.get('/model', requireAuth, (_req, res: Response) => {
   const key = getGroqKey();
   const model = getModel();
   res.json({ model, hasKey: !!key });
 });
 
-// PUT /api/ai/model
 router.put('/model', requireAuth, (req, res: Response) => {
   const { model, apiKey } = req.body;
   if (model) getDb().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('groq_model', ?)").run(model);
@@ -43,7 +41,6 @@ router.put('/model', requireAuth, (req, res: Response) => {
   res.json({ ok: true });
 });
 
-// GET /api/ai/conversations
 router.get('/conversations', requireAuth, (req: AuthRequest, res: Response) => {
   const convos = getDb().prepare(`
     SELECT id, title, created_at, updated_at,
@@ -53,7 +50,6 @@ router.get('/conversations', requireAuth, (req: AuthRequest, res: Response) => {
   res.json(convos);
 });
 
-// POST /api/ai/conversations
 router.post('/conversations', requireAuth, (req: AuthRequest, res: Response) => {
   const id = uuidv4();
   const { title = 'New Conversation' } = req.body;
@@ -64,20 +60,17 @@ router.post('/conversations', requireAuth, (req: AuthRequest, res: Response) => 
   res.status(201).json({ ...conv, messages: [] });
 });
 
-// GET /api/ai/conversations/:id
 router.get('/conversations/:id', requireAuth, (req: AuthRequest, res: Response) => {
   const conv = getDb().prepare('SELECT * FROM ai_conversations WHERE id = ? AND user_id = ?').get(req.params.id, req.user!.sub) as any;
   if (!conv) return res.status(404).json({ error: 'Not found' });
   return res.json({ ...conv, messages: JSON.parse(conv.messages || '[]') });
 });
 
-// DELETE /api/ai/conversations/:id
 router.delete('/conversations/:id', requireAuth, (req: AuthRequest, res: Response) => {
   getDb().prepare('DELETE FROM ai_conversations WHERE id = ? AND user_id = ?').run(req.params.id, req.user!.sub);
   res.json({ ok: true });
 });
 
-// PUT /api/ai/conversations/:id/title
 router.put('/conversations/:id/title', requireAuth, (req: AuthRequest, res: Response) => {
   const { title } = req.body;
   getDb().prepare("UPDATE ai_conversations SET title = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?")
@@ -85,7 +78,6 @@ router.put('/conversations/:id/title', requireAuth, (req: AuthRequest, res: Resp
   res.json({ ok: true });
 });
 
-// POST /api/ai/chat (SSE streaming)
 router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   const { message, history = [], conversationId } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
@@ -109,7 +101,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
 
   try {
     const response = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
+      'https:
       {
         model: getModel(),
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
@@ -151,7 +143,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
     });
 
     stream.on('end', () => {
-      // Save to conversation
+      
       if (conversationId && fullContent) {
         try {
           const conv = getDb().prepare('SELECT messages FROM ai_conversations WHERE id = ?').get(conversationId) as any;
@@ -159,7 +151,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
             const msgs = JSON.parse(conv.messages || '[]');
             msgs.push({ id: uuidv4(), role: 'user', content: message, created_at: new Date().toISOString() });
             msgs.push({ id: uuidv4(), role: 'assistant', content: fullContent, created_at: new Date().toISOString() });
-            // Auto-title from first message
+            
             const titleUpdate = msgs.length === 2 ? message.slice(0, 60) : null;
             getDb().prepare(`
               UPDATE ai_conversations SET messages = ?, updated_at = datetime('now')
@@ -184,7 +176,6 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// POST /api/ai/analyze
 router.post('/analyze', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId, prompt } = req.body;
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id = ?').get(deploymentId) as any;
@@ -219,7 +210,7 @@ Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join(';
   if (!apiKey) return res.status(400).json({ error: 'Groq API key not configured' });
 
   try {
-    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+    const resp = await axios.post('https:
       model: getModel(),
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -234,7 +225,6 @@ Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join(';
   }
 });
 
-// POST /api/ai/suggest-fix
 router.post('/suggest-fix', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId } = req.body;
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id = ?').get(deploymentId) as any;
@@ -254,7 +244,7 @@ ${logs.map(l => `[${l.level}] ${l.message}`).join('\n') || 'No error logs found.
 Provide a concise fix recommendation with exact commands or config changes needed.`;
 
   try {
-    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+    const resp = await axios.post('https:
       model: getModel(),
       messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: prompt }],
       max_tokens: 800,
@@ -266,7 +256,6 @@ Provide a concise fix recommendation with exact commands or config changes neede
   }
 });
 
-// POST /api/ai/summarize-logs
 router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
   const { deploymentId } = _req.body;
   const logs = getDb().prepare('SELECT * FROM build_logs WHERE deployment_id = ? ORDER BY id DESC LIMIT 100').all(deploymentId) as any[];
@@ -279,7 +268,7 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
   }`;
 
   try {
-    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+    const resp = await axios.post('https:
       model: getModel(),
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 500,
@@ -291,11 +280,10 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
   }
 });
 
-// GET /api/ai/anomalies
 router.get('/anomalies', requireAuth, (_req, res: Response) => {
-  // Use COALESCE to resolve the deployment name from either the local
-  // deployments table or the cloud_deployments table so anomalies from
-  // ALL running apps are visible — not just Docker containers.
+  
+  
+  
   const anomalies = getDb().prepare(`
     SELECT a.*,
       COALESCE(d.name, cd.name) AS deployment_name,
@@ -310,7 +298,6 @@ router.get('/anomalies', requireAuth, (_req, res: Response) => {
   res.json(anomalies);
 });
 
-// PUT /api/ai/anomalies/:id/resolve
 router.put('/anomalies/:id/resolve', requireAuth, (req, res: Response) => {
   getDb().prepare("UPDATE anomalies SET resolved = 1, resolved_at = datetime('now') WHERE id = ?").run(req.params.id);
   res.json({ ok: true });
@@ -318,15 +305,10 @@ router.put('/anomalies/:id/resolve', requireAuth, (req, res: Response) => {
 
 export default router;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EXTENDED AI FEATURES
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Helper: call Groq and return text (non-streaming)
 async function groqChat(systemPrompt: string, userPrompt: string, maxTokens = 1200): Promise<string> {
   const apiKey = getGroqKey();
   if (!apiKey) throw new Error('Groq API key not configured');
-  const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+  const resp = await axios.post('https:
     model: getModel(),
     messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
     max_tokens: maxTokens,
@@ -335,7 +317,6 @@ async function groqChat(systemPrompt: string, userPrompt: string, maxTokens = 12
   return resp.data.choices[0].message.content as string;
 }
 
-// POST /api/ai/risk-score  — pre-deploy risk assessment
 router.post('/risk-score', requireAuth, async (req: AuthRequest, res: Response) => {
   const { name, image, envVars = [], ports = [], memoryLimit, cpuLimit, branch } = req.body;
   const existingDeployments = getDb().prepare("SELECT name, status FROM deployments LIMIT 20").all() as any[];
@@ -377,7 +358,6 @@ Respond ONLY with valid JSON (no markdown, no preamble):
   }
 });
 
-// POST /api/ai/root-cause  — auto root-cause analysis for anomalies
 router.post('/root-cause', requireAuth, async (req: AuthRequest, res: Response) => {
   const { anomalyId, deploymentId } = req.body;
   if (!anomalyId && !deploymentId) return res.status(400).json({ error: 'anomalyId or deploymentId required' });
@@ -424,7 +404,6 @@ Provide a concise root cause analysis with:
   }
 });
 
-// POST /api/ai/optimize-config  — resource optimization suggestions
 router.post('/optimize-config', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId } = req.body;
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any;
@@ -470,7 +449,6 @@ Respond ONLY with valid JSON:
   }
 });
 
-// POST /api/ai/natural-deploy  — natural language → deploy config
 router.post('/natural-deploy', requireAuth, async (req: AuthRequest, res: Response) => {
   const { prompt: userPrompt } = req.body;
   if (!userPrompt) return res.status(400).json({ error: 'prompt required' });
@@ -504,7 +482,6 @@ Respond ONLY with valid JSON (no markdown):
   }
 });
 
-// POST /api/ai/incident-report  — generate incident PDF-ready report
 router.post('/incident-report', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId, anomalyIds = [] } = req.body;
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any
@@ -548,7 +525,6 @@ Write a concise, professional incident report with these sections:
   }
 });
 
-// POST /api/ai/security-scan  — security review of deployment config
 router.post('/security-scan', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId } = req.body;
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any;
@@ -583,12 +559,11 @@ Respond ONLY with valid JSON:
   }
 });
 
-// GET /api/ai/cost-analysis  — cloud cost breakdown
 router.get('/cost-analysis', requireAuth, (_req, res: Response) => {
   const cloudDeps = getDb().prepare("SELECT provider, name, status FROM cloud_deployments WHERE status='running'").all() as any[];
   const localDeps = getDb().prepare("SELECT name, memory_limit, cpu_limit, status FROM deployments WHERE status='running'").all() as any[];
 
-  // Simple cost estimation per provider
+  
   const PROVIDER_COSTS: Record<string, number> = { aws: 0.04, azure: 0.038, vercel: 0.02, render: 0.02, podium: 0.005 };
   const breakdown = cloudDeps.map((d: any) => ({
     name: d.name, provider: d.provider, status: d.status,
@@ -605,7 +580,6 @@ router.get('/cost-analysis', requireAuth, (_req, res: Response) => {
   });
 });
 
-// POST /api/ai/compare-deployments  — compare two deployments
 router.post('/compare-deployments', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentIdA, deploymentIdB } = req.body;
   const depA = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentIdA) as any;
@@ -637,7 +611,6 @@ Provide: 1) Performance winner and why, 2) Resource efficiency comparison, 3) Co
   }
 });
 
-// GET /api/ai/platform-summary  — platform-wide AI health summary
 router.get('/platform-summary', requireAuth, async (_req, res: Response) => {
   const db = getDb();
   const totalDeps = (db.prepare("SELECT COUNT(*) as c FROM deployments").get() as any)?.c || 0;
@@ -664,11 +637,94 @@ Be direct, professional, and action-oriented. Mention if anything needs immediat
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
-    // Return stats even if AI fails
+    
     return res.json({
       summary: null,
       stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, recentErrors },
       generatedAt: new Date().toISOString(),
     });
+  }
+});
+
+router.post('/natural-deploy', requireAuth, async (req: any, res: Response) => {
+  const { description, repoUrl } = req.body;
+  if (!description && !repoUrl) return res.status(400).json({ error: 'Provide description or repoUrl' });
+
+  const prompt = repoUrl
+    ? `Analyze this GitHub repository URL and generate an optimal Docker deployment configuration.
+
+Repository: ${repoUrl}
+
+Based on common patterns for this type of repository, determine:
+1. The most appropriate Docker image (official image from Docker Hub)
+2. Standard ports for this stack
+3. Recommended environment variables (with placeholder values)
+4. Appropriate resource limits
+5. A deployment name derived from the repo name
+
+Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
+{
+  "name": "deployment-name",
+  "image": "docker-image:tag",
+  "repo_url": "${repoUrl}",
+  "branch": "main",
+  "dockerfile_path": "Dockerfile",
+  "ports": [{"host": "8080", "container": "80"}],
+  "env_vars": [{"key": "NODE_ENV", "value": "production"}],
+  "memory_limit": "512m",
+  "cpu_limit": "0.5",
+  "restart_policy": "unless-stopped",
+  "reasoning": "One sentence explaining why you chose this configuration"
+}`
+    : `Generate an optimal Docker deployment configuration for this description:
+
+"${description}"
+
+Based on this description:
+1. Choose the best official Docker image
+2. Determine the correct ports
+3. Suggest relevant environment variables
+4. Set appropriate resource limits
+5. Generate a clean deployment name
+
+Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
+{
+  "name": "deployment-name",
+  "image": "docker-image:tag",
+  "repo_url": "",
+  "branch": "main",
+  "dockerfile_path": "Dockerfile",
+  "ports": [{"host": "8080", "container": "80"}],
+  "env_vars": [{"key": "NODE_ENV", "value": "production"}],
+  "memory_limit": "512m",
+  "cpu_limit": "0.5",
+  "restart_policy": "unless-stopped",
+  "reasoning": "One sentence explaining why you chose this configuration"
+}`;
+
+  try {
+    const raw = await groqChat(
+      'You are a Docker and DevOps expert. You ONLY respond with valid JSON objects. No markdown, no code blocks, no explanation. Just raw JSON.',
+      prompt,
+      800
+    );
+
+    let config;
+    try {
+      const cleaned = raw.replace(/```json|```/g, '').trim();
+      config = JSON.parse(cleaned);
+    } catch {
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('AI returned invalid JSON');
+      config = JSON.parse(match[0]);
+    }
+
+    if (!config.name || !config.image) {
+      throw new Error('AI response missing required fields');
+    }
+
+    return res.json({ config });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message || 'AI analysis failed' });
   }
 });

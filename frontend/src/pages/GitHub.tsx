@@ -188,7 +188,7 @@ export default function GitHub() {
         </div>
       )}
 
-      {/* Webhook info */}
+      {}
       <Card style={{ borderColor: 'var(--accent-blue)', background: 'var(--accent-blue-dim)' }}>
         <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent-blue)', marginBottom: 6 }}>Webhook Endpoint</div>
         <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 8 }}>

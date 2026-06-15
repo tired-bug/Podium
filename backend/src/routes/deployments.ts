@@ -5,7 +5,6 @@ import { requireAuth, requireRole, AuthRequest } from '../auth';
 
 const router = Router();
 
-// ── Docker availability check ─────────────────────────────────────────────────
 let dockerAvailable: boolean | null = null;
 
 async function checkDocker(): Promise<boolean> {
@@ -13,7 +12,7 @@ async function checkDocker(): Promise<boolean> {
   try {
     const Docker = require('dockerode');
     const d = new Docker({
-      socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock',
+      socketPath: process.platform === 'win32' ? '
     });
     await new Promise<void>((resolve, reject) => {
       d.ping((err: any) => err ? reject(err) : resolve());
@@ -24,7 +23,7 @@ async function checkDocker(): Promise<boolean> {
     dockerAvailable = false;
     console.log('[docker] Docker Engine not available — running in demo mode');
   }
-  // Re-check every 30s in case Docker starts later
+  
   setTimeout(() => { dockerAvailable = null; }, 30_000);
   return dockerAvailable;
 }
@@ -40,7 +39,6 @@ function slugify(str: string): string {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
-// ── Demo simulation (no Docker) ───────────────────────────────────────────────
 function simulateDeployment(id: string, name: string) {
   const db = getDb();
   db.prepare("UPDATE deployments SET status='building', updated_at=datetime('now') WHERE id=?").run(id);
@@ -79,11 +77,10 @@ function simulateStop(id: string, name: string) {
   }, 800);
 }
 
-// ── Real Docker deployment ────────────────────────────────────────────────────
 async function startDockerDeployment(dep: any): Promise<void> {
   const Docker = require('dockerode');
   const docker = new Docker({
-    socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock',
+    socketPath: process.platform === 'win32' ? '
   });
 
   const id = dep.id;
@@ -105,7 +102,7 @@ async function startDockerDeployment(dep: any): Promise<void> {
 
     const imageName = dep.image || `${dep.name}:latest`;
 
-    // Pull if registry image
+    
     if (dep.image && (dep.image.includes('/') || dep.image.includes(':'))) {
       logToDb(id, 'info', `Pulling image ${imageName}...`);
       await new Promise<void>((resolve, reject) => {
@@ -155,7 +152,6 @@ function parseMemory(limit: string): number {
   return v;
 }
 
-// ── Smart start: real Docker or demo simulation ───────────────────────────────
 async function smartStart(dep: any) {
   const hasDocker = await checkDocker();
   if (hasDocker) {
@@ -165,7 +161,6 @@ async function smartStart(dep: any) {
   }
 }
 
-// ── Routes ────────────────────────────────────────────────────────────────────
 router.get('/', requireAuth, (_req, res: Response) => {
   const rows = getDb().prepare('SELECT * FROM deployments ORDER BY updated_at DESC').all() as any[];
   res.json(rows.map(d => ({
@@ -253,7 +248,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), async (req, res: Respon
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
       const c = docker.getContainer(dep.container_id);
       await c.stop().catch(() => {});
       await c.remove().catch(() => {});
@@ -268,11 +263,11 @@ router.post('/:id/start', requireAuth, requireRole('admin','developer'), async (
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
 
-  // Try to resume real container first
+  
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
       await docker.getContainer(dep.container_id).start();
       getDb().prepare("UPDATE deployments SET status='running', updated_at=datetime('now') WHERE id=?").run(dep.id);
       return res.json({ ok: true });
@@ -290,7 +285,7 @@ router.post('/:id/stop', requireAuth, requireRole('admin','developer'), async (r
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
       await docker.getContainer(dep.container_id).stop();
     } catch {}
   } else {
@@ -310,7 +305,7 @@ router.post('/:id/restart', requireAuth, requireRole('admin','developer'), async
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
       await docker.getContainer(dep.container_id).restart();
       getDb().prepare("UPDATE deployments SET status='running', updated_at=datetime('now') WHERE id=?").run(dep.id);
       logToDb(dep.id, 'info', 'Deployment restarted');
@@ -320,7 +315,7 @@ router.post('/:id/restart', requireAuth, requireRole('admin','developer'), async
     }
   }
 
-  // Demo restart
+  
   simulateDeployment(dep.id, dep.name);
   return res.json({ ok: true });
 });
@@ -332,7 +327,7 @@ router.post('/:id/rebuild', requireAuth, requireRole('admin','developer'), async
   if (dep.container_id && await checkDocker()) {
     try {
       const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+      const docker = new Docker({ socketPath: process.platform === 'win32' ? '
       const c = docker.getContainer(dep.container_id);
       await c.stop().catch(() => {});
       await c.remove().catch(() => {});

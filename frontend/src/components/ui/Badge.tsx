@@ -1,7 +1,6 @@
 import React, { ReactNode, CSSProperties, useState } from 'react';
 import { getStatusColor, getRoleColor, getSeverityColor } from '../../lib/utils';
 
-// ── Spinner ────────────────────────────────────────────────────────────────────
 export function Spinner({ size = 16, color }: { size?: number; color?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
@@ -12,7 +11,6 @@ export function Spinner({ size = 16, color }: { size?: number; color?: string })
   );
 }
 
-// ── Badge ──────────────────────────────────────────────────────────────────────
 export function Badge({ children, variant = 'default', value, style }: {
   children: ReactNode; variant?: 'status'|'role'|'severity'|'default'; value?: string; style?: CSSProperties;
 }) {
@@ -34,7 +32,6 @@ export function Badge({ children, variant = 'default', value, style }: {
   );
 }
 
-// ── Card ───────────────────────────────────────────────────────────────────────
 export function Card({ children, style, className, onClick, padding = 16, hoverable, glow }: {
   children: ReactNode; style?: CSSProperties; className?: string;
   onClick?: () => void; padding?: number | string; hoverable?: boolean; glow?: boolean;
@@ -60,7 +57,6 @@ export function Card({ children, style, className, onClick, padding = 16, hovera
   );
 }
 
-// ── EmptyState ─────────────────────────────────────────────────────────────────
 export function EmptyState({ icon, title, description, action }: {
   icon?: ReactNode; title: string; description?: string; action?: ReactNode;
 }) {
@@ -74,7 +70,6 @@ export function EmptyState({ icon, title, description, action }: {
   );
 }
 
-// ── Tooltip ────────────────────────────────────────────────────────────────────
 export function Tooltip({ children, content, placement = 'top' }: {
   children: ReactNode; content: string; placement?: 'top'|'bottom'|'left'|'right';
 }) {
@@ -104,7 +99,6 @@ export function Tooltip({ children, content, placement = 'top' }: {
   );
 }
 
-// ── SectionHeader ──────────────────────────────────────────────────────────────
 export function SectionHeader({ title, subtitle, action }: {
   title: string; subtitle?: string; action?: ReactNode;
 }) {
@@ -119,14 +113,12 @@ export function SectionHeader({ title, subtitle, action }: {
   );
 }
 
-// ── Skeleton ───────────────────────────────────────────────────────────────────
 export function Skeleton({ width, height = 16, style }: {
   width?: number|string; height?: number; style?: CSSProperties;
 }) {
   return <div className="skeleton" style={{ width: width || '100%', height, ...style }} />;
 }
 
-// ── Divider ────────────────────────────────────────────────────────────────────
 export function Divider({ style }: { style?: CSSProperties }) {
   return <div style={{ borderTop: '1px solid var(--border)', ...style }} />;
 }

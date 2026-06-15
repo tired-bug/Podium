@@ -43,7 +43,7 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   const token = auth.slice(7);
   try {
     const payload = verifyToken(token);
-    // Verify user still exists
+    
     const user = getDb().prepare('SELECT id, role FROM users WHERE id = ?').get(payload.sub) as { id: string; role: string } | undefined;
     if (!user) {
       res.status(401).json({ error: 'User not found' });

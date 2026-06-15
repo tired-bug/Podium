@@ -15,7 +15,7 @@ export function useRole() {
     isAdmin,
     isDeveloper,
     isViewer,
-    // Specific permission checks
+    
     can: {
       createDeployment: isDeveloper,
       startStopRestart: isDeveloper,

@@ -13,7 +13,6 @@ import { useToast } from '../contexts/ToastContext';
 import { timeAgo, parseApiError } from '../lib/utils';
 import api from '../lib/api';
 
-// ── Animated stat card ─────────────────────────────────────────────────────────
 function StatCard({
   label, value, icon, gradient, trend, onClick, delay = 0,
 }: {
@@ -38,7 +37,7 @@ function StatCard({
         position: 'relative', overflow: 'hidden',
       }}
     >
-      {/* Gradient glow bg */}
+      {}
       <div style={{
         position: 'absolute', inset: 0, opacity: hovered ? 0.08 : 0,
         background: gradient, transition: 'opacity 200ms',
@@ -72,7 +71,6 @@ function StatCard({
   );
 }
 
-// ── Mini anomaly row ───────────────────────────────────────────────────────────
 function AnomalyRow({ anomaly, onResolve, resolving }: {
   anomaly: any; onResolve: (id: string) => void; resolving: boolean;
 }) {
@@ -120,7 +118,7 @@ export default function Dashboard() {
     if (anomRes.status === 'fulfilled') setAnomalies(anomRes.value.data);
     if (cloudRes.status === 'fulfilled') setCloudDeps(cloudRes.value.data);
 
-    // Check Docker via containers endpoint
+    
     try {
       await api.get('/api/containers');
       setDockerUp(true);
@@ -128,7 +126,7 @@ export default function Dashboard() {
       setDockerUp(err?.response?.data?.dockerUnavailable ? false : true);
     }
 
-    // Simulated health chart
+    
     const days = Array.from({ length: 7 }, (_, i) => ({
       timestamp: Date.now() - (6 - i) * 86_400_000,
       successRate: 82 + Math.random() * 18,
@@ -160,7 +158,7 @@ export default function Dashboard() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Header */}
+      {}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', animation: 'float-up 250ms ease-out' }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 900, margin: 0, letterSpacing: '-.01em' }}>Dashboard</h1>
@@ -169,7 +167,7 @@ export default function Dashboard() {
         <Button icon={<RefreshCw size={14} />} onClick={() => { fetchAll(); refetch(); }} size="sm">Refresh</Button>
       </div>
 
-      {/* Docker warning banner */}
+      {}
       {dockerUp === false && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12,
@@ -188,7 +186,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Stat cards */}
+      {}
       <div className="anim-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
         {loading
           ? Array.from({ length: 4 }).map((_, i) => (
@@ -198,9 +196,9 @@ export default function Dashboard() {
         }
       </div>
 
-      {/* Charts row */}
+      {}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
-        {/* Health chart */}
+        {}
         <Card style={{ animation: 'float-up 350ms ease-out 240ms both' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div style={{ fontSize: '14px', fontWeight: 700 }}>Deployment Health</div>
@@ -213,7 +211,7 @@ export default function Dashboard() {
           />
         </Card>
 
-        {/* Anomalies panel */}
+        {}
         <Card style={{ display: 'flex', flexDirection: 'column', animation: 'float-up 350ms ease-out 300ms both' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ fontSize: '14px', fontWeight: 700 }}>Active Anomalies</div>
@@ -245,7 +243,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Recent deployments */}
+      {}
       <Card style={{ padding: 0, overflow: 'hidden', animation: 'float-up 350ms ease-out 360ms both' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

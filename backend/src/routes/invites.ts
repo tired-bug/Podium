@@ -5,7 +5,6 @@ import { requireAuth, requireRole, AuthRequest } from '../auth';
 
 const router = Router();
 
-// ── Email helper ──────────────────────────────────────────────────────────────
 async function sendInviteEmail(
   toEmail: string,
   code: string,
@@ -23,7 +22,7 @@ async function sendInviteEmail(
   const pass     = getSetting('smtp_pass');
   const fromName = getSetting('platform_name') || 'Podium';
   const fromAddr = getSetting('smtp_from') || user;
-  const appUrl   = getSetting('app_url') || 'http://localhost:4000';
+  const appUrl   = getSetting('app_url') || 'http:
 
   if (!host || !user || !pass) {
     throw new Error('SMTP not configured. Add SMTP settings in Settings → Notifications.');
@@ -81,7 +80,6 @@ async function sendInviteEmail(
   });
 }
 
-// GET /api/invites [admin]
 router.get('/', requireAuth, requireRole('admin'), (_req, res: Response) => {
   const invites = getDb().prepare(`
     SELECT i.*, u1.username as created_by_username, u2.username as used_by_username
@@ -93,7 +91,6 @@ router.get('/', requireAuth, requireRole('admin'), (_req, res: Response) => {
   res.json(invites);
 });
 
-// POST /api/invites [admin]
 router.post('/', requireAuth, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   const { role = 'viewer', expiryHours = 48, email } = req.body;
 
@@ -112,7 +109,7 @@ router.post('/', requireAuth, requireRole('admin'), async (req: AuthRequest, res
 
   const invite = getDb().prepare('SELECT * FROM invites WHERE id = ?').get(id) as any;
 
-  // Send email if address provided
+  
   let emailSent = false;
   let emailError: string | null = null;
 
@@ -128,19 +125,17 @@ router.post('/', requireAuth, requireRole('admin'), async (req: AuthRequest, res
 
   return res.status(201).json({
     ...invite,
-    link: `podium://invite/${code}`,
+    link: `podium:
     emailSent,
     emailError,
   });
 });
 
-// DELETE /api/invites/:id [admin]
 router.delete('/:id', requireAuth, requireRole('admin'), (req, res: Response) => {
   getDb().prepare('DELETE FROM invites WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 
-// GET /api/invites/validate/:code [public]
 router.get('/validate/:code', (req, res: Response) => {
   const invite = getDb().prepare(
     'SELECT code, role, expires_at, used_by FROM invites WHERE code = ?'
@@ -153,7 +148,6 @@ router.get('/validate/:code', (req, res: Response) => {
   return res.json({ valid: true, role: invite.role, expiresAt: invite.expires_at });
 });
 
-// POST /api/invites/send-email [admin] — resend email for existing invite
 router.post('/:id/send-email', requireAuth, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'email required' });

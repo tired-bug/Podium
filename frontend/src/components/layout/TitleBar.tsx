@@ -68,7 +68,7 @@ export function TitleBar() {
         zIndex: 100,
       }}
     >
-      {/* Logo */}
+      {}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 12 }}>
         <Zap size={12} color="var(--accent-blue)" />
         <span style={{
@@ -79,7 +79,7 @@ export function TitleBar() {
         </span>
       </div>
 
-      {/* Window controls */}
+      {}
       <div className="no-drag" style={{ display: 'flex' }}>
         {controls.map(ctrl => (
           <button

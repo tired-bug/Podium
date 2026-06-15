@@ -4,7 +4,6 @@ import { requireAuth } from '../auth';
 
 const router = Router();
 
-// GET /api/metrics — metrics for all deployments (last 5 min default)
 router.get('/', requireAuth, (req, res: Response) => {
   const from = req.query.from ? parseInt(req.query.from as string) : Date.now() - 5 * 60 * 1000;
   const to = req.query.to ? parseInt(req.query.to as string) : Date.now();
@@ -20,7 +19,6 @@ router.get('/', requireAuth, (req, res: Response) => {
   res.json(metrics);
 });
 
-// GET /api/metrics/:id — metrics for one deployment
 router.get('/:id', requireAuth, (req, res: Response) => {
   const from = req.query.from ? parseInt(req.query.from as string) : Date.now() - 3600 * 1000;
   const to = req.query.to ? parseInt(req.query.to as string) : Date.now();
@@ -64,7 +62,7 @@ router.get('/:id', requireAuth, (req, res: Response) => {
     `).all(req.params.id, from, to);
   }
 
-  // Get current/latest metrics
+  
   const latest = getDb().prepare(`
     SELECT * FROM metrics WHERE deployment_id = ? ORDER BY timestamp DESC LIMIT 1
   `).get(req.params.id) as any;

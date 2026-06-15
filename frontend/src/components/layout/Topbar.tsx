@@ -80,7 +80,7 @@ export function Topbar() {
   const initials = (displayName || user?.username || '??').slice(0, 2).toUpperCase();
   const label    = displayName || user?.username || '';
 
-  // ── Icon button helper ────────────────────────────────────────────────────
+  
   const IconBtn = ({ label: lbl, onClick, children, badge }: {
     label: string; onClick: () => void; children: React.ReactNode; badge?: number;
   }) => {
@@ -119,12 +119,12 @@ export function Topbar() {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
 
-        {/* Theme */}
+        {}
         <IconBtn label="Toggle theme" onClick={toggleTheme}>
           {isDark ? <Sun size={15} /> : <Moon size={15} />}
         </IconBtn>
 
-        {/* Notifications */}
+        {}
         <div ref={notifRef} style={{ position: 'relative' }}>
           <IconBtn label="Notifications" badge={unread}
             onClick={() => { setNotifOpen(o => !o); if (!notifOpen) fetchNotifs(); }}>
@@ -197,7 +197,7 @@ export function Topbar() {
           )}
         </div>
 
-        {/* User menu */}
+        {}
         <div ref={menuRef} style={{ position: 'relative', marginLeft: 4 }}>
           <button
             onClick={() => setMenuOpen(o => !o)}
@@ -211,7 +211,7 @@ export function Topbar() {
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-glass-light)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
             onMouseLeave={e => { if (!menuOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } }}
           >
-            {/* Avatar — real image or gradient initials */}
+            {}
             <div style={{
               width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
               background: avatar ? 'transparent' : GRADIENTS[gradIdx],
@@ -226,7 +226,7 @@ export function Topbar() {
               }
             </div>
 
-            {/* Name + role */}
+            {}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
               <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {label}
@@ -248,7 +248,7 @@ export function Topbar() {
               minWidth: 210, overflow: 'hidden',
               animation: 'slide-down 150ms ease-out',
             }}>
-              {/* Header with avatar */}
+              {}
               <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-muted)', display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={{
                   width: 44, height: 44, borderRadius: '50%', flexShrink: 0,

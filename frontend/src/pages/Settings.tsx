@@ -13,7 +13,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { parseApiError, timeAgo } from '../lib/utils';
 import api from '../lib/api';
 
-// ── Reusable components ────────────────────────────────────────────────────────
 function SettingSection({ icon, title, description, children, danger }: {
   icon: React.ReactNode; title: string; description?: string;
   children: React.ReactNode; danger?: boolean;
@@ -352,7 +351,7 @@ export function Team() {
         </Card>
       )}
 
-      {/* Members table */}
+      {}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 700 }}>Members</div>
         {loading ? <div style={{ padding: 16 }}><div className="skeleton" style={{ height: 48 }} /></div> : (
@@ -394,7 +393,7 @@ export function Team() {
         )}
       </Card>
 
-      {/* Active invites */}
+      {}
       {invites.filter((i: any) => !i.used_by).length > 0 && (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 700 }}>Pending Invites</div>
@@ -467,7 +466,7 @@ export function SettingsPage() {
         ) : undefined}
       />
 
-      {/* Tab selector */}
+      {}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -488,7 +487,7 @@ export function SettingsPage() {
 
       <div style={{ maxWidth: 720 }}>
 
-        {/* ── General ────────────────────────────────────────────────────────── */}
+        {}
         {tab === 'general' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <SettingSection icon={<Globe size={18} />} title="Platform" description="Basic platform configuration">
@@ -500,7 +499,7 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* ── AI ─────────────────────────────────────────────────────────────── */}
+        {}
         {tab === 'ai' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <SettingSection icon={<Bot size={18} />} title="Groq AI" description="Power the AI Assistant with a free Groq API key — get one at console.groq.com">
@@ -538,7 +537,7 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* ── Cloud ──────────────────────────────────────────────────────────── */}
+        {}
         {tab === 'cloud' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ padding: '12px 16px', background: 'var(--accent-blue-dim)', border: '1px solid var(--border-glow)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
@@ -600,7 +599,7 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* ── Security ───────────────────────────────────────────────────────── */}
+        {}
         {tab === 'security' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <SettingSection icon={<Key size={18} />} title="JWT Configuration" description="Authentication token signing secrets">
@@ -621,10 +620,10 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* ── Team ──────────────────────────────────────────────────────────── */}
+        {}
         {tab === 'team' && <Team />}
 
-        {/* ── Email / SMTP ────────────────────────────────────────────────── */}
+        {}
         {tab === 'mail' && (
           <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
             <SettingSection icon={<Bell size={18}/>} title="SMTP Email" description="Configure your mail server to send invite emails to teammates.">
@@ -646,7 +645,7 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* ── About ─────────────────────────────────────────────────────────── */}
+        {}
         {tab === 'about' && health && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <SettingSection icon={<Zap size={18} />} title="Podium v4.0.0" description="AIOps Desktop Platform for DevOps teams">

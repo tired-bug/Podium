@@ -1,36 +1,14 @@
-/**
- * Database layer — Turso (libSQL) with synchronous-style API shim
- *
- * Uses a local SQLite cache that is flushed synchronously, backed by
- * Turso in production. All routes call the same .prepare().get/all/run()
- * interface — zero route changes required.
- *
- * Strategy:
- *   - In production: use @libsql/client remote (Turso)
- *   - In development / fallback: use node:sqlite local file
- *
- * The shim wraps Turso's async client into a synchronous interface by
- * using node:sqlite as the local cache and syncing to Turso via a
- * background flush queue. For reads we use local SQLite; writes go to
- * both local SQLite (immediate) and Turso (async, queued).
- *
- * This means:
- *   - Zero latency for reads (local)
- *   - Zero API changes in routes
- *   - Persistent data via Turso survives redeploys
- */
+
 
 import path from 'path';
 import fs from 'fs';
 
-// ── Suppress Node 22 SQLite experimental warning ──────────────────────────────
 const _origEmit = process.emitWarning.bind(process);
 (process as any).emitWarning = (msg: string, ...args: any[]) => {
   if (typeof msg === 'string' && msg.includes('SQLite')) return;
   _origEmit(msg, ...args);
 };
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 interface SyncStatement {
   get(...params: any[]): any;
   all(...params: any[]): any[];
@@ -42,7 +20,6 @@ interface SyncDb {
   exec(sql: string): void;
 }
 
-// ── Local SQLite (node:sqlite) ────────────────────────────────────────────────
 let _local: any = null;
 let _turso: any = null;
 let _writeQueue: Array<{ sql: string; params: any[] }> = [];
@@ -54,7 +31,6 @@ function getDbPath(): string {
   return path.join(dataDir, 'podium.db');
 }
 
-// ── Turso write queue flush ───────────────────────────────────────────────────
 async function flushQueue() {
   if (_flushing || !_turso || _writeQueue.length === 0) return;
   _flushing = true;
@@ -67,25 +43,23 @@ async function flushQueue() {
     );
   } catch (err) {
     console.error('[turso] Batch write error:', err);
-    // Re-queue on failure
+    
     _writeQueue = [...batch, ..._writeQueue];
   } finally {
     _flushing = false;
   }
 }
 
-// Flush every 500ms
 setInterval(() => flushQueue().catch(() => {}), 500);
 
-// ── Sync DB shim ──────────────────────────────────────────────────────────────
 function createShim(local: any): SyncDb {
   return {
     exec(sql: string) {
       local.exec(sql);
-      // Queue DDL to Turso too
+      
       if (_turso) {
         _turso.executeMultiple(sql).catch((e: any) => {
-          // Ignore "already exists" errors on CREATE TABLE IF NOT EXISTS
+          
           if (!String(e).includes('already exists')) {
             console.error('[turso] exec error:', e);
           }
@@ -115,14 +89,13 @@ function createShim(local: any): SyncDb {
   };
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
 export function getDb(): SyncDb {
   if (!_local) throw new Error('Database not initialized — call initDb() first');
   return createShim(_local);
 }
 
 export async function initDb(): Promise<void> {
-  // 1. Always init local SQLite first (instant, synchronous)
+  
   const sqlite = require('node:sqlite');
   const dbPath = getDbPath();
   _local = new sqlite.DatabaseSync(dbPath);
@@ -130,7 +103,7 @@ export async function initDb(): Promise<void> {
   _local.exec('PRAGMA foreign_keys = ON');
   _local.exec('PRAGMA synchronous = NORMAL');
 
-  // 2. Connect to Turso if credentials present
+  
   const tursoUrl   = process.env.TURSO_DATABASE_URL;
   const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
@@ -139,7 +112,7 @@ export async function initDb(): Promise<void> {
       const { createClient } = require('@libsql/client');
       _turso = createClient({ url: tursoUrl, authToken: tursoToken });
 
-      // Pull latest data from Turso into local SQLite on startup
+      
       await syncFromTurso();
       console.log('[turso] Connected and synced ✓');
     } catch (err) {
@@ -150,7 +123,7 @@ export async function initDb(): Promise<void> {
     console.log('[db] No Turso credentials — using local SQLite only');
   }
 
-  // 3. Run schema
+  
   applySchema();
   applyDefaults();
   migrateModels();
@@ -161,7 +134,6 @@ export async function initDb(): Promise<void> {
   console.log(`[db] Ready — ${dbPath}`);
 }
 
-// ── Pull data from Turso into local SQLite on startup ────────────────────────
 async function syncFromTurso() {
   if (!_turso) return;
   const TABLES = [
@@ -186,7 +158,7 @@ async function syncFromTurso() {
       }
       console.log(`[turso] Synced ${result.rows.length} rows from ${table}`);
     } catch (e: any) {
-      // Table may not exist on Turso yet — that's fine
+      
       if (!String(e).includes('no such table')) {
         console.error(`[turso] Sync error for ${table}:`, e);
       }
@@ -194,7 +166,6 @@ async function syncFromTurso() {
   }
 }
 
-// ── Schema ────────────────────────────────────────────────────────────────────
 function applySchema() {
   _local.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -363,7 +334,7 @@ function applyDefaults() {
     ['anomaly_detection', 'true'],
     ['cpu_threshold', '90'],
     ['memory_threshold_mb', '900'],
-    ['app_url', 'http://localhost:4000'],
+    ['app_url', 'http:
     ['smtp_host', ''],
     ['smtp_port', '587'],
     ['smtp_user', ''],
@@ -390,22 +361,20 @@ function migrateModels() {
   }
 }
 
-// ── Extended schema (kept for backward compat) ────────────────────────────────
 export function ensureExtendedSchema(): void {
-  // Already applied in applySchema() above — no-op for backward compat
+  
 }
 
-// ── Seed demo data ────────────────────────────────────────────────────────────
 function seedDemoData(): void {
   const row = _local.prepare('SELECT COUNT(*) as c FROM deployments').get() as { c: number };
   if (row.c > 0) return;
 
   const { v4: uuid } = require('uuid');
   const demos = [
-    { id: uuid(), name: 'api-gateway',    status: 'running', repo_url: 'https://github.com/org/api-gateway', branch: 'main',    image: 'nginx:latest' },
-    { id: uuid(), name: 'frontend-app',   status: 'running', repo_url: 'https://github.com/org/frontend',    branch: 'main',    image: 'node:20-alpine' },
-    { id: uuid(), name: 'auth-service',   status: 'stopped', repo_url: 'https://github.com/org/auth',        branch: 'develop', image: 'auth-service:1.2' },
-    { id: uuid(), name: 'worker-service', status: 'failed',  repo_url: 'https://github.com/org/worker',      branch: 'main',    image: 'worker:latest' },
+    { id: uuid(), name: 'api-gateway',    status: 'running', repo_url: 'https:
+    { id: uuid(), name: 'frontend-app',   status: 'running', repo_url: 'https:
+    { id: uuid(), name: 'auth-service',   status: 'stopped', repo_url: 'https:
+    { id: uuid(), name: 'worker-service', status: 'failed',  repo_url: 'https:
   ];
 
   const ins = _local.prepare('INSERT OR IGNORE INTO deployments (id, name, status, repo_url, branch, image) VALUES (?, ?, ?, ?, ?, ?)');
@@ -428,7 +397,6 @@ function seedDemoData(): void {
   for (const d of demos) lIns.run(d.id, 'info', `Deployment "${d.name}" created (demo mode)`);
 }
 
-// ── Keep applyExtendedSchema for legacy compat ────────────────────────────────
 function applyExtendedSchema() {
-  // Already in applySchema() — no-op
+  
 }
