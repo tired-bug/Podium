@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Build output
+backend/dist/
+frontend/dist/
+dist-electron/
+
+# Environment — NEVER commit this
+backend/.env
+.env
+
+# Database & runtime data
+backend/data/podium.db
+backend/data/podium.db-shm
+backend/data/podium.db-wal
+backend/data/builds/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
