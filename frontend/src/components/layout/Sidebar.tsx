@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Rocket, Container, Server, Github,
-  ScrollText, BarChart2, Bot, AlertTriangle, Users, Settings,
+  LayoutDashboard, Rocket, Container, Globe,
+  Github, ScrollText, BarChart2, Bot, AlertTriangle, Users, Settings,
   ChevronLeft, ChevronRight, Zap, User, Sparkles,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
@@ -13,12 +13,12 @@ interface NavSection { section: string; items: NavItem[]; }
 const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
   { section: 'Overview',
     items: [{ to: '/dashboard', icon: <LayoutDashboard size={15} />, label: 'Dashboard' }] },
-  { section: 'Infrastructure',
+  { section: 'Platform',
     items: [
-      { to: '/deployments', icon: <Rocket size={15} />, label: 'Deployments' },
-      { to: '/deploy',       icon: <Sparkles size={15} />, label: 'AI Deploy' },
+      { to: '/deployments', icon: <Rocket size={15} />,   label: 'Deployments' },
+      { to: '/deploy',      icon: <Sparkles size={15} />, label: 'AI Deploy' },
       { to: '/containers',  icon: <Container size={15} />, label: 'Containers' },
-      { to: '/hosting',     icon: <Server size={15} />,    label: 'Hosting' },
+      { to: '/domains',     icon: <Globe size={15} />,    label: 'Domains' },
     ]},
   { section: 'Developer',
     items: [
@@ -29,14 +29,14 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
   { section: 'Intelligence',
     items: [
       ...(isDeveloper ? [
-        { to: '/ai', icon: <Bot size={15} />, label: 'AI Assistant' },
-        { to: '/ai/hub', icon: <Zap size={15} />, label: 'AI Hub' },
+        { to: '/ai',     icon: <Bot size={15} />,  label: 'AI Assistant' },
+        { to: '/ai/hub', icon: <Zap size={15} />,  label: 'AI Hub' },
       ] : []),
       { to: '/ai/anomalies', icon: <AlertTriangle size={15} />, label: 'Anomalies' },
     ]},
   { section: 'Account',
     items: [
-      { to: '/profile',  icon: <User size={15} />,     label: 'Profile' },
+      { to: '/profile', icon: <User size={15} />, label: 'Profile' },
       ...(isAdmin ? [
         { to: '/team',     icon: <Users size={15} />,    label: 'Team' },
         { to: '/settings', icon: <Settings size={15} />, label: 'Settings' },
@@ -98,7 +98,6 @@ function NavItem({ to, icon, label, collapsed, index }: {
         boxShadow: active ? 'inset 0 0 20px rgba(99,102,241,0.08)' : 'none',
         position: 'relative', overflow: 'hidden',
       }}>
-        {}
         {hovered && !active && (
           <div style={{
             position: 'absolute', inset: 0,
@@ -142,14 +141,12 @@ export function Sidebar() {
       overflow: 'hidden', height: '100%',
       position: 'relative',
     }}>
-      {}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, height: 120,
         background: 'radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.08) 0%, transparent 70%)',
         pointerEvents: 'none', zIndex: 0,
       }} />
 
-      {}
       <div style={{
         padding: collapsed ? '14px 0' : '14px 16px',
         display: 'flex', alignItems: 'center',
@@ -182,7 +179,6 @@ export function Sidebar() {
         )}
       </div>
 
-      {}
       <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '10px 0', position: 'relative', zIndex: 1 }}>
         {nav.map(({ section, items }) => {
           if (!items.length) return null;
@@ -213,7 +209,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      {}
       <button
         onClick={toggle}
         style={{

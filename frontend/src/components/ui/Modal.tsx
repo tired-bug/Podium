@@ -1,4 +1,4 @@
-import React, { InputHTMLAttributes, TextareaHTMLAttributes, ReactNode, useEffect, useRef, CSSProperties, SelectHTMLAttributes } from 'react';
+import React, { InputHTMLAttributes, TextareaHTMLAttributes, ReactNode, useEffect, CSSProperties, SelectHTMLAttributes } from 'react';
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info, X as CloseIcon } from 'lucide-react';
 import { Button } from './Button';
 import { useToast } from '../../contexts/ToastContext';
@@ -7,7 +7,6 @@ export function Input({ label, error, hint, icon, iconRight, wrapStyle, style, .
   label?: string; error?: string; hint?: string;
   icon?: ReactNode; iconRight?: ReactNode; wrapStyle?: CSSProperties;
 }) {
-  const [focused, setFocused] = React.useState(false);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, ...wrapStyle }}>
       {label && (
@@ -16,19 +15,18 @@ export function Input({ label, error, hint, icon, iconRight, wrapStyle, style, .
         </label>
       )}
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-        {icon && <span style={{ position: 'absolute', left: 10, color: 'var(--text-muted)', display: 'flex', pointerEvents: 'none' }}>{icon}</span>}
+        {icon && <span style={{ position: 'absolute', left: 10, color: 'var(--text-muted)', display: 'flex', pointerEvents: 'none', zIndex: 1 }}>{icon}</span>}
         <input
           {...props}
-          onFocus={e => { setFocused(true); props.onFocus?.(e); }}
-          onBlur={e => { setFocused(false); props.onBlur?.(e); }}
+          className={`podium-input${error ? ' podium-input-error' : ''}${props.className ? ' ' + props.className : ''}`}
           style={{
             width: '100%',
             padding: icon ? '7px 10px 7px 34px' : iconRight ? '7px 34px 7px 10px' : '7px 10px',
             background: 'var(--bg-elevated)', color: 'var(--text-primary)',
-            border: `1px solid ${error ? 'var(--accent-red)' : focused ? 'var(--accent-blue)' : 'var(--border)'}`,
+            border: `1px solid ${error ? 'var(--accent-red)' : 'var(--border)'}`,
             borderRadius: 'var(--r-md)', fontSize: '13px',
-            fontFamily: 'var(--font-sans)', outline: 'none', transition: 'all 150ms',
-            boxShadow: focused ? (error ? '0 0 0 3px rgba(239,68,68,0.12)' : '0 0 0 3px rgba(99,102,241,0.12)') : 'none',
+            fontFamily: 'var(--font-sans)', outline: 'none', transition: 'border-color 150ms, box-shadow 150ms',
+            boxSizing: 'border-box',
             ...style,
           }}
         />
@@ -44,14 +42,12 @@ export function Textarea({ label, error, style, ...props }: TextareaHTMLAttribut
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
       {label && <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</label>}
-      <textarea {...props} style={{
+      <textarea {...props} className="podium-input" style={{
         width: '100%', padding: '8px 10px', background: 'var(--bg-elevated)', color: 'var(--text-primary)',
         border: `1px solid ${error ? 'var(--accent-red)' : 'var(--border)'}`,
         borderRadius: 'var(--r-md)', fontSize: '13px', fontFamily: 'var(--font-sans)',
-        outline: 'none', resize: 'vertical', transition: 'border-color 150ms', ...style,
-      }}
-        onFocus={e => e.target.style.borderColor = 'var(--accent-blue)'}
-        onBlur={e => e.target.style.borderColor = error ? 'var(--accent-red)' : 'var(--border)'} />
+        outline: 'none', resize: 'vertical', transition: 'border-color 150ms', boxSizing: 'border-box', ...style,
+      }} />
       {error && <span style={{ fontSize: '11px', color: 'var(--accent-red)' }}>{error}</span>}
     </div>
   );
@@ -65,11 +61,11 @@ export function Select({ label, error, options, wrapStyle, style, ...props }: Se
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 5, ...wrapStyle }}>
       {label && <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</label>}
-      <select {...props} style={{
+      <select {...props} className="podium-input" style={{
         width: '100%', padding: '7px 10px', background: 'var(--bg-elevated)', color: 'var(--text-primary)',
         border: `1px solid ${error ? 'var(--accent-red)' : 'var(--border)'}`,
         borderRadius: 'var(--r-md)', fontSize: '13px', fontFamily: 'var(--font-sans)',
-        outline: 'none', cursor: 'pointer', ...style,
+        outline: 'none', cursor: 'pointer', boxSizing: 'border-box', ...style,
       }}>
         {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>

@@ -1,78 +1,274 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, Send, GitBranch, Package, Zap, CheckCircle, ChevronRight, RotateCcw, Rocket } from 'lucide-react';
+import {
+  Sparkles, Send, GitBranch, Package, Zap, CheckCircle, ChevronRight,
+  RotateCcw, Rocket, Plus, Minus, Eye, EyeOff, Terminal, Globe,
+  Cpu, Server, Info, AlertTriangle, Copy,
+} from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../contexts/ToastContext';
 import { useNavigate } from 'react-router-dom';
 import { parseApiError } from '../lib/utils';
 import api from '../lib/api';
 
+interface Port    { host: string; container: string; }
+interface EnvVar  { key: string; value: string; }
 interface DeployConfig {
-  name: string;
-  image: string;
-  repo_url: string;
-  branch: string;
-  dockerfile_path: string;
-  ports: { host: string; container: string }[];
-  env_vars: { key: string; value: string }[];
-  memory_limit: string;
-  cpu_limit: string;
-  restart_policy: string;
+  name: string; image: string; repo_url: string; branch: string;
+  dockerfile_path: string; ports: Port[]; env_vars: EnvVar[];
+  memory_limit: string; cpu_limit: string; restart_policy: string;
   reasoning: string;
 }
 
-type Mode = 'idle' | 'description' | 'repo' | 'analyzing' | 'review' | 'deploying' | 'done';
+type Mode = 'idle' | 'description' | 'repo' | 'image' | 'analyzing' | 'review' | 'deploying' | 'done';
 
-const EXAMPLE_PROMPTS = [
-  'A Node.js REST API with PostgreSQL',
-  'Python FastAPI backend with Redis cache',
-  'Next.js fullstack app on port 3000',
-  'Nginx reverse proxy for my services',
-  'A WordPress site with MySQL',
+const STACKS = [
+  { label: 'Node.js API',        prompt: 'A Node.js REST API with Express and PostgreSQL on port 3000' },
+  { label: 'Python FastAPI',     prompt: 'Python FastAPI backend with Redis cache on port 8000' },
+  { label: 'Next.js App',        prompt: 'Next.js fullstack app with SSR on port 3000' },
+  { label: 'Nginx Proxy',        prompt: 'Nginx reverse proxy for multiple backend services' },
+  { label: 'WordPress + MySQL',  prompt: 'WordPress site with MySQL database on port 80' },
+  { label: 'Go microservice',    prompt: 'Go HTTP microservice with minimal footprint on port 8080' },
+  { label: 'Postgres DB',        prompt: 'PostgreSQL 16 database with persistent storage' },
+  { label: 'Redis Cache',        prompt: 'Redis cache server with AOF persistence' },
 ];
 
+const POPULAR_IMAGES = [
+  'nginx:alpine', 'node:20-alpine', 'postgres:16', 'redis:7-alpine',
+  'python:3.12-slim', 'golang:1.22-alpine', 'mysql:8', 'mongo:7',
+];
+
+function ModeCard({ icon, title, sub, onClick, color = '#6366f1' }: {
+  icon: React.ReactNode; title: string; sub: string; onClick: () => void; color?: string;
+}) {
+  const [hov, setHov] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{
+        padding: '20px 18px', background: hov ? `rgba(${color === '#6366f1' ? '99,102,241' : color === '#a855f7' ? '168,85,247' : '34,211,238'},0.07)` : 'var(--bg-elevated)',
+        border: `1px solid ${hov ? color : 'var(--border)'}`,
+        borderRadius: 'var(--r-xl)', cursor: 'pointer', textAlign: 'left',
+        transition: 'all 200ms', display: 'flex', flexDirection: 'column', gap: 12,
+        boxShadow: hov ? `0 0 20px ${color}22` : 'none',
+      }}
+    >
+      <div style={{ width: 40, height: 40, borderRadius: 'var(--r-lg)', background: `${color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {icon}
+      </div>
+      <div>
+        <div style={{ fontSize: '14px', fontWeight: 700, color: hov ? 'var(--text-primary)' : 'var(--text-primary)', marginBottom: 4 }}>{title}</div>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>{sub}</div>
+      </div>
+    </button>
+  );
+}
+
+function ConfigField({ label, field, config, onUpdate, type = 'text', mono = false, options }: {
+  label: string; field: string; config: DeployConfig; onUpdate: (f: string, v: any) => void;
+  type?: 'text' | 'select'; mono?: boolean; options?: string[];
+}) {
+  const [editing, setEditing] = useState(false);
+  const val = (config as any)[field];
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--border-muted)', gap: 12, cursor: 'text' }}
+      onClick={() => setEditing(true)}
+    >
+      <span style={{ fontSize: '12px', color: 'var(--text-muted)', width: 110, flexShrink: 0, fontWeight: 500 }}>{label}</span>
+      {editing ? (
+        type === 'select' ? (
+          <select
+            autoFocus
+            value={val}
+            onChange={e => { onUpdate(field, e.target.value); setEditing(false); }}
+            onClick={e => e.stopPropagation()}
+            onBlur={() => setEditing(false)}
+            className="podium-input"
+            style={{ flex: 1, padding: '3px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--accent-blue)', borderRadius: 'var(--r-sm)', color: 'var(--text-primary)', fontSize: '13px', outline: 'none' }}
+          >
+            {options!.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        ) : (
+          <input
+            autoFocus
+            value={val || ''}
+            onChange={e => onUpdate(field, e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={e => { if (e.key === 'Enter') setEditing(false); }}
+            onClick={e => e.stopPropagation()}
+            className="podium-input"
+            style={{ flex: 1, padding: '3px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--accent-blue)', borderRadius: 'var(--r-sm)', color: 'var(--text-primary)', fontSize: '13px', fontFamily: mono ? 'var(--font-mono)' : 'inherit', outline: 'none' }}
+          />
+        )
+      ) : (
+        <span style={{ flex: 1, fontSize: '13px', color: val ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: mono ? 'var(--font-mono)' : 'inherit' }}>
+          {val || '—'}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function PortsPanel({ ports, onChange }: { ports: Port[]; onChange: (p: Port[]) => void }) {
+  return (
+    <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-muted)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500, width: 110 }}>Ports</span>
+        <button
+          onClick={() => onChange([...ports, { host: '', container: '' }])}
+          style={{ fontSize: '11px', color: 'var(--accent-blue)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}
+        >
+          <Plus size={11} /> Add
+        </button>
+      </div>
+      {ports.length === 0 ? (
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)', paddingLeft: 118 }}>None</span>
+      ) : (
+        <div style={{ paddingLeft: 118, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ports.map((p, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={p.host}
+                onChange={e => { const a = [...ports]; a[i] = { ...a[i], host: e.target.value }; onChange(a); }}
+                placeholder="8080"
+                className="podium-input"
+                style={{ width: 80, padding: '4px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', color: 'var(--text-primary)', fontSize: '12px', fontFamily: 'var(--font-mono)', outline: 'none' }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>→</span>
+              <input
+                value={p.container}
+                onChange={e => { const a = [...ports]; a[i] = { ...a[i], container: e.target.value }; onChange(a); }}
+                placeholder="80"
+                className="podium-input"
+                style={{ width: 80, padding: '4px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', color: 'var(--text-primary)', fontSize: '12px', fontFamily: 'var(--font-mono)', outline: 'none' }}
+              />
+              <button onClick={() => onChange(ports.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-red)', display: 'flex' }}>
+                <Minus size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EnvPanel({ envs, onChange }: { envs: EnvVar[]; onChange: (e: EnvVar[]) => void }) {
+  const [showValues, setShowValues] = useState(false);
+  const visible = envs.filter(e => e.key);
+  return (
+    <div style={{ padding: '12px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500, width: 110 }}>Env Vars</span>
+        <button onClick={() => setShowValues(v => !v)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px' }}>
+          {showValues ? <EyeOff size={11} /> : <Eye size={11} />}
+          {showValues ? 'Hide values' : 'Show values'}
+        </button>
+        <button
+          onClick={() => onChange([...envs, { key: '', value: '' }])}
+          style={{ fontSize: '11px', color: 'var(--accent-blue)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}
+        >
+          <Plus size={11} /> Add
+        </button>
+      </div>
+      {envs.length === 0 ? (
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)', paddingLeft: 118 }}>None</span>
+      ) : (
+        <div style={{ paddingLeft: 118, display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {envs.map((e, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={e.key}
+                onChange={ev => { const a = [...envs]; a[i] = { ...a[i], key: ev.target.value }; onChange(a); }}
+                placeholder="KEY"
+                className="podium-input"
+                style={{ width: 140, padding: '4px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', color: 'var(--accent-blue)', fontSize: '12px', fontFamily: 'var(--font-mono)', outline: 'none' }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>=</span>
+              <input
+                value={e.value}
+                onChange={ev => { const a = [...envs]; a[i] = { ...a[i], value: ev.target.value }; onChange(a); }}
+                placeholder="value"
+                type={showValues ? 'text' : 'password'}
+                className="podium-input"
+                style={{ flex: 1, padding: '4px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', color: 'var(--text-secondary)', fontSize: '12px', fontFamily: 'var(--font-mono)', outline: 'none' }}
+              />
+              <button onClick={() => onChange(envs.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-red)', display: 'flex' }}>
+                <Minus size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnalyzingScreen({ label = 'Analyzing with AI...' }: { label?: string }) {
+  const [dot, setDot] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setDot(d => (d + 1) % 4), 400);
+    return () => clearInterval(t);
+  }, []);
+  const steps = ['Detecting stack and runtime', 'Selecting optimal base image', 'Configuring ports and networking', 'Setting resource limits'];
+  const [activeStep, setActiveStep] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setActiveStep(s => Math.min(s + 1, steps.length - 1)), 1600);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 28, padding: '48px 0' }}>
+      <div style={{ position: 'relative', width: 72, height: 72 }}>
+        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', animation: 'ping 1.5s cubic-bezier(0,0,0.2,1) infinite' }} />
+        <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 32px rgba(99,102,241,0.5)' }}>
+          <Sparkles size={28} color="#fff" />
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+          {label}{'.'.repeat(dot)}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' }}>
+          {steps.map((s, i) => (
+            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '13px', color: i <= activeStep ? 'var(--text-secondary)' : 'var(--text-muted)', transition: 'color 400ms' }}>
+              {i < activeStep ? <CheckCircle size={13} color="var(--accent-green)" /> : i === activeStep ? <div style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid var(--accent-blue)', borderTopColor: 'transparent', animation: 'spin 600ms linear infinite' }} /> : <div style={{ width: 13, height: 13, borderRadius: '50%', border: '2px solid var(--border)' }} />}
+              {s}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function NaturalDeploy() {
-  const [mode, setMode] = useState<Mode>('idle');
-  const [input, setInput] = useState('');
-  const [repoUrl, setRepoUrl] = useState('');
-  const [config, setConfig] = useState<DeployConfig | null>(null);
-  const [editingField, setEditingField] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode]             = useState<Mode>('idle');
+  const [input, setInput]           = useState('');
+  const [repoUrl, setRepoUrl]       = useState('');
+  const [imageInput, setImageInput] = useState('');
+  const [config, setConfig]         = useState<DeployConfig | null>(null);
+  const [loading, setLoading]       = useState(false);
   const [deployedId, setDeployedId] = useState<string | null>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const repoRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { error: showError, success } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (mode === 'description') setTimeout(() => inputRef.current?.focus(), 100);
-    if (mode === 'repo') setTimeout(() => repoRef.current?.focus(), 100);
+    if (mode === 'description') setTimeout(() => textareaRef.current?.focus(), 80);
   }, [mode]);
 
-  const analyzeDescription = async (desc: string) => {
+  const analyze = async (payload: Record<string, string>) => {
     setLoading(true);
     setMode('analyzing');
     try {
-      const res = await api.post('/api/ai/natural-deploy', { description: desc });
+      const res = await api.post('/api/ai/natural-deploy', payload);
       setConfig(res.data.config);
       setMode('review');
     } catch (err) {
       showError(parseApiError(err));
-      setMode('description');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const analyzeRepo = async (url: string) => {
-    setLoading(true);
-    setMode('analyzing');
-    try {
-      const res = await api.post('/api/ai/natural-deploy', { repoUrl: url });
-      setConfig(res.data.config);
-      setMode('review');
-    } catch (err) {
-      showError(parseApiError(err));
-      setMode('repo');
+      setMode(payload.description ? 'description' : payload.repoUrl ? 'repo' : 'image');
     } finally {
       setLoading(false);
     }
@@ -84,20 +280,17 @@ export default function NaturalDeploy() {
     setLoading(true);
     try {
       const res = await api.post('/api/deployments', {
-        name: config.name,
-        image: config.image,
-        repo_url: config.repo_url,
-        branch: config.branch,
+        name: config.name, image: config.image,
+        repo_url: config.repo_url, branch: config.branch,
         dockerfile_path: config.dockerfile_path,
         ports: config.ports.filter(p => p.host && p.container),
         env_vars: config.env_vars.filter(e => e.key),
-        memory_limit: config.memory_limit,
-        cpu_limit: config.cpu_limit,
+        memory_limit: config.memory_limit, cpu_limit: config.cpu_limit,
         restart_policy: config.restart_policy,
       });
       setDeployedId(res.data.id);
       setMode('done');
-      success(`"${config.name}" deployed successfully!`);
+      success(`"${config.name}" is deploying!`);
     } catch (err) {
       showError(parseApiError(err));
       setMode('review');
@@ -107,267 +300,213 @@ export default function NaturalDeploy() {
   };
 
   const reset = () => {
-    setMode('idle');
-    setInput('');
-    setRepoUrl('');
-    setConfig(null);
-    setEditingField(null);
-    setDeployedId(null);
+    setMode('idle'); setInput(''); setRepoUrl('');
+    setImageInput(''); setConfig(null); setDeployedId(null);
   };
 
-  const updateConfig = (field: string, value: any) => {
-    setConfig(c => c ? { ...c, [field]: value } : c);
-  };
+  const upd = (f: string, v: any) => setConfig(c => c ? { ...c, [f]: v } : c);
 
   return (
-    <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ maxWidth: 760, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-      <div style={{ textAlign: 'center', paddingTop: 8 }}>
-        <div style={{
-          width: 56, height: 56, borderRadius: '50%', margin: '0 auto 16px',
-          background: 'linear-gradient(135deg, #6366f1, #a855f7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 0 32px rgba(99,102,241,0.4)',
-        }}>
-          <Sparkles size={26} color="#fff" />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ width: 48, height: 48, borderRadius: 'var(--r-xl)', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 28px rgba(99,102,241,0.4)', flexShrink: 0 }}>
+          <Sparkles size={22} color="#fff" />
         </div>
-        <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 6px' }}>
-          AI Deploy
-        </h1>
-        <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>
-          Describe what you want to deploy, or paste a repo URL — AI handles the rest.
-        </p>
+        <div>
+          <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>AI Deploy</h1>
+          <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0 }}>Describe your app, paste a repo URL, or pick an image — AI configures everything.</p>
+        </div>
       </div>
 
       {mode === 'idle' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <button onClick={() => setMode('description')} style={{
-              padding: '20px', background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-              borderRadius: 'var(--r-xl)', cursor: 'pointer', textAlign: 'left',
-              transition: 'all 200ms', display: 'flex', flexDirection: 'column', gap: 10,
-            }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#6366f1'; (e.currentTarget as HTMLElement).style.background = 'rgba(99,102,241,0.06)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)'; }}
-            >
-              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Sparkles size={18} color="#6366f1" />
-              </div>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Describe your app</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>Tell AI what you want to deploy in plain language</div>
-              </div>
-            </button>
-
-            <button onClick={() => setMode('repo')} style={{
-              padding: '20px', background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-              borderRadius: 'var(--r-xl)', cursor: 'pointer', textAlign: 'left',
-              transition: 'all 200ms', display: 'flex', flexDirection: 'column', gap: 10,
-            }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = '#a855f7'; (e.currentTarget as HTMLElement).style.background = 'rgba(168,85,247,0.06)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.background = 'var(--bg-elevated)'; }}
-            >
-              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(168,85,247,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <GitBranch size={18} color="#a855f7" />
-              </div>
-              <div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Analyze a repo</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>Paste a GitHub URL — AI detects the stack and configures everything</div>
-              </div>
-            </button>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <ModeCard
+              icon={<Sparkles size={20} color="#6366f1" />}
+              title="Describe your app"
+              sub="Tell AI what you want in plain language"
+              onClick={() => setMode('description')}
+              color="#6366f1"
+            />
+            <ModeCard
+              icon={<GitBranch size={20} color="#a855f7" />}
+              title="From a Git repo"
+              sub="Paste a GitHub URL — AI detects the stack"
+              onClick={() => setMode('repo')}
+              color="#a855f7"
+            />
+            <ModeCard
+              icon={<Package size={20} color="#22d3ee" />}
+              title="From a Docker image"
+              sub="Pick an image and AI fills the rest"
+              onClick={() => setMode('image')}
+              color="#22d3ee"
+            />
           </div>
 
-          <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-lg)', border: '1px solid var(--border-muted)' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>Example prompts</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {EXAMPLE_PROMPTS.map(p => (
-                <button key={p} onClick={() => { setInput(p); setMode('description'); setTimeout(() => analyzeDescription(p), 200); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '6px 0', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '13px' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = 'var(--accent-blue)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'}
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+              Quick start — click to deploy instantly
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)' }}>
+              {STACKS.map((s, i) => (
+                <button
+                  key={s.label}
+                  onClick={() => { setInput(s.prompt); analyze({ description: s.prompt }); }}
+                  style={{
+                    padding: '12px 16px', background: 'none', border: 'none',
+                    borderBottom: i < STACKS.length - 2 ? '1px solid var(--border-muted)' : 'none',
+                    borderRight: i % 2 === 0 ? '1px solid var(--border-muted)' : 'none',
+                    cursor: 'pointer', textAlign: 'left', transition: 'background 150ms',
+                    display: 'flex', alignItems: 'center', gap: 10,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-glass-light)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                 >
-                  <ChevronRight size={12} style={{ flexShrink: 0 }} />
-                  {p}
+                  <ChevronRight size={13} color="var(--accent-blue)" style={{ flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{s.label}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 1 }}>{s.prompt}</div>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {mode === 'description' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Describe what you want to deploy</div>
-          <div style={{ position: 'relative' }}>
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && input.trim()) { e.preventDefault(); analyzeDescription(input.trim()); } }}
-              placeholder="e.g. A Node.js REST API with PostgreSQL database, running on port 3000, with JWT authentication..."
-              rows={4}
-              style={{
-                width: '100%', padding: '14px 48px 14px 14px', background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)', borderRadius: 'var(--r-lg)',
-                color: 'var(--text-primary)', fontSize: '14px', fontFamily: 'var(--font-sans)',
-                resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box',
-              }}
-              onFocus={e => e.target.style.borderColor = 'var(--accent-blue)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
-            />
-            <button
-              onClick={() => input.trim() && analyzeDescription(input.trim())}
-              disabled={!input.trim()}
-              style={{
-                position: 'absolute', right: 10, bottom: 10,
-                width: 32, height: 32, borderRadius: 'var(--r-md)',
-                background: input.trim() ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
-                border: 'none', cursor: input.trim() ? 'pointer' : 'default',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 150ms',
-              }}
-            >
-              <Send size={14} color={input.trim() ? '#fff' : 'var(--text-muted)'} />
-            </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Sparkles size={14} color="var(--accent-blue)" />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Describe what you want to deploy</span>
+            </div>
+            <div style={{ position: 'relative', padding: '4px' }}>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && input.trim()) { e.preventDefault(); analyze({ description: input.trim() }); } }}
+                placeholder={'A Node.js REST API with PostgreSQL, running on port 3000, with JWT auth...\n\nBe as specific as you like — mention the language, port, database, volumes, any env vars.'}
+                rows={6}
+                className="podium-input"
+                style={{ width: '100%', padding: '14px 52px 14px 14px', background: 'transparent', border: 'none', borderRadius: 0, color: 'var(--text-primary)', fontSize: '14px', fontFamily: 'var(--font-sans)', resize: 'none', outline: 'none', lineHeight: 1.7, boxSizing: 'border-box' }}
+              />
+              <button
+                onClick={() => input.trim() && analyze({ description: input.trim() })}
+                disabled={!input.trim()}
+                style={{ position: 'absolute', right: 12, bottom: 12, width: 34, height: 34, borderRadius: 'var(--r-md)', background: input.trim() ? 'var(--accent-blue)' : 'var(--bg-tertiary)', border: 'none', cursor: input.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 150ms', boxShadow: input.trim() ? '0 0 12px rgba(99,102,241,0.4)' : 'none' }}
+              >
+                <Send size={14} color={input.trim() ? '#fff' : 'var(--text-muted)'} />
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Button variant="ghost" size="sm" onClick={reset}>← Back</Button>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', alignSelf: 'center' }}>Press Enter to analyze</div>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Press Enter to analyze · Shift+Enter for new line</span>
           </div>
         </div>
       )}
 
       {mode === 'repo' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>GitHub repository URL</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input
-              ref={repoRef}
-              value={repoUrl}
-              onChange={e => setRepoUrl(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && repoUrl.trim()) analyzeRepo(repoUrl.trim()); }}
-              placeholder="https://github.com/owner/repository"
-              style={{
-                flex: 1, padding: '10px 14px', background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
-                color: 'var(--text-primary)', fontSize: '14px', fontFamily: 'var(--font-sans)', outline: 'none',
-              }}
-              onFocus={e => e.target.style.borderColor = 'var(--accent-blue)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
-            />
-            <Button variant="primary" onClick={() => repoUrl.trim() && analyzeRepo(repoUrl.trim())} disabled={!repoUrl.trim()}>
-              Analyze
-            </Button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <GitBranch size={14} color="var(--accent-purple)" />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Git repository URL</span>
+            </div>
+            <div style={{ padding: '14px', display: 'flex', gap: 8 }}>
+              <input
+                autoFocus
+                value={repoUrl}
+                onChange={e => setRepoUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && repoUrl.trim()) analyze({ repoUrl: repoUrl.trim() }); }}
+                placeholder="https://github.com/owner/repository"
+                className="podium-input"
+                style={{ flex: 1, padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', color: 'var(--text-primary)', fontSize: '14px', fontFamily: 'var(--font-mono)', outline: 'none' }}
+              />
+              <Button variant="primary" onClick={() => repoUrl.trim() && analyze({ repoUrl: repoUrl.trim() })} disabled={!repoUrl.trim()}>
+                Analyze
+              </Button>
+            </div>
+            <div style={{ padding: '10px 14px', background: 'rgba(168,85,247,0.04)', borderTop: '1px solid var(--border-muted)', fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+              <Info size={13} color="var(--accent-purple)" style={{ flexShrink: 0, marginTop: 1 }} />
+              AI will detect your stack (Node.js, Python, Go, etc.), pick the right base image, and configure ports, volumes, and resource limits automatically.
+            </div>
           </div>
           <Button variant="ghost" size="sm" onClick={reset} style={{ alignSelf: 'flex-start' }}>← Back</Button>
         </div>
       )}
 
-      {mode === 'analyzing' && (
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 20 }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{
-                width: 10, height: 10, borderRadius: '50%',
-                background: 'var(--accent-blue)',
-                animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-              }} />
-            ))}
+      {mode === 'image' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Package size={14} color="var(--accent-cyan)" />
+              <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>Docker image</span>
+            </div>
+            <div style={{ padding: '14px', display: 'flex', gap: 8 }}>
+              <input
+                autoFocus
+                value={imageInput}
+                onChange={e => setImageInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && imageInput.trim()) analyze({ image: imageInput.trim() }); }}
+                placeholder="nginx:latest  ·  node:20-alpine  ·  myorg/myapp:v1"
+                className="podium-input"
+                style={{ flex: 1, padding: '10px 14px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', color: 'var(--text-primary)', fontSize: '14px', fontFamily: 'var(--font-mono)', outline: 'none' }}
+              />
+              <Button variant="primary" onClick={() => imageInput.trim() && analyze({ image: imageInput.trim() })} disabled={!imageInput.trim()}>
+                Configure
+              </Button>
+            </div>
+            <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border-muted)', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {POPULAR_IMAGES.map(img => (
+                <button
+                  key={img}
+                  onClick={() => setImageInput(img)}
+                  style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 'var(--r-sm)', border: '1px solid var(--border)', background: imageInput === img ? 'rgba(34,211,238,0.1)' : 'none', color: imageInput === img ? 'var(--accent-cyan)' : 'var(--text-muted)', cursor: 'pointer', transition: 'all 100ms' }}
+                >
+                  {img}
+                </button>
+              ))}
+            </div>
           </div>
-          <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>
-            Analyzing with AI...
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Detecting stack, picking image, configuring ports and resources
-          </div>
+          <Button variant="ghost" size="sm" onClick={reset} style={{ alignSelf: 'flex-start' }}>← Back</Button>
         </div>
       )}
 
+      {mode === 'analyzing' && <AnalyzingScreen />}
+
       {mode === 'review' && config && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ padding: '14px 16px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 'var(--r-lg)', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            <span style={{ fontWeight: 600, color: '#818cf8' }}>AI reasoning: </span>{config.reasoning}
+          <div style={{ padding: '14px 16px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 'var(--r-lg)', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <Sparkles size={15} color="var(--accent-blue-2)" style={{ flexShrink: 0, marginTop: 2 }} />
+            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+              <span style={{ fontWeight: 700, color: 'var(--accent-blue-2)' }}>AI reasoning: </span>
+              {config.reasoning}
+            </div>
           </div>
 
           <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
-            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
               <Package size={15} color="var(--accent-blue)" />
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Deployment Configuration</span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>Deployment Configuration</span>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto' }}>Click any field to edit</span>
             </div>
-
-            <div style={{ padding: '4px 0' }}>
-              {[
-                { key: 'name', label: 'Name', type: 'text' },
-                { key: 'image', label: 'Docker Image', type: 'text', mono: true },
-                { key: 'repo_url', label: 'Repo URL', type: 'text' },
-                { key: 'branch', label: 'Branch', type: 'text' },
-                { key: 'memory_limit', label: 'Memory', type: 'select', options: ['256m','512m','1g','2g','4g'] },
-                { key: 'cpu_limit', label: 'CPU', type: 'select', options: ['0.25','0.5','1','2'] },
-                { key: 'restart_policy', label: 'Restart', type: 'select', options: ['unless-stopped','always','on-failure','no'] },
-              ].map(f => (
-                <div key={f.key} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', borderBottom: '1px solid var(--border-muted)', gap: 12 }}
-                  onClick={() => setEditingField(editingField === f.key ? null : f.key)}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', width: 100, flexShrink: 0, fontWeight: 500 }}>{f.label}</span>
-                  {editingField === f.key ? (
-                    f.type === 'select' ? (
-                      <select
-                        value={(config as any)[f.key]}
-                        onChange={e => { updateConfig(f.key, e.target.value); setEditingField(null); }}
-                        autoFocus
-                        onClick={e => e.stopPropagation()}
-                        style={{ flex: 1, padding: '4px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--accent-blue)', borderRadius: 'var(--r-sm)', color: 'var(--text-primary)', fontSize: '13px', outline: 'none' }}
-                      >
-                        {f.options!.map(o => <option key={o} value={o}>{o}</option>)}
-                      </select>
-                    ) : (
-                      <input
-                        autoFocus
-                        value={(config as any)[f.key] || ''}
-                        onChange={e => updateConfig(f.key, e.target.value)}
-                        onBlur={() => setEditingField(null)}
-                        onKeyDown={e => { if (e.key === 'Enter') setEditingField(null); }}
-                        onClick={e => e.stopPropagation()}
-                        style={{ flex: 1, padding: '4px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--accent-blue)', borderRadius: 'var(--r-sm)', color: 'var(--text-primary)', fontSize: '13px', fontFamily: f.mono ? 'var(--font-mono)' : 'var(--font-sans)', outline: 'none' }}
-                      />
-                    )
-                  ) : (
-                    <span style={{ flex: 1, fontSize: '13px', color: (config as any)[f.key] ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: f.mono ? 'var(--font-mono)' : 'var(--font-sans)', cursor: 'text' }}>
-                      {(config as any)[f.key] || '—'}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {config.ports.length > 0 && (
-              <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-muted)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)', width: 100, flexShrink: 0, fontWeight: 500, paddingTop: 2 }}>Ports</span>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {config.ports.map((p, i) => (
-                    <span key={i} style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', background: 'var(--bg-tertiary)', padding: '3px 10px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-                      {p.host}:{p.container}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {config.env_vars.filter(e => e.key).length > 0 && (
-              <div style={{ padding: '10px 16px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)', width: 100, flexShrink: 0, fontWeight: 500, paddingTop: 2 }}>Env Vars</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
-                  {config.env_vars.filter(e => e.key).map((e, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
-                      <span style={{ color: 'var(--accent-blue)', minWidth: 120 }}>{e.key}</span>
-                      <span style={{ color: 'var(--text-muted)' }}>{e.value || '<empty>'}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <ConfigField label="Name"         field="name"           config={config} onUpdate={upd} />
+            <ConfigField label="Docker Image" field="image"          config={config} onUpdate={upd} mono />
+            <ConfigField label="Repo URL"     field="repo_url"       config={config} onUpdate={upd} />
+            <ConfigField label="Branch"       field="branch"         config={config} onUpdate={upd} mono />
+            <ConfigField label="Memory"       field="memory_limit"   config={config} onUpdate={upd} type="select" options={['128m','256m','512m','1g','2g','4g']} />
+            <ConfigField label="CPU"          field="cpu_limit"      config={config} onUpdate={upd} type="select" options={['0.25','0.5','1','2']} />
+            <ConfigField label="Restart"      field="restart_policy" config={config} onUpdate={upd} type="select" options={['unless-stopped','always','on-failure','no']} />
+            <PortsPanel ports={config.ports} onChange={v => upd('ports', v)} />
+            <EnvPanel   envs={config.env_vars} onChange={v => upd('env_vars', v)} />
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             <Button variant="ghost" onClick={reset} icon={<RotateCcw size={14} />}>Start over</Button>
             <div style={{ flex: 1 }} />
             <Button variant="primary" onClick={deploy} loading={loading} icon={<Rocket size={14} />}>
@@ -377,29 +516,21 @@ export default function NaturalDeploy() {
         </div>
       )}
 
-      {mode === 'deploying' && (
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginBottom: 20 }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--accent-green)', animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-            ))}
-          </div>
-          <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Deploying {config?.name}...</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Starting container and streaming logs</div>
-        </div>
-      )}
+      {mode === 'deploying' && <AnalyzingScreen label={`Deploying ${config?.name}`} />}
 
       {mode === 'done' && config && (
-        <div style={{ textAlign: 'center', padding: '32px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckCircle size={28} color="var(--accent-green)" />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, padding: '48px 0' }}>
+          <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 32px rgba(16,185,129,0.3)' }}>
+            <CheckCircle size={36} color="var(--accent-green)" />
           </div>
-          <div>
-            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 6 }}>Deployed!</div>
-            <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>"{config.name}" is starting up</div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '22px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>Deployed!</div>
+            <div style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>{config.name}</span> is starting up.
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Button variant="ghost" onClick={reset} icon={<Zap size={14} />}>Deploy another</Button>
+            <Button variant="ghost" onClick={reset} icon={<Sparkles size={14} />}>Deploy another</Button>
             <Button variant="primary" onClick={() => navigate(deployedId ? `/deployments/${deployedId}` : '/deployments')} icon={<Rocket size={14} />}>
               View deployment
             </Button>
@@ -408,7 +539,8 @@ export default function NaturalDeploy() {
       )}
 
       <style>{`
-        @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+        @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );
