@@ -12,6 +12,7 @@ function getDocker(): Docker {
   return docker;
 }
 
+// GET /api/containers
 router.get('/', requireAuth, async (_req, res: Response) => {
   try {
     const d = getDocker();
@@ -19,7 +20,7 @@ router.get('/', requireAuth, async (_req, res: Response) => {
     const formatted = containers.map(c => ({
       id: c.Id,
       shortId: c.Id.slice(0, 12),
-      name: (c.Names[0] || '').replace(/^\//, ''),
+      name: c.Names[0]?.replace(/^\//, '') || 'unnamed',
       image: c.Image,
       status: c.State,
       statusText: c.Status,
@@ -36,6 +37,7 @@ router.get('/', requireAuth, async (_req, res: Response) => {
   }
 });
 
+// POST /api/containers/:id/start
 router.post('/:id/start', requireAuth, requireRole('admin','developer'), async (req, res: Response) => {
   try {
     await getDocker().getContainer(req.params.id).start();
@@ -45,6 +47,7 @@ router.post('/:id/start', requireAuth, requireRole('admin','developer'), async (
   }
 });
 
+// POST /api/containers/:id/stop
 router.post('/:id/stop', requireAuth, requireRole('admin','developer'), async (req, res: Response) => {
   try {
     await getDocker().getContainer(req.params.id).stop();
@@ -54,6 +57,7 @@ router.post('/:id/stop', requireAuth, requireRole('admin','developer'), async (r
   }
 });
 
+// POST /api/containers/:id/restart
 router.post('/:id/restart', requireAuth, requireRole('admin','developer'), async (req, res: Response) => {
   try {
     await getDocker().getContainer(req.params.id).restart();
@@ -63,6 +67,7 @@ router.post('/:id/restart', requireAuth, requireRole('admin','developer'), async
   }
 });
 
+// DELETE /api/containers/:id
 router.delete('/:id', requireAuth, requireRole('admin'), async (req, res: Response) => {
   try {
     const c = getDocker().getContainer(req.params.id);
@@ -74,6 +79,7 @@ router.delete('/:id', requireAuth, requireRole('admin'), async (req, res: Respon
   }
 });
 
+// GET /api/containers/:id/stats (SSE)
 router.get('/:id/stats', requireAuth, async (req, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');

@@ -22,7 +22,7 @@ interface Conversation {
 }
 
 function MarkdownContent({ content }: { content: string }) {
-  
+  // Simple markdown rendering
   const html = content
     .replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) =>
       `<pre><code class="lang-${lang}">${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`
@@ -203,7 +203,7 @@ export default function AIAssistant() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingContent]);
 
-  
+  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -250,7 +250,7 @@ export default function AIAssistant() {
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - var(--topbar-height) - var(--titlebar-height) - 48px)', gap: 0, margin: -24, overflow: 'hidden' }}>
-      {}
+      {/* Sidebar — conversations */}
       <div style={{
         width: 260, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
         background: 'var(--bg-secondary)', flexShrink: 0,
@@ -326,7 +326,7 @@ export default function AIAssistant() {
           ))}
         </div>
 
-        {}
+        {/* Quick actions */}
         <div style={{ padding: '12px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick Actions</div>
           <select
@@ -348,7 +348,7 @@ export default function AIAssistant() {
         </div>
       </div>
 
-      {}
+      {/* Chat area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {!activeConvId ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 }}>
@@ -385,7 +385,7 @@ export default function AIAssistant() {
           </div>
         ) : (
           <>
-            {}
+            {/* Messages */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
               {messages.map(msg => (
                 <div key={msg.id} style={{
@@ -416,7 +416,7 @@ export default function AIAssistant() {
                 </div>
               ))}
 
-              {}
+              {/* Streaming message */}
               {streaming && (
                 <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
                   <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -445,7 +445,7 @@ export default function AIAssistant() {
               <div ref={messagesEndRef} />
             </div>
 
-            {}
+            {/* Input */}
             <div style={{ padding: '12px 24px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', flexShrink: 0 }}>
               <div style={{
                 display: 'flex', gap: 10, alignItems: 'flex-end',

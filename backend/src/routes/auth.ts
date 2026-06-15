@@ -5,11 +5,13 @@ import { signToken, hashPassword, comparePassword, requireAuth, requireRole, Aut
 
 const router = Router();
 
+// GET /api/auth/setup — is first-time setup needed?
 router.get('/setup', (_req, res) => {
   const count = getDb().prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
   res.json({ needsSetup: count.c === 0 });
 });
 
+// POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -36,6 +38,7 @@ router.post('/login', async (req, res) => {
   });
 });
 
+// POST /api/auth/signup
 router.post('/signup', async (req, res) => {
   const { username, email, password, inviteCode } = req.body;
   if (!username || !email || !password) {
@@ -71,7 +74,7 @@ router.post('/signup', async (req, res) => {
   db.prepare('INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?)')
     .run(id, username, email, hash, role);
 
-  
+  // Mark invite as used properly
   if (!isFirst) {
     db.prepare("UPDATE invites SET used_by = ? WHERE used_by = 'pending'").run(id);
   }
@@ -83,6 +86,7 @@ router.post('/signup', async (req, res) => {
   });
 });
 
+// GET /api/auth/me
 router.get('/me', requireAuth, (req: AuthRequest, res: Response) => {
   const user = getDb()
     .prepare('SELECT id, username, email, role, last_login, created_at FROM users WHERE id = ?')
@@ -91,6 +95,7 @@ router.get('/me', requireAuth, (req: AuthRequest, res: Response) => {
   return res.json(user);
 });
 
+// GET /api/auth/users [admin]
 router.get('/users', requireAuth, requireRole('admin'), (_req, res: Response) => {
   const users = getDb()
     .prepare('SELECT id, username, email, role, last_login, created_at FROM users ORDER BY created_at ASC')
@@ -98,6 +103,7 @@ router.get('/users', requireAuth, requireRole('admin'), (_req, res: Response) =>
   res.json(users);
 });
 
+// PUT /api/auth/users/:id/role [admin]
 router.put('/users/:id/role', requireAuth, requireRole('admin'), (req: AuthRequest, res: Response) => {
   const { role } = req.body;
   if (!['admin', 'developer', 'viewer'].includes(role)) {
@@ -111,6 +117,7 @@ router.put('/users/:id/role', requireAuth, requireRole('admin'), (req: AuthReque
   return res.json({ ok: true });
 });
 
+// DELETE /api/auth/users/:id [admin]
 router.delete('/users/:id', requireAuth, requireRole('admin'), (req: AuthRequest, res: Response) => {
   if (req.params.id === req.user!.sub) {
     return res.status(400).json({ error: 'Cannot delete your own account' });
@@ -119,6 +126,7 @@ router.delete('/users/:id', requireAuth, requireRole('admin'), (req: AuthRequest
   return res.json({ ok: true });
 });
 
+// PUT /api/auth/password [auth]
 router.put('/password', requireAuth, async (req: AuthRequest, res: Response) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {

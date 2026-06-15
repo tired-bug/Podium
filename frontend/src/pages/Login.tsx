@@ -8,6 +8,7 @@ import api from '../lib/api';
 
 type Mode = 'login' | 'signup';
 
+// ── Animated mesh background ──────────────────────────────────────────────────
 function MeshBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -52,6 +53,7 @@ function MeshBackground() {
   return <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />;
 }
 
+// ── Floating feature card ──────────────────────────────────────────────────────
 function FeatureCard({ icon, title, desc, delay }: { icon: React.ReactNode; title: string; desc: string; delay: number }) {
   return (
     <div style={{
@@ -77,6 +79,7 @@ function FeatureCard({ icon, title, desc, delay }: { icon: React.ReactNode; titl
   );
 }
 
+// ── Input field ────────────────────────────────────────────────────────────────
 function AuthInput({ label, error, iconRight, ...props }: React.InputHTMLAttributes<HTMLInputElement> & {
   label: string; error?: string; iconRight?: React.ReactNode;
 }) {
@@ -111,6 +114,7 @@ function AuthInput({ label, error, iconRight, ...props }: React.InputHTMLAttribu
   );
 }
 
+// ── Password strength bar ──────────────────────────────────────────────────────
 function PwStrength({ pw }: { pw: string }) {
   if (!pw) return null;
   let s = 0;
@@ -142,11 +146,11 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  
+  // Login fields
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
-  
+  // Signup fields
   const [suUser, setSuUser] = useState('');
   const [suEmail, setSuEmail] = useState('');
   const [suPw, setSuPw] = useState('');
@@ -208,11 +212,11 @@ export default function LoginPage() {
   return (
     <div style={{ display: 'flex', height: '100vh', background: '#050508', overflow: 'hidden' }}>
 
-      {}
+      {/* ── Left: Branding ─────────────────────────────────────────────────── */}
       <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', padding: '48px 56px', overflow: 'hidden' }}>
         <MeshBackground />
 
-        {}
+        {/* Grid overlay */}
         <div style={{
           position: 'absolute', inset: 0, opacity: 0.06,
           backgroundImage: 'linear-gradient(rgba(99,102,241,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,.5) 1px, transparent 1px)',
@@ -220,7 +224,7 @@ export default function LoginPage() {
         }} />
 
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', height: '100%' }}>
-          {}
+          {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 72, animation: 'float-up 500ms ease-out' }}>
             <div style={{
               width: 48, height: 48, borderRadius: 14,
@@ -233,7 +237,7 @@ export default function LoginPage() {
             <span style={{ fontSize: '26px', fontWeight: 900, color: '#f0f0ff', letterSpacing: '.1em' }}>PODIUM</span>
           </div>
 
-          {}
+          {/* Headline */}
           <div style={{ animation: 'float-up 500ms ease-out 100ms both' }}>
             <h1 style={{ fontSize: '42px', fontWeight: 900, lineHeight: 1.15, color: '#f0f0ff', letterSpacing: '-.02em', marginBottom: 18 }}>
               DevOps at
@@ -247,21 +251,21 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {}
+          {/* Feature cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 400 }}>
             <FeatureCard icon={<BarChart2 size={17} />} title="Real-time Metrics" desc="CPU, memory, and network monitoring with live anomaly detection" delay={200} />
             <FeatureCard icon={<Bot size={17} />} title="Groq AI Assistant" desc="LLaMA 3 70B powered DevOps expert — analyze logs, fix failures" delay={300} />
             <FeatureCard icon={<Shield size={17} />} title="Role-based Access" desc="Admin, Developer, Viewer roles with invite-based onboarding" delay={400} />
           </div>
 
-          {}
+          {/* Bottom tag */}
           <div style={{ marginTop: 'auto', fontSize: '12px', color: 'rgba(100,100,140,0.6)', animation: 'float-up 500ms ease-out 500ms both' }}>
             Podium v4.0 — Open source AIOps platform
           </div>
         </div>
       </div>
 
-      {}
+      {/* ── Right: Auth form ───────────────────────────────────────────────── */}
       <div style={{
         width: 460, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
@@ -287,7 +291,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {}
+        {/* Mode toggle */}
         {!needsSetup && (
           <div style={{
             width: '100%', display: 'flex', marginBottom: 28,
@@ -312,7 +316,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {}
+        {/* ── Login form ─────────────────────────────────────────────────── */}
         {mode === 'login' && (
           <form onSubmit={handleLogin} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ marginBottom: 8 }}>
@@ -340,7 +344,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        {}
+        {/* ── Signup form ────────────────────────────────────────────────── */}
         {mode === 'signup' && (
           <form onSubmit={handleSignup} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
             {!needsSetup && (

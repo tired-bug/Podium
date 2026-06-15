@@ -98,7 +98,7 @@ export default function Containers() {
         }
       />
 
-      {}
+      {/* Stats bar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
           { label: 'Total', value: containers.length, color: 'var(--text-secondary)' },
@@ -113,7 +113,7 @@ export default function Containers() {
         ))}
       </div>
 
-      {}
+      {/* Search */}
       <input
         value={search}
         onChange={e => setSearch(e.target.value)}
@@ -125,7 +125,7 @@ export default function Containers() {
         }}
       />
 
-      {}
+      {/* Docker unavailable warning */}
       {dockerError && (
         <Card style={{ borderColor: 'var(--accent-orange)', background: 'var(--accent-orange-dim)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -138,7 +138,7 @@ export default function Containers() {
         </Card>
       )}
 
-      {}
+      {/* Table */}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         {loading ? (
           <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>

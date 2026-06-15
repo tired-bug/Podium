@@ -13,6 +13,7 @@ import { useToast } from '../contexts/ToastContext';
 import { timeAgo, parseApiError } from '../lib/utils';
 import api from '../lib/api';
 
+// ── Tunisia is UTC+1 (no DST) ─────────────────────────────────────────────────
 const TIMEZONES = [
   'Africa/Tunis',
   'UTC',
@@ -42,6 +43,7 @@ const GRADIENTS = [
 
 type Tab = 'overview' | 'edit' | 'notifications' | 'security' | 'sessions';
 
+// ── Toggle switch ──────────────────────────────────────────────────────────────
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="toggle-switch">
@@ -51,6 +53,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
+// ── Animated tab content ───────────────────────────────────────────────────────
 function TabPanel({ children, active }: { children: React.ReactNode; active: boolean }) {
   if (!active) return null;
   return (
@@ -60,6 +63,7 @@ function TabPanel({ children, active }: { children: React.ReactNode; active: boo
   );
 }
 
+// ── Avatar crop/preview modal ──────────────────────────────────────────────────
 function CropModal({ src, onConfirm, onCancel }: {
   src: string; onConfirm: (dataUrl: string) => void; onCancel: () => void;
 }) {
@@ -84,7 +88,7 @@ function CropModal({ src, onConfirm, onCancel }: {
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, SIZE, SIZE);
 
-    
+    // Circular clip
     ctx.save();
     ctx.beginPath();
     ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2, 0, Math.PI * 2);
@@ -96,7 +100,7 @@ function CropModal({ src, onConfirm, onCancel }: {
     ctx.drawImage(img, x, y, w, h);
     ctx.restore();
 
-    
+    // Circle border
     ctx.beginPath();
     ctx.arc(SIZE / 2, SIZE / 2, SIZE / 2 - 1, 0, Math.PI * 2);
     ctx.strokeStyle = 'rgba(99,102,241,0.8)';
@@ -146,7 +150,7 @@ function CropModal({ src, onConfirm, onCancel }: {
           <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Drag to reposition · scroll or use slider to zoom</div>
         </div>
 
-        {}
+        {/* Canvas crop area */}
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <canvas
             ref={canvasRef}
@@ -161,7 +165,7 @@ function CropModal({ src, onConfirm, onCancel }: {
           />
         </div>
 
-        {}
+        {/* Zoom slider */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-muted)' }}>
             <span>Zoom</span><span>{Math.round(zoom * 100)}%</span>
@@ -174,7 +178,7 @@ function CropModal({ src, onConfirm, onCancel }: {
           />
         </div>
 
-        {}
+        {/* Actions */}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <Button variant="ghost" onClick={onCancel}>Cancel</Button>
           <Button variant="primary" icon={<Check size={14} />} onClick={handleConfirm}>Apply Photo</Button>
@@ -184,6 +188,7 @@ function CropModal({ src, onConfirm, onCancel }: {
   );
 }
 
+// ── Avatar editor ──────────────────────────────────────────────────────────────
 function AvatarEditor({ profile, username, onSaved }: {
   profile: any; username: string; onSaved: () => void;
 }) {
@@ -236,7 +241,7 @@ function AvatarEditor({ profile, username, onSaved }: {
       {cropSrc && <CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={() => setCropSrc(null)} />}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 28 }}>
-        {}
+        {/* Live preview */}
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <div
             onClick={() => fileRef.current?.click()}
@@ -264,7 +269,147 @@ function AvatarEditor({ profile, username, onSaved }: {
               }
             </div>
           </div>
-          <input ref={fileRef} type="file" accept="image}
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>Profile Photo</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            Click the avatar or the button below to upload.<br />
+            A crop &amp; zoom tool will appear before saving.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button size="sm" variant="secondary" icon={<Camera size={12} />}
+              onClick={() => fileRef.current?.click()} loading={uploading}>
+              Upload &amp; Crop
+            </Button>
+            {shown && (
+              <Button size="sm" variant="ghost" icon={<Trash2 size={12} />}
+                loading={removing} onClick={handleRemove}>
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Animated stat card ─────────────────────────────────────────────────────────
+function StatCard({ label, value, delay }: { label: string; value: string; delay: number }) {
+  return (
+    <div style={{
+      padding: '14px 16px', background: 'var(--bg-glass-light)',
+      borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
+      textAlign: 'center',
+      animation: `float-up 400ms ease-out ${delay}ms both`,
+    }}>
+      <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{value}</div>
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 3 }}>{label}</div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+export default function Profile() {
+  const { user, refreshUser } = useAuth();
+  const { refresh: refreshProfile } = useProfile();
+  const { success, error: showError } = useToast();
+  const [tab, setTab]           = useState<Tab>('overview');
+  const [loading, setLoading]   = useState(true);
+  const [saving,  setSaving]    = useState(false);
+  const [data,    setData]      = useState<any>({});
+  const [form,    setForm]      = useState<any>({});
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [pwForm,  setPwForm]    = useState({ current: '', newPw: '', confirm: '' });
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const { data: d } = await api.get('/api/profile');
+      setData(d);
+      const p = d.profile || {};
+      setForm({
+        username:                d.username || '',
+        email:                   d.email || '',
+        display_name:            p.display_name || '',
+        bio:                     p.bio || '',
+        job_title:               p.job_title || '',
+        company:                 p.company || '',
+        location:                p.location || '',
+        website:                 p.website || '',
+        github_username:         p.github_username || '',
+        timezone:                p.timezone || 'Africa/Tunis',
+        notification_deployments: p.notification_deployments !== 0,
+        notification_anomalies:   p.notification_anomalies   !== 0,
+        notification_team:        p.notification_team        !== 0,
+        notification_email:       p.notification_email       !== 0,
+      });
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+  useEffect(() => {
+    if (tab === 'sessions') {
+      api.get('/api/profile/sessions').then(r => setSessions(r.data)).catch(() => {});
+    }
+  }, [tab]);
+
+  const up = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.put('/api/profile', form);
+      success('Profile saved!');
+      await fetchProfile();
+      await refreshUser();
+      await refreshProfile();   // update topbar display name + avatar
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setSaving(false); }
+  };
+
+  const handleChangePassword = async () => {
+    if (pwForm.newPw !== pwForm.confirm) { showError('Passwords do not match'); return; }
+    if (pwForm.newPw.length < 8)         { showError('Password must be at least 8 characters'); return; }
+    setPwLoading(true);
+    try {
+      await api.put('/api/auth/password', { currentPassword: pwForm.current, newPassword: pwForm.newPw });
+      setPwSuccess(true);
+      setPwForm({ current: '', newPw: '', confirm: '' });
+      success('Password changed!');
+      setTimeout(() => setPwSuccess(false), 3000);
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setPwLoading(false); }
+  };
+
+  const p = data.profile || {};
+  const displayName = p.display_name || data.username || '';
+  const initials    = displayName.slice(0, 2).toUpperCase();
+  const gradIdx     = (data.username?.charCodeAt(0) || 0) % GRADIENTS.length;
+
+  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'overview',      label: 'Overview',      icon: <User size={13} /> },
+    { id: 'edit',          label: 'Edit Profile',  icon: <Edit2 size={13} /> },
+    { id: 'notifications', label: 'Notifications', icon: <Bell size={13} /> },
+    { id: 'security',      label: 'Security',      icon: <Shield size={13} /> },
+    { id: 'sessions',      label: 'Sessions',      icon: <Monitor size={13} /> },
+  ];
+
+  if (loading) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 780, margin: '0 auto' }}>
+      <div className="skeleton" style={{ height: 280, borderRadius: 'var(--r-xl)' }} />
+      <div className="skeleton" style={{ height: 48 }} />
+      <div className="skeleton" style={{ height: 200 }} />
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 780, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+      {/* ── Hero card ─────────────────────────────────────────────────────── */}
       <div style={{
         borderRadius: 'var(--r-xl)', overflow: 'hidden',
         border: '1px solid var(--border)',
@@ -272,20 +417,20 @@ function AvatarEditor({ profile, username, onSaved }: {
         boxShadow: 'var(--shadow-lg)',
         animation: 'float-up 350ms ease-out',
       }}>
-        {}
+        {/* Animated banner */}
         <div style={{
           height: 110, position: 'relative', overflow: 'hidden',
           background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%)',
           backgroundSize: '200% 200%',
           animation: 'gradient-shift 6s ease infinite',
         }}>
-          {}
+          {/* Grid pattern over banner */}
           <div style={{
             position: 'absolute', inset: 0, opacity: 0.15,
             backgroundImage: 'linear-gradient(rgba(255,255,255,.4) 1px, transparent 1px), linear-gradient(90deg,rgba(255,255,255,.4) 1px, transparent 1px)',
             backgroundSize: '28px 28px',
           }} />
-          {}
+          {/* Floating orbs in banner */}
           {[
             { w: 120, h: 120, t: -30, l: '10%', opacity: 0.2 },
             { w: 80,  h: 80,  t: 20,  l: '60%', opacity: 0.15 },
@@ -303,9 +448,9 @@ function AvatarEditor({ profile, username, onSaved }: {
         </div>
 
         <div style={{ padding: '0 28px 24px' }}>
-          {}
+          {/* Avatar row */}
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: -48 }}>
-            {}
+            {/* Avatar */}
             <div style={{
               width: 90, height: 90, borderRadius: '50%',
               background: p.avatar ? 'transparent' : GRADIENTS[gradIdx],
@@ -328,7 +473,7 @@ function AvatarEditor({ profile, username, onSaved }: {
             </Button>
           </div>
 
-          {}
+          {/* User info */}
           <div style={{ marginTop: 16, animation: 'float-up 300ms ease-out 150ms both' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
               <h2 style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
@@ -352,7 +497,7 @@ function AvatarEditor({ profile, username, onSaved }: {
               </p>
             )}
 
-            {}
+            {/* Meta pills */}
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
               {p.job_title && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--text-secondary)' }}>
@@ -372,7 +517,7 @@ function AvatarEditor({ profile, username, onSaved }: {
               {p.website && (
                 <a href={p.website} target="_blank" rel="noopener noreferrer"
                   style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '12px', color: 'var(--accent-blue-2)' }}>
-                  <Globe size={11} />{p.website.replace(/https?:\/\
+                  <Globe size={11} />{p.website.replace(/https?:\/\//, '')}
                 </a>
               )}
               {p.github_username && (
@@ -384,7 +529,7 @@ function AvatarEditor({ profile, username, onSaved }: {
             </div>
           </div>
 
-          {}
+          {/* Stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginTop: 20 }}>
             <StatCard label="Member since" value={timeAgo(data.created_at)} delay={200} />
             <StatCard label="Last login"   value={data.last_login ? timeAgo(data.last_login) : 'Just now'} delay={260} />
@@ -393,7 +538,7 @@ function AvatarEditor({ profile, username, onSaved }: {
         </div>
       </div>
 
-      {}
+      {/* ── Tab selector ──────────────────────────────────────────────────── */}
       <div style={{
         display: 'flex', gap: 6, flexWrap: 'wrap',
         animation: 'float-up 300ms ease-out 250ms both',
@@ -419,7 +564,7 @@ function AvatarEditor({ profile, username, onSaved }: {
         ))}
       </div>
 
-      {}
+      {/* ── OVERVIEW ──────────────────────────────────────────────────────── */}
       <TabPanel active={tab === 'overview'}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {[
@@ -469,15 +614,15 @@ function AvatarEditor({ profile, username, onSaved }: {
         </div>
       </TabPanel>
 
-      {}
+      {/* ── EDIT PROFILE ──────────────────────────────────────────────────── */}
       <TabPanel active={tab === 'edit'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {}
+          {/* Avatar editor */}
           <Card style={{ animation: 'float-up 250ms ease-out' }}>
             <AvatarEditor profile={p} username={data.username} onSaved={fetchProfile} />
           </Card>
 
-          {}
+          {/* Basic info */}
           <Card style={{ animation: 'float-up 250ms ease-out 60ms both' }}>
             <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: 16, color: 'var(--text-primary)' }}>Basic Information</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -509,7 +654,7 @@ function AvatarEditor({ profile, username, onSaved }: {
             </div>
           </Card>
 
-          {}
+          {/* Links & timezone */}
           <Card style={{ animation: 'float-up 250ms ease-out 120ms both' }}>
             <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: 16, color: 'var(--text-primary)' }}>Links & Timezone</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -541,7 +686,7 @@ function AvatarEditor({ profile, username, onSaved }: {
         </div>
       </TabPanel>
 
-      {}
+      {/* ── NOTIFICATIONS ─────────────────────────────────────────────────── */}
       <TabPanel active={tab === 'notifications'}>
         <Card style={{ animation: 'float-up 250ms ease-out' }}>
           <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 4 }}>Notification Preferences</div>
@@ -571,7 +716,7 @@ function AvatarEditor({ profile, username, onSaved }: {
         </Card>
       </TabPanel>
 
-      {}
+      {/* ── SECURITY ──────────────────────────────────────────────────────── */}
       <TabPanel active={tab === 'security'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card style={{ animation: 'float-up 250ms ease-out' }}>
@@ -604,7 +749,7 @@ function AvatarEditor({ profile, username, onSaved }: {
         </div>
       </TabPanel>
 
-      {}
+      {/* ── SESSIONS ──────────────────────────────────────────────────────── */}
       <TabPanel active={tab === 'sessions'}>
         <Card style={{ animation: 'float-up 250ms ease-out' }}>
           <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 16 }}>Active Sessions</div>

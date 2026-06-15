@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, RefreshCw, Play, Square, RotateCcw, Trash2, Terminal, ChevronDown, ChevronRight, Eye, EyeOff, GitBranch, Sparkles } from 'lucide-react';
+import { Plus, Search, RefreshCw, Play, Square, RotateCcw, Trash2, Terminal, ChevronDown, ChevronRight, Eye, EyeOff, GitBranch } from 'lucide-react';
 import { Card, Badge, EmptyState, SectionHeader, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Input, Modal, ConfirmDialog, Tabs, Select } from '../components/ui/Modal';
@@ -19,83 +19,20 @@ const FILTER_TABS = [
   { id: 'failed', label: 'Failed' },
 ];
 
-const STEPS = ['Source', 'Configuration', 'Resources', 'Review'];
-
-const EMPTY_FORM = {
-  name: '', repo_url: '', branch: 'main', dockerfile_path: 'Dockerfile', image: '',
-  ports: [{ _id: '1', host: '', container: '' }],
-  env_vars: [{ _id: '1', key: '', value: '' }],
-  memory_limit: '512m', cpu_limit: '0.5', restart_policy: 'unless-stopped', replicas: 1,
-  health_check: '', volumes: '',
-};
-
-function PortRow({ port, index, ports, onChange }: { port: {_id:string;host:string;container:string}; index: number; ports: any[]; onChange: (v: any[]) => void }) {
-  const updateField = (field: string, val: string) => {
-    const a = ports.map((p, i) => i === index ? { ...p, [field]: val } : p);
-    onChange(a);
-  };
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-      <input
-        className="podium-input"
-        placeholder="Host port (e.g. 8080)"
-        value={port.host}
-        onChange={e => updateField('host', e.target.value)}
-      />
-      <input
-        className="podium-input"
-        placeholder="Container port (e.g. 80)"
-        value={port.container}
-        onChange={e => updateField('container', e.target.value)}
-      />
-      <Button variant="ghost" size="sm" onClick={() => onChange(ports.filter((_, j) => j !== index))}>✕</Button>
-    </div>
-  );
-}
-
-function EnvRow({ env, index, envs, onChange }: { env: {_id:string;key:string;value:string}; index: number; envs: any[]; onChange: (v: any[]) => void }) {
-  const updateField = (field: string, val: string) => {
-    onChange(envs.map((e, i) => i === index ? { ...e, [field]: val } : e));
-  };
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
-      <input
-        className="podium-input podium-mono"
-        placeholder="KEY"
-        value={env.key}
-        onChange={e => updateField('key', e.target.value)}
-      />
-      <input
-        className="podium-input"
-        placeholder="value"
-        value={env.value}
-        onChange={e => updateField('value', e.target.value)}
-      />
-      <Button variant="ghost" size="sm" onClick={() => onChange(envs.filter((_, j) => j !== index))}>✕</Button>
-    </div>
-  );
-}
-
 function NewDeploymentModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
   const { success, error: showError } = useToast();
-  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [form, setForm] = useState({
+    name: '', repo_url: '', branch: 'main', dockerfile_path: 'Dockerfile', image: '',
+    ports: [{ host: '', container: '' }],
+    env_vars: [{ key: '', value: '' }],
+    memory_limit: '512m', cpu_limit: '0.5', restart_policy: 'unless-stopped', replicas: 1,
+  });
 
-  const update = useCallback((key: string, val: any) => setForm(f => ({ ...f, [key]: val })), []);
+  const steps = ['Source', 'Configuration', 'Resources', 'Review'];
 
-  const validate = () => {
-    const e: Record<string, string> = {};
-    if (step === 0 && !form.repo_url && !form.image) e.source = 'Provide either a Git repo URL or a Docker image';
-    if (step === 1 && !form.name) e.name = 'Deployment name is required';
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const next = () => { if (validate()) setStep(s => s + 1); };
-
-  const handleClose = () => { onClose(); setStep(0); setForm({ ...EMPTY_FORM }); setErrors({}); };
+  const update = (key: string, val: any) => setForm(f => ({ ...f, [key]: val }));
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -106,9 +43,10 @@ function NewDeploymentModal({ open, onClose, onCreated }: { open: boolean; onClo
         env_vars: form.env_vars.filter(e => e.key),
       };
       await api.post('/api/deployments', payload);
-      success(`"${form.name}" deployment created!`);
+      success(`Deployment "${form.name || form.repo_url}" created!`);
       onCreated();
-      handleClose();
+      onClose();
+      setStep(0);
     } catch (err) {
       showError(parseApiError(err));
     } finally {
@@ -117,21 +55,22 @@ function NewDeploymentModal({ open, onClose, onCreated }: { open: boolean; onClo
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title="New Deployment" width={600}
+    <Modal open={open} onClose={onClose} title="New Deployment" width={580}
       footer={
         <div style={{ display: 'flex', gap: 8, width: '100%' }}>
-          <Button variant="ghost" onClick={handleClose} disabled={loading}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>Cancel</Button>
           <div style={{ flex: 1 }} />
           {step > 0 && <Button variant="secondary" onClick={() => setStep(s => s - 1)} disabled={loading}>Back</Button>}
           {step < 3
-            ? <Button variant="primary" onClick={next}>Next →</Button>
+            ? <Button variant="primary" onClick={() => setStep(s => s + 1)}>Next</Button>
             : <Button variant="primary" loading={loading} onClick={handleSubmit}>Deploy</Button>
           }
         </div>
       }
     >
-      <div style={{ display: 'flex', gap: 0, marginBottom: 28 }}>
-        {STEPS.map((s, i) => (
+      {/* Stepper */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 24 }}>
+        {steps.map((s, i) => (
           <div key={s} style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <div style={{
@@ -139,132 +78,83 @@ function NewDeploymentModal({ open, onClose, onCreated }: { open: boolean; onClo
                 background: i === step ? 'var(--accent-blue)' : i < step ? 'var(--accent-green)' : 'var(--bg-tertiary)',
                 border: `2px solid ${i === step ? 'var(--accent-blue)' : i < step ? 'var(--accent-green)' : 'var(--border)'}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '12px', fontWeight: 700, color: i <= step ? '#fff' : 'var(--text-muted)',
+                fontSize: '12px', fontWeight: 700,
+                color: i <= step ? '#fff' : 'var(--text-muted)',
               }}>{i < step ? '✓' : i + 1}</div>
               <div style={{ fontSize: '10px', color: i === step ? 'var(--accent-blue)' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>{s}</div>
             </div>
-            {i < STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div style={{ flex: 1, height: 2, background: i < step ? 'var(--accent-green)' : 'var(--border)', margin: '0 6px', marginBottom: 18 }} />
             )}
           </div>
         ))}
       </div>
 
+      {/* Step content */}
       {step === 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ padding: '12px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-muted)' }}>
-            Provide either a Git repository (Podium will build it) or a pre-built Docker image.
-          </div>
-          <Input label="Git Repository URL" value={form.repo_url} onChange={e => update('repo_url', e.target.value)} placeholder="https://github.com/org/repo" hint="We'll clone this repo and build the Docker image" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <Input label="Git Repository URL" value={form.repo_url} onChange={e => update('repo_url', e.target.value)} placeholder="https://github.com/org/repo" />
           <Input label="Branch" value={form.branch} onChange={e => update('branch', e.target.value)} placeholder="main" />
-          <Input label="Dockerfile Path" value={form.dockerfile_path} onChange={e => update('dockerfile_path', e.target.value)} placeholder="Dockerfile" hint="Relative path from repo root" />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '0 8px' }}>OR use a pre-built image</span>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          </div>
-          <Input label="Docker Image" value={form.image} onChange={e => update('image', e.target.value)} placeholder="nginx:latest, node:20-alpine, myrepo/myimage:tag" hint="Any public Docker Hub or registry image" />
-          {errors.source && <div style={{ fontSize: '12px', color: 'var(--accent-red)', padding: '8px 12px', background: 'rgba(239,68,68,0.08)', borderRadius: 'var(--r-md)' }}>{errors.source}</div>}
+          <Input label="Dockerfile Path" value={form.dockerfile_path} onChange={e => update('dockerfile_path', e.target.value)} placeholder="Dockerfile" />
+          <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center' }}>— or —</div>
+          <Input label="Docker Image (if no repo)" value={form.image} onChange={e => update('image', e.target.value)} placeholder="nginx:latest or registry/image:tag" />
         </div>
       )}
 
       {step === 1 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <Input
-            label="Deployment Name"
-            value={form.name}
-            onChange={e => update('name', e.target.value)}
-            placeholder="my-api, frontend-app, postgres-db"
-            hint="Lowercase letters, numbers, and hyphens only"
-            error={errors.name}
-            required
-          />
-
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Input label="Deployment Name" value={form.name} onChange={e => update('name', e.target.value)} placeholder="my-api-service" hint="Auto-generated from repo name if empty" />
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Port Mappings <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>— host:container</span>
-            </div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>Port Mappings</div>
             {form.ports.map((p, i) => (
-              <PortRow key={p._id || i} port={p} index={i} ports={form.ports} onChange={v => update('ports', v)} />
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                <Input placeholder="Host port (e.g. 8080)" value={p.host} onChange={e => { const arr = [...form.ports]; arr[i].host = e.target.value; update('ports', arr); }} />
+                <Input placeholder="Container port (e.g. 80)" value={p.container} onChange={e => { const arr = [...form.ports]; arr[i].container = e.target.value; update('ports', arr); }} />
+                <Button variant="ghost" size="sm" onClick={() => update('ports', form.ports.filter((_, j) => j !== i))}>✕</Button>
+              </div>
             ))}
-            <Button size="sm" variant="ghost" onClick={() => update('ports', [...form.ports, { _id: String(Date.now()), host: '', container: '' }])}>+ Add Port</Button>
+            <Button size="sm" variant="ghost" onClick={() => update('ports', [...form.ports, { host: '', container: '' }])}>+ Add Port</Button>
           </div>
-
           <div>
-            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Environment Variables
-            </div>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: 6 }}>Environment Variables</div>
             {form.env_vars.map((e, i) => (
-              <EnvRow key={e._id || i} env={e} index={i} envs={form.env_vars} onChange={v => update('env_vars', v)} />
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                <Input placeholder="KEY" value={e.key} onChange={ev => { const arr = [...form.env_vars]; arr[i].key = ev.target.value; update('env_vars', arr); }} style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }} />
+                <Input placeholder="value" value={e.value} onChange={ev => { const arr = [...form.env_vars]; arr[i].value = ev.target.value; update('env_vars', arr); }} />
+                <Button variant="ghost" size="sm" onClick={() => update('env_vars', form.env_vars.filter((_, j) => j !== i))}>✕</Button>
+              </div>
             ))}
-            <Button size="sm" variant="ghost" onClick={() => update('env_vars', [...form.env_vars, { _id: String(Date.now()), key: '', value: '' }])}>+ Add Variable</Button>
+            <Button size="sm" variant="ghost" onClick={() => update('env_vars', [...form.env_vars, { key: '', value: '' }])}>+ Add Variable</Button>
           </div>
-
-          <Input label="Volume Mounts (optional)" value={form.volumes} onChange={e => update('volumes', e.target.value)} placeholder="/host/path:/container/path" hint="Persist data between restarts" />
-          <Input label="Health Check URL (optional)" value={form.health_check} onChange={e => update('health_check', e.target.value)} placeholder="/health or /api/status" hint="Podium will monitor this endpoint" />
         </div>
       )}
 
       {step === 2 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ padding: '12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            Set resource limits to prevent a single app from consuming all server resources.
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <Select label="Memory Limit" value={form.memory_limit} onChange={e => update('memory_limit', e.target.value)}
-            options={[
-              { value: '128m', label: '128 MB — minimal (static sites)' },
-              { value: '256m', label: '256 MB — light (small APIs)' },
-              { value: '512m', label: '512 MB — standard (recommended)' },
-              { value: '1g', label: '1 GB — heavy (databases, ML)' },
-              { value: '2g', label: '2 GB — large workloads' },
-              { value: '4g', label: '4 GB — very large' },
-            ]}
-          />
+            options={[{ value: '256m', label: '256 MB' }, { value: '512m', label: '512 MB' }, { value: '1g', label: '1 GB' }, { value: '2g', label: '2 GB' }, { value: '4g', label: '4 GB' }]} />
           <Select label="CPU Limit" value={form.cpu_limit} onChange={e => update('cpu_limit', e.target.value)}
-            options={[
-              { value: '0.25', label: '0.25 cores — minimal' },
-              { value: '0.5', label: '0.5 cores — standard (recommended)' },
-              { value: '1', label: '1 core — high throughput' },
-              { value: '2', label: '2 cores — compute heavy' },
-            ]}
-          />
+            options={[{ value: '0.25', label: '0.25 cores' }, { value: '0.5', label: '0.5 cores' }, { value: '1', label: '1 core' }, { value: '2', label: '2 cores' }]} />
           <Select label="Restart Policy" value={form.restart_policy} onChange={e => update('restart_policy', e.target.value)}
-            options={[
-              { value: 'unless-stopped', label: 'Unless stopped — restart always except manual stop' },
-              { value: 'always', label: 'Always — restart even after manual stop' },
-              { value: 'on-failure', label: 'On failure — restart only on error exit' },
-              { value: 'no', label: 'Never — do not auto-restart' },
-            ]}
-          />
-          <Select label="Replicas" value={String(form.replicas)} onChange={e => update('replicas', parseInt(e.target.value))}
-            options={[
-              { value: '1', label: '1 replica — standard' },
-              { value: '2', label: '2 replicas — basic redundancy' },
-              { value: '3', label: '3 replicas — high availability' },
-            ]}
-          />
+            options={[{ value: 'unless-stopped', label: 'Unless Stopped' }, { value: 'always', label: 'Always' }, { value: 'on-failure', label: 'On Failure' }, { value: 'no', label: 'Never' }]} />
         </div>
       )}
 
       {step === 3 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Review before deploying</div>
           {[
             ['Name', form.name || '(auto-generated)'],
             ['Source', form.repo_url || form.image || '(none)'],
-            ['Branch', form.repo_url ? form.branch : '—'],
+            ['Branch', form.branch],
             ['Memory', form.memory_limit],
             ['CPU', `${form.cpu_limit} cores`],
-            ['Replicas', String(form.replicas)],
             ['Restart', form.restart_policy],
             ['Ports', form.ports.filter(p => p.host).map(p => `${p.host}:${p.container}`).join(', ') || 'None'],
-            ['Env Vars', `${form.env_vars.filter(e => e.key).length} variable(s)`],
-            ['Health Check', form.health_check || 'None'],
-            ['Volumes', form.volumes || 'None'],
+            ['Env Vars', `${form.env_vars.filter(e => e.key).length} variables`],
           ].map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)', gap: 12 }}>
-              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500, flexShrink: 0 }}>{k}</span>
-              <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', textAlign: 'right', wordBreak: 'break-all' }}>{v}</span>
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{k}</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{v}</span>
             </div>
           ))}
         </div>
@@ -301,24 +191,32 @@ function DeploymentCard({ dep, onAction }: { dep: Deployment; onAction: () => vo
   };
 
   return (
-    <Card style={{ display: 'flex', flexDirection: 'column', animation: 'float-up 300ms ease-out both' }}>
+    <Card className="dep-card" style={{ display: 'flex', flexDirection: 'column', animation: 'float-up 300ms ease-out both' }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
             <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', cursor: 'pointer' }} onClick={() => navigate(`/deployments/${dep.id}`)}>{dep.name}</span>
             <Badge variant="status" value={dep.status}>{dep.status}</Badge>
             {!dep.container_id && dep.status !== 'pending' && (
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '1px 6px', borderRadius: 'var(--r-pill)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>demo</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '1px 6px', borderRadius: 'var(--r-pill)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                demo
+              </span>
             )}
           </div>
-          {dep.repo_url && <div style={{ fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dep.repo_url}</div>}
+          {dep.repo_url && (
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dep.repo_url}</div>
+          )}
           <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}><GitBranch size={10} />{dep.branch}</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <GitBranch size={10} />{dep.branch}
+            </span>
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Updated {timeAgo(dep.updated_at)}</span>
             {dep.image && <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{dep.image}</span>}
           </div>
         </div>
 
+        {/* Actions */}
         <div style={{ display: 'flex', gap: 5, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {can.startStopRestart && dep.status !== 'running' && dep.status !== 'building' && (
             <Button size="sm" variant="success" icon={<Play size={11} />} loading={actionLoading === 'start'} onClick={() => doAction('start')}>Start</Button>
@@ -335,6 +233,7 @@ function DeploymentCard({ dep, onAction }: { dep: Deployment; onAction: () => vo
         </div>
       </div>
 
+      {/* Expanded details */}
       {expanded && (
         <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-muted)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
@@ -343,7 +242,7 @@ function DeploymentCard({ dep, onAction }: { dep: Deployment; onAction: () => vo
               ['Restart', dep.restart_policy], ['Replicas', dep.replicas],
               ['Created', timeAgo(dep.created_at)], ['Container', dep.container_id?.slice(0, 12) || '—'],
             ].map(([k, v]) => (
-              <div key={String(k)} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div key={k} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k}</span>
                 <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{v}</span>
               </div>
@@ -382,16 +281,20 @@ function DeploymentCard({ dep, onAction }: { dep: Deployment; onAction: () => vo
         </div>
       )}
 
-      <ConfirmDialog open={deleteOpen} title="Delete Deployment"
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete Deployment"
         message={`Are you sure you want to delete "${dep.name}"? This will stop and remove the container.`}
-        confirmLabel="Delete" onConfirm={handleDelete} onCancel={() => setDeleteOpen(false)} />
+        confirmLabel="Delete"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteOpen(false)}
+      />
     </Card>
   );
 }
 
 export default function Deployments() {
   const { can } = useRole();
-  const navigate = useNavigate();
   const { deployments, loading, refetch } = useDeployments(10000);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -417,36 +320,35 @@ export default function Deployments() {
         action={
           <div style={{ display: 'flex', gap: 8 }}>
             <Button icon={<RefreshCw size={14} />} onClick={refetch} size="sm">Refresh</Button>
-            {can.createDeployment && (
-              <>
-                <Button variant="ghost" icon={<Sparkles size={14} />} onClick={() => navigate('/deploy')} size="sm">AI Deploy</Button>
-                <Button variant="primary" icon={<Plus size={14} />} onClick={() => setNewModalOpen(true)}>New</Button>
-              </>
-            )}
+{can.createDeployment && <Button variant="primary" icon={<Plus size={14} />} onClick={() => setNewModalOpen(true)}>New Deployment</Button>}
           </div>
         }
       />
 
+      {/* Filter + Search */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <Tabs tabs={FILTER_TABS.map(t => ({ ...t, count: counts[t.id] }))} active={filter} onChange={setFilter} />
         <div style={{ flex: 1, minWidth: 200 }}>
-          <Input placeholder="Search deployments..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
+          <Input
+            placeholder="Search deployments..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            icon={<Search size={14} />}
+          />
         </div>
       </div>
 
+      {/* Grid */}
       {loading ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 16 }}>
-          {[1,2,3,4].map(i => <Card key={i}><Skeleton height={80} /></Card>)}
+          {[1, 2, 3, 4].map(i => <Card key={i}><Skeleton height={80} /></Card>)}
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState icon="🚀" title={search ? 'No deployments match your search' : 'No deployments'}
+        <EmptyState
+          icon="🚀"
+          title={search ? 'No deployments match your search' : 'No deployments'}
           description={search ? 'Try a different search term.' : 'Create your first deployment to start managing containers.'}
-          action={!search ? (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant="ghost" icon={<Sparkles size={14} />} onClick={() => navigate('/deploy')}>AI Deploy</Button>
-              <Button variant="primary" icon={<Plus size={14} />} onClick={() => setNewModalOpen(true)}>New Deployment</Button>
-            </div>
-          ) : undefined}
+          action={!search ? <Button variant="primary" icon={<Plus size={14} />} onClick={() => setNewModalOpen(true)}>New Deployment</Button> : undefined}
         />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))', gap: 16 }}>

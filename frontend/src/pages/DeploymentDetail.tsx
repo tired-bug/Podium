@@ -1,4 +1,4 @@
-
+// DeploymentDetail.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Play, Square, RotateCcw, Hammer, ChevronRight } from 'lucide-react';
@@ -77,7 +77,7 @@ export function DeploymentDetail() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {}
+      {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <Button variant="ghost" size="sm" icon={<ArrowLeft size={14} />} onClick={() => navigate('/deployments')}>Deployments</Button>
         <ChevronRight size={14} color="var(--text-muted)" />
@@ -85,7 +85,7 @@ export function DeploymentDetail() {
         <Badge variant="status" value={dep.status}>{dep.status}</Badge>
       </div>
 
-      {}
+      {/* Actions */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {dep.status !== 'running' && dep.status !== 'building' && (
           <Button variant="success" icon={<Play size={14} />} loading={actionLoading === 'start'} onClick={() => doAction('start')}>Start</Button>
@@ -99,7 +99,7 @@ export function DeploymentDetail() {
         <Button variant="secondary" icon={<Hammer size={14} />} loading={actionLoading === 'rebuild'} onClick={() => doAction('rebuild')}>Rebuild</Button>
       </div>
 
-      {}
+      {/* Tabs */}
       <Tabs
         tabs={[{ id: 'overview', label: 'Overview' }, { id: 'logs', label: 'Logs' }, { id: 'metrics', label: 'Metrics' }]}
         active={tab}

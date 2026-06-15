@@ -10,8 +10,10 @@ import { useToast } from '../contexts/ToastContext';
 import api from '../lib/api';
 import { copyToClipboard } from '../lib/utils';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface Deployment { id: string; name: string; status: string; }
 
+// ─── Shared: Result Card ──────────────────────────────────────────────────────
 function ResultCard({ title, onCopy, children }: { title: string; onCopy?: () => void; children: React.ReactNode }) {
   return (
     <div style={{
@@ -35,6 +37,7 @@ function ResultCard({ title, onCopy, children }: { title: string; onCopy?: () =>
   );
 }
 
+// ─── Shared: FeatureCard wrapper ──────────────────────────────────────────────
 function FeatureCard({ icon, title, subtitle, accent, children }: {
   icon: React.ReactNode; title: string; subtitle: string; accent: string; children: React.ReactNode;
 }) {
@@ -62,6 +65,7 @@ function FeatureCard({ icon, title, subtitle, accent, children }: {
   );
 }
 
+// ─── Shared: Select ───────────────────────────────────────────────────────────
 function Select({ value, onChange, options, placeholder = 'Select...' }: {
   value: string; onChange: (v: string) => void;
   options: { value: string; label: string }[]; placeholder?: string;
@@ -78,6 +82,7 @@ function Select({ value, onChange, options, placeholder = 'Select...' }: {
   );
 }
 
+// ─── Badge helpers ────────────────────────────────────────────────────────────
 const SEVERITY_COLOR: Record<string, string> = { low: '#3FB950', medium: '#DB6D28', high: '#F85149', critical: '#FF0000' };
 const RISK_COLOR: Record<string, string> = { low: '#3FB950', medium: '#DB6D28', high: '#F85149', critical: '#FF0000' };
 
@@ -105,6 +110,7 @@ function ScoreRing({ score, max = 100, color }: { score: number; max?: number; c
   );
 }
 
+// ─── 1. Platform Summary ──────────────────────────────────────────────────────
 function PlatformSummaryCard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -160,6 +166,7 @@ function PlatformSummaryCard() {
   );
 }
 
+// ─── 2. Risk Score ────────────────────────────────────────────────────────────
 function RiskScoreCard({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -212,6 +219,7 @@ function RiskScoreCard({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
+// ─── 3. Root Cause Analysis ───────────────────────────────────────────────────
 function RootCauseCard({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -242,6 +250,7 @@ function RootCauseCard({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
+// ─── 4. Optimize Config ───────────────────────────────────────────────────────
 function OptimizeCard({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -283,6 +292,7 @@ function OptimizeCard({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
+// ─── 5. Security Scan ─────────────────────────────────────────────────────────
 function SecurityScanCard({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -336,6 +346,7 @@ function SecurityScanCard({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
+// ─── 6. Natural Language Deploy ───────────────────────────────────────────────
 function NaturalDeployCard() {
   const [prompt, setPrompt] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -408,6 +419,7 @@ function NaturalDeployCard() {
   );
 }
 
+// ─── 7. Incident Report ───────────────────────────────────────────────────────
 function IncidentReportCard({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState('');
   const [result, setResult] = useState<any>(null);
@@ -441,6 +453,7 @@ function IncidentReportCard({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
+// ─── 8. Cost Analysis ─────────────────────────────────────────────────────────
 function CostAnalysisCard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -479,6 +492,7 @@ function CostAnalysisCard() {
   );
 }
 
+// ─── 9. Compare Deployments ───────────────────────────────────────────────────
 function CompareCard({ deployments }: { deployments: Deployment[] }) {
   const [depA, setDepA] = useState('');
   const [depB, setDepB] = useState('');
@@ -515,13 +529,14 @@ function CompareCard({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AIHub() {
   const { deployments } = useDeployments();
   const deps = (deployments || []) as Deployment[];
 
   return (
     <div style={{ padding: '0 24px 40px' }}>
-      {}
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28, paddingTop: 4 }}>
         <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Bot size={20} color="#fff" />
@@ -532,12 +547,12 @@ export default function AIHub() {
         </div>
       </div>
 
-      {}
+      {/* Platform Summary — full width */}
       <div style={{ marginBottom: 20 }}>
         <PlatformSummaryCard />
       </div>
 
-      {}
+      {/* Grid of feature cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 16 }}>
         <RiskScoreCard deployments={deps} />
         <RootCauseCard deployments={deps} />

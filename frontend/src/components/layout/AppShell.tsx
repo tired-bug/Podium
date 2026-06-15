@@ -31,7 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar />
         <main style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', background: 'var(--bg-primary)', position: 'relative' }}>
-          {}
+          {/* Subtle background mesh */}
           <div style={{
             position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0,
             background: 'var(--gradient-mesh)',

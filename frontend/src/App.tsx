@@ -12,7 +12,7 @@ const Dashboard    = lazy(() => import('./pages/Dashboard'));
 const Deployments  = lazy(() => import('./pages/Deployments'));
 const DeploymentDetail = lazy(() => import('./pages/DeploymentDetail'));
 const Containers   = lazy(() => import('./pages/Containers'));
-const NaturalDeploy = lazy(() => import('./pages/NaturalDeploy'));
+const Cloud        = lazy(() => import('./pages/Cloud'));
 const GitHub       = lazy(() => import('./pages/GitHub'));
 const Logs         = lazy(() => import('./pages/Logs'));
 const Metrics      = lazy(() => import('./pages/Metrics'));
@@ -36,7 +36,7 @@ const PROTECTED_ROUTES = [
   { path: '/deployments',     el: <Deployments /> },
   { path: '/deployments/:id', el: <DeploymentDetail /> },
   { path: '/containers',      el: <Containers /> },
-  { path: '/deploy',          el: <NaturalDeploy /> },
+  { path: '/cloud',           el: <Cloud /> },
   { path: '/github',          el: <GitHub /> },
   { path: '/logs',            el: <Logs /> },
   { path: '/metrics',         el: <Metrics /> },
@@ -54,27 +54,27 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <ProfileProvider>
-            <BrowserRouter>
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/signup" element={<Navigate to="/login" replace />} />
-                  <Route path="/" element={
-                    <ProtectedRoute><AppShell><Navigate to="/dashboard" replace /></AppShell></ProtectedRoute>
+          <BrowserRouter>
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Navigate to="/login" replace />} />
+                <Route path="/" element={
+                  <ProtectedRoute><AppShell><Navigate to="/dashboard" replace /></AppShell></ProtectedRoute>
+                } />
+                {PROTECTED_ROUTES.map(({ path, el }) => (
+                  <Route key={path} path={path} element={
+                    <ProtectedRoute>
+                      <AppShell>
+                        <Suspense fallback={<PageLoader />}>{el}</Suspense>
+                      </AppShell>
+                    </ProtectedRoute>
                   } />
-                  {PROTECTED_ROUTES.map(({ path, el }) => (
-                    <Route key={path} path={path} element={
-                      <ProtectedRoute>
-                        <AppShell>
-                          <Suspense fallback={<PageLoader />}>{el}</Suspense>
-                        </AppShell>
-                      </ProtectedRoute>
-                    } />
-                  ))}
-                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                </Routes>
-              </Suspense>
-            </BrowserRouter>
+                ))}
+                <Route path="*" element={<Navigate to="/dashboard" replace />} />
+              </Routes>
+            </Suspense>
+          </BrowserRouter>
           </ProfileProvider>
         </ToastProvider>
       </AuthProvider>

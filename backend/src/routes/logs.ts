@@ -4,6 +4,7 @@ import { requireAuth } from '../auth';
 
 const router = Router();
 
+// GET /api/logs — paginated logs (all or filtered)
 router.get('/', requireAuth, (req, res: Response) => {
   const { deploymentId, level, limit = '100', offset = '0', search } = req.query;
   let query = `
@@ -27,6 +28,7 @@ router.get('/', requireAuth, (req, res: Response) => {
   res.json({ logs: logs.reverse(), total: totalRow?.total || 0 });
 });
 
+// GET /api/logs/:deploymentId — logs for specific deployment
 router.get('/:deploymentId', requireAuth, (req, res: Response) => {
   const { level, limit = '200', offset = '0' } = req.query;
   let query = 'SELECT * FROM build_logs WHERE deployment_id = ?';
@@ -40,11 +42,13 @@ router.get('/:deploymentId', requireAuth, (req, res: Response) => {
   res.json(logs.reverse());
 });
 
+// DELETE /api/logs/:deploymentId — clear logs
 router.delete('/:deploymentId', requireAuth, (req, res: Response) => {
   getDb().prepare('DELETE FROM build_logs WHERE deployment_id = ?').run(req.params.deploymentId);
   res.json({ ok: true });
 });
 
+// GET /api/logs/:deploymentId/stream — SSE live log stream
 router.get('/:deploymentId/stream', requireAuth, (req, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -55,7 +59,7 @@ router.get('/:deploymentId/stream', requireAuth, (req, res: Response) => {
   let closed = false;
   req.on('close', () => { closed = true; clearInterval(interval); });
 
-  
+  // Get initial logs
   const initial = getDb().prepare(
     'SELECT * FROM build_logs WHERE deployment_id = ? ORDER BY id DESC LIMIT 100'
   ).all(req.params.deploymentId) as any[];

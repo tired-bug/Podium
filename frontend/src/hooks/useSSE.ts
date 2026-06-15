@@ -28,7 +28,7 @@ export function useSSE(url: string | null, onMessage: (data: any) => void, deps:
       es.close();
       esRef.current = null;
     };
-  
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, ...deps]);
 
   const close = useCallback(() => {

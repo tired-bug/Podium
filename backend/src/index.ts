@@ -9,6 +9,7 @@ import { initDb, getDb, ensureExtendedSchema } from './db/index';
 import { v4 as uuidv4 } from 'uuid';
 import { broadcastNotification } from './routes/notifications';
 
+// Routes
 import authRouter from './routes/auth';
 import invitesRouter from './routes/invites';
 import deploymentsRouter from './routes/deployments';
@@ -26,17 +27,24 @@ import selfhostedRouter from './routes/selfhosted';
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000');
 
+// ── Init DB ───────────────────────────────────────────────────────────────────
+initDb();
+ensureExtendedSchema();
+
+// ── CORS ──────────────────────────────────────────────────────────────────────
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-  : true;
+  : true; // allow all in dev
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 
+// ── Middleware ────────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 
+// ── API Routes ────────────────────────────────────────────────────────────────
 app.get('/api/health', healthHandler);
 app.use('/api/auth', authRouter);
 app.use('/api/invites', invitesRouter);
@@ -52,6 +60,7 @@ app.use('/api/profile', profileRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/selfhosted', selfhostedRouter);
 
+// ── Static frontend ───────────────────────────────────────────────────────────
 const resourcesPath = (process as any).resourcesPath as string | undefined;
 const staticPaths = [
   path.join(__dirname, '../../frontend/dist'),
@@ -67,6 +76,7 @@ if (staticPath) {
   app.get('/', (_req, res) => res.json({ status: 'Podium API running', health: '/api/health' }));
 }
 
+// ── Background: metrics + anomaly detection ───────────────────────────────────
 let Docker: any;
 try { Docker = require('dockerode'); } catch {}
 
@@ -169,18 +179,9 @@ setInterval(() => collectMetrics().catch(() => {}), 10_000);
 setInterval(generateSimulatedMetrics, 12_000);
 setInterval(pruneOldData, 3_600_000);
 
-async function bootstrap() {
-  await initDb();
-  ensureExtendedSchema(); 
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[podium] Backend on http://localhost:${PORT}`);
-  });
-}
-
-bootstrap().catch(err => {
-  console.error('[podium] Fatal startup error:', err);
-  process.exit(1);
+// ── Start ─────────────────────────────────────────────────────────────────────
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[podium] Backend on http://localhost:${PORT} (${process.env.NODE_ENV})`);
 });
 
 export default app;
