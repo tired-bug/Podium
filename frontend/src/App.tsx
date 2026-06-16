@@ -23,6 +23,8 @@ const AIAnomalies  = lazy(() => import('./pages/Settings').then(m => ({ default:
 const Team         = lazy(() => import('./pages/Settings').then(m => ({ default: m.Team })));
 const SettingsPage = lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
 const Profile      = lazy(() => import('./pages/Profile'));
+const Providers    = lazy(() => import('./pages/Providers'));
+const CloudDeploys = lazy(() => import('./pages/CloudDeployments'));
 
 function PageLoader() {
   return (
@@ -48,6 +50,8 @@ const PROTECTED_ROUTES = [
   { path: '/team',            el: <Team /> },
   { path: '/settings',        el: <SettingsPage /> },
   { path: '/profile',         el: <Profile /> },
+  { path: '/providers',       el: <Providers /> },
+  { path: '/cloud',           el: <CloudDeploys /> },
 ];
 
 export default function App() {
@@ -61,7 +65,6 @@ export default function App() {
                 <Routes>
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Navigate to="/login" replace />} />
-                  <Route path="/cloud" element={<Navigate to="/hosting" replace />} />
                   <Route path="/" element={
                     <ProtectedRoute><AppShell><Navigate to="/dashboard" replace /></AppShell></ProtectedRoute>
                   } />

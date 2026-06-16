@@ -23,6 +23,7 @@ import settingsRouter, { healthHandler } from './routes/settings';
 import profileRouter from './routes/profile';
 import notificationsRouter from './routes/notifications';
 import selfhostedRouter from './routes/selfhosted';
+import providersRouter from './routes/providers';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000');
@@ -53,6 +54,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/profile', profileRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/selfhosted', selfhostedRouter);
+app.use('/api/providers', providersRouter);
 
 const resourcesPath = (process as any).resourcesPath as string | undefined;
 const staticPaths = [
