@@ -449,39 +449,6 @@ Respond ONLY with valid JSON:
   }
 });
 
-router.post('/natural-deploy', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { prompt: userPrompt } = req.body;
-  if (!userPrompt) return res.status(400).json({ error: 'prompt required' });
-
-  const aiPrompt = `Convert this natural language deployment request into a structured deployment config.
-
-User said: "${userPrompt}"
-
-Respond ONLY with valid JSON (no markdown):
-{
-  "name": "<slug name, lowercase, dashes>",
-  "image": "<docker image:tag or null>",
-  "repoUrl": "<github url or null>",
-  "branch": "<branch name, default main>",
-  "ports": [<port numbers as integers>],
-  "memoryLimit": "<e.g. 512m or 1g>",
-  "cpuLimit": "<e.g. 0.5 or 1.0>",
-  "envVars": [{"key": "<KEY>", "value": "<value>"}],
-  "restartPolicy": "<always|unless-stopped|on-failure|no>",
-  "provider": "<local|render|aws|azure|vercel|null>",
-  "confidence": <0-100>,
-  "clarifications": ["<anything ambiguous that needs user confirmation>"]
-}`;
-
-  try {
-    const raw = await groqChat('You are a JSON-only responder for a DevOps platform.', aiPrompt, 600);
-    const clean = raw.replace(/```json|```/g, '').trim();
-    return res.json(JSON.parse(clean));
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 router.post('/incident-report', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId, anomalyIds = [] } = req.body;
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any
@@ -647,8 +614,10 @@ Be direct, professional, and action-oriented. Mention if anything needs immediat
 });
 
 router.post('/natural-deploy', requireAuth, async (req: any, res: Response) => {
-  const { description, repoUrl } = req.body;
-  if (!description && !repoUrl) return res.status(400).json({ error: 'Provide description or repoUrl' });
+  const { description, repoUrl, image } = req.body;
+  if (!description && !repoUrl && !image) {
+    return res.status(400).json({ error: 'Provide a description, repository URL, or Docker image' });
+  }
 
   const prompt = repoUrl
     ? `Analyze this GitHub repository URL and generate an optimal Docker deployment configuration.
@@ -671,6 +640,29 @@ Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
   "dockerfile_path": "Dockerfile",
   "ports": [{"host": "8080", "container": "80"}],
   "env_vars": [{"key": "NODE_ENV", "value": "production"}],
+  "memory_limit": "512m",
+  "cpu_limit": "0.5",
+  "restart_policy": "unless-stopped",
+  "reasoning": "One sentence explaining why you chose this configuration"
+}`
+    : image
+    ? `Generate an optimal Docker deployment configuration for this Docker image: "${image}"
+
+Based on this image:
+1. Determine the standard container port(s) this image exposes and a sensible host port mapping
+2. Suggest relevant environment variables for this image (with sensible default/placeholder values)
+3. Set appropriate resource limits for this image
+4. Generate a clean deployment name derived from the image name
+
+Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
+{
+  "name": "deployment-name",
+  "image": "${image}",
+  "repo_url": "",
+  "branch": "main",
+  "dockerfile_path": "",
+  "ports": [{"host": "8080", "container": "80"}],
+  "env_vars": [{"key": "KEY", "value": "value"}],
   "memory_limit": "512m",
   "cpu_limit": "0.5",
   "restart_policy": "unless-stopped",

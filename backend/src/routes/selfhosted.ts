@@ -55,12 +55,12 @@ function allocatePort(): number {
   throw new Error('No free host ports available (3100-3200 exhausted)');
 }
 
-async function dockerAvailable(): Promise<boolean> {
+async function dockerAvailable(): Promise<{ available: boolean; version?: string }> {
   try {
-    await execP('docker info --format "{{.ServerVersion}}"', { timeout: 8000 });
-    return true;
+    const { stdout } = await execP('docker info --format "{{.ServerVersion}}"', { timeout: 8000 });
+    return { available: true, version: stdout.trim() };
   } catch {
-    return false;
+    return { available: false };
   }
 }
 
@@ -177,10 +177,11 @@ async function deploySelfHosted(cloudId: string): Promise<void> {
 
     
     appendCloudLog(cloudId, 'Checking Docker...');
-    if (!await dockerAvailable()) {
+    const dockerCheck = await dockerAvailable();
+    if (!dockerCheck.available) {
       throw new Error('Docker Desktop is not running. Open Docker Desktop, wait for it to say "Running", then redeploy.');
     }
-    appendCloudLog(cloudId, 'Docker is available ✓');
+    appendCloudLog(cloudId, `Docker is available ✓${dockerCheck.version ? ` (v${dockerCheck.version})` : ''}`);
 
     
     const hostPort: number = cfg.host_port || allocatePort();
@@ -267,14 +268,14 @@ router.post('/run/:cloudId', (req: Request, res: Response) => {
 });
 
 router.get('/status', requireAuth, async (_req, res) => {
-  const docker = await dockerAvailable();
+  const dockerResult = await dockerAvailable();
   let ngrok = false;
   try {
     await axios.get('http://localhost:4040/api/tunnels');
     ngrok = true;
   } catch {}
   const ngrokUrl = getSetting('selfhosted_ngrok_url');
-  res.json({ docker, ngrok, ngrokUrl });
+  res.json({ docker: dockerResult.available, dockerVersion: dockerResult.version, ngrok, ngrokUrl });
 });
 
 router.post('/:id/stop', requireAuth, async (req, res) => {
