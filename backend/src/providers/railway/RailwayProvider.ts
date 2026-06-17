@@ -58,11 +58,12 @@ export class RailwayProvider implements IProvider {
     let projectId = creds.railway_project_id;
 
     if (!projectId) {
-      console.log(`[railway] No project ID — creating new project name=${opts.name}`);
+      const projectName = opts.projectName || opts.name;
+      console.log(`[railway] No project ID — creating new project name=${projectName}`);
       const created = await this.gql(creds.railway_token, `
         mutation($name: String!) {
           projectCreate(input: { name: $name }) { id name }
-        }`, { name: opts.name });
+        }`, { name: projectName });
       projectId = created.projectCreate.id;
       console.log(`[railway] Project created: projectId=${projectId}`);
     }

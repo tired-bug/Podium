@@ -75,7 +75,7 @@ export class VercelProvider implements IProvider {
   /**
    * Get or create a Vercel project for the given name/repo.
    */
-  private async getOrCreateProject(token: string, teamId: string | undefined, name: string, repoId: number, repoName: string, branch: string): Promise<string> {
+  private async getOrCreateProject(token: string, teamId: string | undefined, name: string, repoId: number, repoName: string, branch: string, framework?: string, rootDirectory?: string): Promise<string> {
     const params = teamId ? `?teamId=${teamId}` : '';
     const c = this.client(token);
 
@@ -91,15 +91,16 @@ export class VercelProvider implements IProvider {
     }
 
     // Create a new project linked to the repo
-    console.log(`[vercel] Creating new project name=${name} repoId=${repoId} repoName=${repoName}`);
+    console.log(`[vercel] Creating new project name=${name} repoId=${repoId} repoName=${repoName} framework=${framework || 'none'}`);
     const createPayload: any = {
       name,
-      framework: null,
+      framework: framework || null,
       gitRepository: {
         type: 'github',
         repo: repoName,
       },
     };
+    if (rootDirectory) createPayload.rootDirectory = rootDirectory;
 
     const created = await c.post(`/v10/projects${params}`, createPayload).catch((e: any) => {
       const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e.message;
@@ -131,7 +132,7 @@ export class VercelProvider implements IProvider {
       console.log(`[vercel] Resolved repoId=${repoId} repoName=${repoName}`);
 
       // Ensure project exists
-      await this.getOrCreateProject(creds.vercel_token, teamId, opts.name, repoId, repoName, branch);
+      await this.getOrCreateProject(creds.vercel_token, teamId, opts.name, repoId, repoName, branch, opts.framework, opts.rootDirectory);
 
       payload = {
         name: opts.name,
@@ -143,6 +144,10 @@ export class VercelProvider implements IProvider {
         },
         env: envVars,
       };
+      if (opts.buildCommand) payload.buildCommand = opts.buildCommand;
+      if (opts.outputDirectory) payload.outputDirectory = opts.outputDirectory;
+      if (opts.rootDirectory) payload.rootDirectory = opts.rootDirectory;
+      if (opts.framework) payload.framework = opts.framework;
     } else {
       // No repo URL: deploy as a static/empty deployment (Vercel still needs a source)
       payload = {

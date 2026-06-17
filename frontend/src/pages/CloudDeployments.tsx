@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, RefreshCw, Trash2, ExternalLink, Terminal, ChevronRight,
-  Globe, GitBranch, Settings2, CheckCircle, Cpu, Package,
-  Eye, EyeOff, X, AlertTriangle, Play, Square,
+  Globe, GitBranch, Settings2, CheckCircle,
+  Eye, EyeOff, X, AlertTriangle, Play,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, SectionHeader, Skeleton, Spinner } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -163,11 +163,22 @@ const STEPS: { id: Step; label: string; icon: React.ReactNode }[] = [
   { id: 'review',   label: 'Review',   icon: <CheckCircle size={13} /> },
 ];
 
+const RENDER_RUNTIMES = ['node', 'python', 'ruby', 'go', 'rust', 'docker', 'elixir'];
+const RENDER_PLANS = ['free', 'starter', 'standard', 'pro', 'pro plus'];
+const VERCEL_FRAMEWORKS = ['nextjs', 'create-react-app', 'vite', 'vue', 'svelte', 'nuxtjs', 'gatsby', 'remix', 'astro', 'other'];
+
 const EMPTY_FORM = {
-  provider: '', name: '', repoUrl: '', branch: 'main',
-  image: '', region: '', buildCommand: '', startCommand: '',
+  provider: '',
+  // Common
+  name: '', repoUrl: '', branch: 'main',
   envVars: [{ key: '', value: '' }],
-  renderOwnerId: '', railwayTeamId: '',
+  // Render
+  renderOwnerId: '', renderRuntime: 'node', renderRegion: 'oregon', renderPlan: 'free',
+  buildCommand: '', startCommand: '',
+  // Railway
+  railwayProjectName: '', railwayTeamId: '',
+  // Vercel
+  vercelFramework: '', vercelRootDirectory: '', vercelOutputDirectory: '', vercelBuildCommand: '',
 };
 
 function DeployWizard({ providers, onClose, onDeployed }: {
@@ -228,11 +239,41 @@ function DeployWizard({ providers, onClose, onDeployed }: {
     const e: Record<string, string> = {};
     if (step === 0 && !form.provider) e.provider = 'Select a provider';
     if (step === 1) {
-      if (!form.name) e.name = 'Project name is required';
-      if (!form.repoUrl && !form.image) e.repoUrl = 'Either repo URL or Docker image is required';
+      if (form.provider === 'render') {
+        if (!form.name) e.name = 'Service name is required';
+        if (!form.renderOwnerId) e.renderOwnerId = 'Owner ID is required';
+        if (!form.renderRuntime) e.renderRuntime = 'Runtime is required';
+        if (!form.renderRegion) e.renderRegion = 'Region is required';
+        if (!form.renderPlan) e.renderPlan = 'Plan is required';
+        if (!form.repoUrl) e.repoUrl = 'Repository is required';
+        if (!form.branch) e.branch = 'Branch is required';
+      } else if (form.provider === 'railway') {
+        if (!form.railwayProjectName) e.railwayProjectName = 'Project name is required';
+        if (!form.repoUrl) e.repoUrl = 'Repository is required';
+      } else if (form.provider === 'vercel') {
+        if (!form.name) e.name = 'Project name is required';
+        if (!form.repoUrl) e.repoUrl = 'Repository is required';
+        if (!form.vercelFramework) e.vercelFramework = 'Framework is required';
+      } else {
+        if (!form.name) e.name = 'Project name is required';
+        if (!form.repoUrl) e.repoUrl = 'Repository is required';
+      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const isValid = (): boolean => {
+    if (form.provider === 'render') {
+      return !!(form.name && form.renderOwnerId && form.renderRuntime && form.renderRegion && form.renderPlan && form.repoUrl && form.branch);
+    }
+    if (form.provider === 'railway') {
+      return !!(form.railwayProjectName && form.repoUrl);
+    }
+    if (form.provider === 'vercel') {
+      return !!(form.name && form.repoUrl && form.vercelFramework);
+    }
+    return false;
   };
 
   const next = () => { if (validate()) setStep(s => Math.min(s + 1, STEPS.length - 1)); };
@@ -244,17 +285,37 @@ function DeployWizard({ providers, onClose, onDeployed }: {
       const envVarsObj = Object.fromEntries(
         form.envVars.filter(e => e.key).map(e => [e.key, e.value])
       );
-      await api.post('/api/providers/deploy', {
-        provider: form.provider, name: form.name,
+
+      const payload: Record<string, any> = {
+        provider: form.provider,
         repoUrl: form.repoUrl || undefined,
         branch: form.branch || 'main',
-        image: form.image || undefined,
-        region: form.region || undefined,
-        buildCommand: form.buildCommand || undefined,
-        startCommand: form.startCommand || undefined,
         envVars: envVarsObj,
-      });
-      success(`Deployment "${form.name}" queued on ${selectedProvider?.name}`);
+      };
+
+      if (form.provider === 'render') {
+        payload.name = form.name;
+        payload.ownerId = form.renderOwnerId;
+        payload.runtime = form.renderRuntime;
+        payload.region = form.renderRegion;
+        payload.plan = form.renderPlan;
+        payload.buildCommand = form.buildCommand || undefined;
+        payload.startCommand = form.startCommand || undefined;
+      } else if (form.provider === 'railway') {
+        payload.name = form.railwayProjectName;
+        payload.projectName = form.railwayProjectName;
+      } else if (form.provider === 'vercel') {
+        payload.name = form.name;
+        payload.framework = form.vercelFramework;
+        payload.rootDirectory = form.vercelRootDirectory || undefined;
+        payload.outputDirectory = form.vercelOutputDirectory || undefined;
+        payload.buildCommand = form.vercelBuildCommand || undefined;
+      } else {
+        payload.name = form.name;
+      }
+
+      await api.post('/api/providers/deploy', payload);
+      success(`Deployment "${payload.name}" queued on ${selectedProvider?.name}`);
       onDeployed();
       onClose();
     } catch (e) {
@@ -315,7 +376,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                   {connectedProviders.map(p => (
                     <button
                       key={p.id}
-                      onClick={() => { upd('provider', p.id); upd('region', p.regions?.[0] || ''); }}
+                      onClick={() => { upd('provider', p.id); if (p.id === 'render') upd('renderRegion', p.regions?.[0] || 'oregon'); }}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center', gap: 14,
                         padding: '14px 16px', background: form.provider === p.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)',
@@ -342,23 +403,95 @@ function DeployWizard({ providers, onClose, onDeployed }: {
           {/* Step 1: Project */}
           {stepId === 'project' && (
             <>
-              <Input label="Project Name *" value={form.name} onChange={e => upd('name', e.target.value)} placeholder="my-awesome-app" error={errors.name} hint="Must be unique and URL-safe" />
+              {form.provider === 'render' && (
+                <>
+                  <Input label="Service Name" value={form.name} onChange={e => upd('name', e.target.value)} placeholder="my-api" error={errors.name} required />
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Source — choose one</div>
-              </div>
+                  {renderOwners.length > 0 ? (
+                    <Select
+                      label="Owner ID"
+                      value={form.renderOwnerId}
+                      onChange={e => upd('renderOwnerId', e.target.value)}
+                      options={renderOwners.map(o => ({ value: o.id, label: o.name }))}
+                      error={errors.renderOwnerId}
+                    />
+                  ) : (
+                    <Input label="Owner ID" value={form.renderOwnerId} onChange={e => upd('renderOwnerId', e.target.value)} placeholder="usr-xxxxxxxx or tea-xxxxxxxx" error={errors.renderOwnerId} required />
+                  )}
 
-              <Input label="Repository URL" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <Select
+                      label="Runtime"
+                      value={form.renderRuntime}
+                      onChange={e => upd('renderRuntime', e.target.value)}
+                      options={RENDER_RUNTIMES.map(r => ({ value: r, label: r }))}
+                      error={errors.renderRuntime}
+                    />
+                    <Select
+                      label="Region"
+                      value={form.renderRegion}
+                      onChange={e => upd('renderRegion', e.target.value)}
+                      options={(selectedProvider?.regions || ['oregon']).map(r => ({ value: r, label: r }))}
+                      error={errors.renderRegion}
+                    />
+                  </div>
 
-              {/* GitHub repo picker for Vercel */}
+                  <Select
+                    label="Plan"
+                    value={form.renderPlan}
+                    onChange={e => upd('renderPlan', e.target.value)}
+                    options={RENDER_PLANS.map(p => ({ value: p, label: p }))}
+                    error={errors.renderPlan}
+                  />
+
+                  <Input label="Repository" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} required />
+                  <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" error={errors.branch} required />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <Input label="Build Command" value={form.buildCommand} onChange={e => upd('buildCommand', e.target.value)} placeholder="npm run build" />
+                    <Input label="Start Command" value={form.startCommand} onChange={e => upd('startCommand', e.target.value)} placeholder="npm start" />
+                  </div>
+                </>
+              )}
+
+              {form.provider === 'railway' && (
+                <>
+                  <Input label="Project Name" value={form.railwayProjectName} onChange={e => upd('railwayProjectName', e.target.value)} placeholder="my-railway-project" error={errors.railwayProjectName} required />
+
+                  <Input label="Repository" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} required />
+                  {form.repoUrl && (
+                    <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
+                  )}
+
+                  {railwayWorkspaces.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Team/Workspace (optional):</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {railwayWorkspaces.map(w => (
+                          <button key={w.id} onClick={() => upd('railwayTeamId', form.railwayTeamId === w.id ? '' : w.id)}
+                            style={{ padding: '6px 10px', background: form.railwayTeamId === w.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.railwayTeamId === w.id ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {w.name}
+                            {form.railwayTeamId === w.id && <CheckCircle size={11} color="var(--accent-blue)" style={{ marginLeft: 'auto' }} />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               {form.provider === 'vercel' && (
-                <div style={{ marginTop: -4, marginBottom: 4 }}>
+                <>
+                  <Input label="Project Name" value={form.name} onChange={e => upd('name', e.target.value)} placeholder="my-frontend" error={errors.name} required />
+
+                  <Input label="Repository" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} required />
+
                   {loadingRepos ? (
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Spinner size={11} color="var(--text-muted)" /> Loading connected repos...
                     </div>
                   ) : githubRepos.length > 0 ? (
-                    <div>
+                    <div style={{ marginTop: -4, marginBottom: 4 }}>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Or pick from connected GitHub repos:</div>
                       <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {githubRepos.map(r => (
@@ -371,66 +504,27 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                       </div>
                     </div>
                   ) : null}
-                </div>
-              )}
 
-              {/* Render owner picker */}
-              {form.provider === 'render' && renderOwners.length > 1 && (
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Workspace:</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {renderOwners.map(o => (
-                      <button key={o.id} onClick={() => upd('renderOwnerId', o.id)}
-                        style={{ padding: '6px 10px', background: form.renderOwnerId === o.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.renderOwnerId === o.id ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {o.name}
-                        {form.renderOwnerId === o.id && <CheckCircle size={11} color="var(--accent-blue)" style={{ marginLeft: 'auto' }} />}
-                      </button>
-                    ))}
+                  {form.repoUrl && (
+                    <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
+                  )}
+
+                  <Select
+                    label="Framework"
+                    value={form.vercelFramework}
+                    onChange={e => upd('vercelFramework', e.target.value)}
+                    options={[{ value: '', label: 'Select a framework' }, ...VERCEL_FRAMEWORKS.map(f => ({ value: f, label: f }))]}
+                    error={errors.vercelFramework}
+                  />
+
+                  <Input label="Root Directory" value={form.vercelRootDirectory} onChange={e => upd('vercelRootDirectory', e.target.value)} placeholder="./ (repo root)" />
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <Input label="Build Command" value={form.vercelBuildCommand} onChange={e => upd('vercelBuildCommand', e.target.value)} placeholder="npm run build" />
+                    <Input label="Output Directory" value={form.vercelOutputDirectory} onChange={e => upd('vercelOutputDirectory', e.target.value)} placeholder="dist" />
                   </div>
-                </div>
+                </>
               )}
-
-              {/* Railway workspace picker */}
-              {form.provider === 'railway' && railwayWorkspaces.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Team/Workspace (optional):</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {railwayWorkspaces.map(w => (
-                      <button key={w.id} onClick={() => upd('railwayTeamId', form.railwayTeamId === w.id ? '' : w.id)}
-                        style={{ padding: '6px 10px', background: form.railwayTeamId === w.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.railwayTeamId === w.id ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {w.name}
-                        {form.railwayTeamId === w.id && <CheckCircle size={11} color="var(--accent-blue)" style={{ marginLeft: 'auto' }} />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {form.repoUrl && (
-                <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
-              )}
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>or</span>
-                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-              </div>
-
-              <Input label="Docker Image" value={form.image} onChange={e => upd('image', e.target.value)} placeholder="nginx:latest" icon={<Package size={13} />} />
-
-              {selectedProvider?.regions && selectedProvider.regions.length > 0 && (
-                <Select
-                  label="Region"
-                  value={form.region}
-                  onChange={e => upd('region', e.target.value)}
-                  options={selectedProvider.regions.map(r => ({ value: r, label: r }))}
-                />
-              )}
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Input label="Build Command" value={form.buildCommand} onChange={e => upd('buildCommand', e.target.value)} placeholder="npm run build" />
-                <Input label="Start Command" value={form.startCommand} onChange={e => upd('startCommand', e.target.value)} placeholder="npm start" />
-              </div>
             </>
           )}
 
@@ -473,15 +567,34 @@ function DeployWizard({ providers, onClose, onDeployed }: {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[
                   { label: 'Provider', value: selectedProvider?.name },
-                  { label: 'Project', value: form.name },
-                  { label: 'Source', value: form.repoUrl || form.image || '—' },
-                  { label: 'Branch', value: form.repoUrl ? (form.branch || 'main') : '—' },
-                  { label: 'Region', value: form.region || 'default' },
+                  ...(form.provider === 'render' ? [
+                    { label: 'Service Name', value: form.name },
+                    { label: 'Owner ID', value: form.renderOwnerId },
+                    { label: 'Runtime', value: form.renderRuntime },
+                    { label: 'Region', value: form.renderRegion },
+                    { label: 'Plan', value: form.renderPlan },
+                    { label: 'Repository', value: form.repoUrl },
+                    { label: 'Branch', value: form.branch },
+                    { label: 'Build Command', value: form.buildCommand || '—' },
+                    { label: 'Start Command', value: form.startCommand || '—' },
+                  ] : []),
+                  ...(form.provider === 'railway' ? [
+                    { label: 'Project Name', value: form.railwayProjectName },
+                    { label: 'Repository', value: form.repoUrl },
+                  ] : []),
+                  ...(form.provider === 'vercel' ? [
+                    { label: 'Project Name', value: form.name },
+                    { label: 'Repository', value: form.repoUrl },
+                    { label: 'Framework', value: form.vercelFramework },
+                    { label: 'Root Directory', value: form.vercelRootDirectory || '—' },
+                    { label: 'Build Command', value: form.vercelBuildCommand || '—' },
+                    { label: 'Output Directory', value: form.vercelOutputDirectory || '—' },
+                  ] : []),
                   { label: 'Env vars', value: `${form.envVars.filter(e => e.key).length} variables` },
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>{row.label}</span>
-                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, fontFamily: row.label === 'Source' || row.label === 'Branch' ? 'var(--font-mono)' : undefined }}>{row.value}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, fontFamily: ['Repository', 'Branch', 'Build Command', 'Start Command', 'Root Directory', 'Output Directory'].includes(row.label) ? 'var(--font-mono)' : undefined }}>{row.value}</span>
                   </div>
                 ))}
               </div>
@@ -501,7 +614,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
               Next
             </Button>
           ) : (
-            <Button variant="primary" icon={<Play size={14} />} loading={deploying} onClick={deploy}>
+            <Button variant="primary" icon={<Play size={14} />} loading={deploying} disabled={!isValid()} onClick={deploy}>
               Deploy Now
             </Button>
           )}

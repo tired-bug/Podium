@@ -47,8 +47,8 @@ export class RenderProvider implements IProvider {
   async deploy(creds: Record<string, string>, opts: DeployOptions, _localId: string): Promise<DeployResult> {
     const c = this.client(creds.render_api_key);
 
-    // Resolve owner ID: use saved creds, or fetch the first available owner automatically
-    let ownerId = creds.render_owner_id;
+    // Resolve owner ID: prefer explicit opts.ownerId, then saved creds, then auto-fetch
+    let ownerId = opts.ownerId || creds.render_owner_id;
     if (!ownerId) {
       console.log('[render] No owner ID provided, fetching available owners...');
       const owners = await this.listOwners(creds.render_api_key);
@@ -59,7 +59,11 @@ export class RenderProvider implements IProvider {
       console.log(`[render] Auto-selected owner: id=${ownerId} name=${owners[0].name}`);
     }
 
-    console.log(`[render] Creating service name=${opts.name} ownerId=${ownerId} region=${opts.region}`);
+    const runtime = opts.runtime || 'node';
+    const plan = opts.plan || 'free';
+    const region = opts.region || 'oregon';
+
+    console.log(`[render] Creating service name=${opts.name} ownerId=${ownerId} region=${region} runtime=${runtime} plan=${plan}`);
 
     const envVars = opts.envVars
       ? Object.entries(opts.envVars).map(([key, value]) => ({ key, value }))
@@ -69,9 +73,17 @@ export class RenderProvider implements IProvider {
       type: 'web_service',
       name: opts.name,
       ownerId,
-      region: opts.region || 'oregon',
-      plan: 'free',
+      region,
       envVars,
+      serviceDetails: {
+        runtime,
+        plan,
+        region,
+        envSpecificDetails: {
+          buildCommand: opts.buildCommand || '',
+          startCommand: opts.startCommand || '',
+        },
+      },
     };
 
     if (opts.repoUrl) {

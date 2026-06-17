@@ -10,6 +10,19 @@ export interface DeployOptions {
   buildCommand?: string;
   startCommand?: string;
   ports?: number[];
+
+  // Render-specific
+  ownerId?: string;
+  runtime?: string;
+  plan?: string;
+
+  // Railway-specific
+  projectName?: string;
+
+  // Vercel-specific
+  framework?: string;
+  rootDirectory?: string;
+  outputDirectory?: string;
 }
 
 export interface DeployResult {

@@ -137,7 +137,6 @@ export default function LoginPage() {
   const { success, error: showError } = useToast();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('login');
-  const [needsSetup, setNeedsSetup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -157,14 +156,6 @@ export default function LoginPage() {
   useEffect(() => {
     if (!authLoading && user) navigate('/dashboard', { replace: true });
   }, [user, authLoading]);
-
-  // Only check setup after auth loading is done to avoid racing with token verification
-  useEffect(() => {
-    if (authLoading) return;
-    api.get('/api/auth/setup').then(({ data }) => {
-      if (data.needsSetup) { setNeedsSetup(true); setMode('signup'); }
-    }).catch(() => {});
-  }, [authLoading]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -189,16 +180,16 @@ export default function LoginPage() {
     if (!suEmail) errs.suEmail = 'Required';
     if (!suPw || suPw.length < 8) errs.suPw = 'Min 8 characters';
     if (suPw !== suConfirm) errs.suConfirm = 'Passwords do not match';
-    if (!needsSetup && !inviteCode) errs.inviteCode = 'Required';
+    if (!inviteCode) errs.inviteCode = 'Required';
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
     try {
       const { data } = await api.post('/api/auth/signup', {
         username: suUser, email: suEmail, password: suPw,
-        inviteCode: needsSetup ? undefined : inviteCode,
+        inviteCode,
       });
       login(data.token, data.user);
-      success(needsSetup ? 'Admin account created! Welcome to Podium.' : 'Account created!');
+      success('Account created!');
       navigate('/dashboard', { replace: true });
     } catch (err) { showError(parseApiError(err)); }
     finally { setLoading(false); }
@@ -278,45 +269,28 @@ export default function LoginPage() {
         overflowY: 'auto',
       }}>
 
-        {needsSetup && (
-          <div style={{
-            width: '100%', padding: '12px 16px', borderRadius: 10, marginBottom: 24,
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(168,85,247,0.15))',
-            border: '1px solid rgba(99,102,241,0.3)',
-            display: 'flex', alignItems: 'flex-start', gap: 10,
-          }}>
-            <Zap size={16} color="#818cf8" style={{ flexShrink: 0, marginTop: 1 }} />
-            <div>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#818cf8', marginBottom: 2 }}>First-time setup</div>
-              <div style={{ fontSize: '12px', color: 'rgba(160,160,200,0.8)' }}>Create your admin account to get started. No invite code needed.</div>
-            </div>
-          </div>
-        )}
-
         {}
-        {!needsSetup && (
-          <div style={{
-            width: '100%', display: 'flex', marginBottom: 28,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 12, padding: 4, gap: 4,
-          }}>
-            {(['login', 'signup'] as Mode[]).map(m => (
-              <button key={m} onClick={() => { setMode(m); setErrors({}); }}
-                style={{
-                  flex: 1, padding: '8px', borderRadius: 9,
-                  background: mode === m ? 'linear-gradient(135deg, rgba(99,102,241,0.8), rgba(168,85,247,0.8))' : 'transparent',
-                  color: mode === m ? '#fff' : 'rgba(160,160,200,0.6)',
-                  border: 'none', fontWeight: mode === m ? 700 : 400,
-                  fontSize: '13px', cursor: 'pointer', transition: 'all 200ms',
-                  fontFamily: 'var(--font-sans)',
-                  boxShadow: mode === m ? '0 0 20px rgba(99,102,241,0.3)' : 'none',
-                }}>
-                {m === 'login' ? 'Sign In' : 'Create Account'}
-              </button>
-            ))}
-          </div>
-        )}
+        <div style={{
+          width: '100%', display: 'flex', marginBottom: 28,
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 12, padding: 4, gap: 4,
+        }}>
+          {(['login', 'signup'] as Mode[]).map(m => (
+            <button key={m} onClick={() => { setMode(m); setErrors({}); }}
+              style={{
+                flex: 1, padding: '8px', borderRadius: 9,
+                background: mode === m ? 'linear-gradient(135deg, rgba(99,102,241,0.8), rgba(168,85,247,0.8))' : 'transparent',
+                color: mode === m ? '#fff' : 'rgba(160,160,200,0.6)',
+                border: 'none', fontWeight: mode === m ? 700 : 400,
+                fontSize: '13px', cursor: 'pointer', transition: 'all 200ms',
+                fontFamily: 'var(--font-sans)',
+                boxShadow: mode === m ? '0 0 20px rgba(99,102,241,0.3)' : 'none',
+              }}>
+              {m === 'login' ? 'Sign In' : 'Create Account'}
+            </button>
+          ))}
+        </div>
 
         {}
         {mode === 'login' && (
@@ -349,17 +323,10 @@ export default function LoginPage() {
         {}
         {mode === 'signup' && (
           <form onSubmit={handleSignup} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {!needsSetup && (
-              <div style={{ marginBottom: 8 }}>
-                <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#f0f0ff', margin: 0 }}>Create account</h2>
-                <p style={{ fontSize: '13px', color: 'rgba(160,160,200,0.6)', marginTop: 4 }}>Join your team workspace</p>
-              </div>
-            )}
-            {needsSetup && (
-              <div style={{ marginBottom: 8 }}>
-                <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#f0f0ff', margin: 0 }}>Create Admin Account</h2>
-              </div>
-            )}
+            <div style={{ marginBottom: 8 }}>
+              <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#f0f0ff', margin: 0 }}>Create account</h2>
+              <p style={{ fontSize: '13px', color: 'rgba(160,160,200,0.6)', marginTop: 4 }}>Join your team workspace</p>
+            </div>
             <AuthInput label="USERNAME" placeholder="devops-admin" value={suUser}
               onChange={e => setSuUser(e.target.value)} error={errors.suUser} />
             <AuthInput label="EMAIL" type="email" placeholder="you@company.com" value={suEmail}
@@ -372,10 +339,8 @@ export default function LoginPage() {
             </div>
             <AuthInput label="CONFIRM PASSWORD" type="password" placeholder="Repeat password"
               value={suConfirm} onChange={e => setSuConfirm(e.target.value)} error={errors.suConfirm} />
-            {!needsSetup && (
-              <AuthInput label="INVITE CODE" placeholder="XXXXXXXXXXXXXXXX" value={inviteCode}
-                onChange={e => setInviteCode(e.target.value)} error={errors.inviteCode} />
-            )}
+            <AuthInput label="INVITE CODE" placeholder="XXXXXXXXXXXXXXXX" value={inviteCode}
+              onChange={e => setInviteCode(e.target.value)} error={errors.inviteCode} />
             <button type="submit" disabled={loading} style={{
               width: '100%', padding: '12px', borderRadius: 10, marginTop: 4,
               background: loading ? 'rgba(99,102,241,0.4)' : 'linear-gradient(135deg, #6366f1, #a855f7)',
@@ -384,7 +349,7 @@ export default function LoginPage() {
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               transition: 'all 200ms', boxShadow: loading ? 'none' : '0 0 24px rgba(99,102,241,0.4)',
             }}>
-              {loading ? 'Creating account...' : <><span>{needsSetup ? 'Create Admin Account' : 'Create Account'}</span><ArrowRight size={15} /></>}
+              {loading ? 'Creating account...' : <><span>Create Account</span><ArrowRight size={15} /></>}
             </button>
           </form>
         )}

@@ -5,30 +5,6 @@ import { signToken, hashPassword, comparePassword, requireAuth, requireRole, Aut
 
 const router = Router();
 
-// ── Setup status ─────────────────────────────────────────────────────────────
-// Returns needsSetup:true ONLY if no admin user exists yet.
-// Checks the settings flag first (fast path), then falls back to user count.
-router.get('/setup', (_req, res) => {
-  const db = getDb();
-
-  // Check the persistent initialization flag
-  const initFlag = db.prepare("SELECT value FROM settings WHERE key='app_initialized'").get() as any;
-  if (initFlag?.value === 'true') {
-    return res.json({ needsSetup: false });
-  }
-
-  // Fallback: check if any admin user exists
-  const adminCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role='admin'").get() as { c: number };
-  if (adminCount.c > 0) {
-    // Lazily set the flag so future checks are fast
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
-    return res.json({ needsSetup: false });
-  }
-
-  return res.json({ needsSetup: true });
-});
-
-// ── Login ─────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -67,28 +43,14 @@ router.post('/signup', async (req, res) => {
 
   const db = getDb();
 
-  // Determine if this is the very first user (setup flow)
-  const initFlag = db.prepare("SELECT value FROM settings WHERE key='app_initialized'").get() as any;
-  const isInitialized = initFlag?.value === 'true';
-
-  const adminCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role='admin'").get() as { c: number };
-  const isFirst = !isInitialized && adminCount.c === 0;
-
-  let role = 'viewer';
-
-  if (!isFirst) {
-    // App is already initialized — require an invite code
-    if (!inviteCode) return res.status(400).json({ error: 'Invite code required' });
-    const invite = db.prepare(`
-      SELECT * FROM invites WHERE code = ? AND used_by IS NULL AND expires_at > datetime('now')
-    `).get(inviteCode) as any;
-    if (!invite) return res.status(400).json({ error: 'Invalid or expired invite code' });
-    role = invite.role;
-    db.prepare("UPDATE invites SET used_by = ?, used_at = datetime('now') WHERE id = ?")
-      .run('pending', invite.id);
-  } else {
-    role = 'admin';
-  }
+  if (!inviteCode) return res.status(400).json({ error: 'Invite code required' });
+  const invite = db.prepare(`
+    SELECT * FROM invites WHERE code = ? AND used_by IS NULL AND expires_at > datetime('now')
+  `).get(inviteCode) as any;
+  if (!invite) return res.status(400).json({ error: 'Invalid or expired invite code' });
+  const role = invite.role;
+  db.prepare("UPDATE invites SET used_by = ?, used_at = datetime('now') WHERE id = ?")
+    .run('pending', invite.id);
 
   const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
   if (existing) return res.status(409).json({ error: 'Username or email already taken' });
@@ -98,15 +60,8 @@ router.post('/signup', async (req, res) => {
   db.prepare('INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?)')
     .run(id, username, email, hash, role);
 
-  if (!isFirst) {
-    // Update invite to point to the real user id
-    db.prepare("UPDATE invites SET used_by = ? WHERE used_by = 'pending'").run(id);
-  } else {
-    // Mark app as initialized — this MUST happen after first admin creation
-    // and MUST be persisted to Turso via the write queue
-    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
-    console.log('[auth] ✓ First admin created — app marked as initialized');
-  }
+  // Update invite to point to the real user id
+  db.prepare("UPDATE invites SET used_by = ? WHERE used_by = 'pending'").run(id);
 
   const token = signToken({ sub: id, username, role });
   return res.status(201).json({

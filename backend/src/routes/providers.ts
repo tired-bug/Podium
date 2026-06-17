@@ -50,7 +50,10 @@ router.get('/', requireAuth, (_req, res) => {
 
 // POST /api/providers/deploy — create a cloud deployment
 router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (req: any, res: Response) => {
-  const { provider, name, repoUrl, branch, image, region, envVars, buildCommand, startCommand } = req.body;
+  const {
+    provider, name, repoUrl, branch, image, region, envVars, buildCommand, startCommand,
+    ownerId, runtime, plan, projectName, framework, rootDirectory, outputDirectory,
+  } = req.body;
 
   if (!provider || !name) {
     return res.status(400).json({ error: 'provider and name are required' });
@@ -82,7 +85,7 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
       VALUES (?, ?, ?, ?, 'queued', ?, '[]', ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       localId, provider, name, region || null,
-      JSON.stringify({ repoUrl, branch, image, envVars, buildCommand, startCommand }),
+      JSON.stringify({ repoUrl, branch, image, envVars, buildCommand, startCommand, ownerId, runtime, plan, projectName, framework, rootDirectory, outputDirectory }),
       repoUrl ? 'git' : (image ? 'docker' : 'unknown'),
       repoUrl || null,
       image || null
@@ -96,6 +99,7 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
         console.log(`[providers] Calling ${provider}.deploy() for localId=${localId}`);
         const result = await providerManager.deploy(provider, creds, {
           name, repoUrl, branch, image, region, envVars: envVars || {}, buildCommand, startCommand,
+          ownerId, runtime, plan, projectName, framework, rootDirectory, outputDirectory,
         }, localId);
 
         const providerDeployId = result.deploymentId;
@@ -317,6 +321,8 @@ router.delete('/:id/credentials', requireAuth, requireRole('admin'), (req, res) 
   }
 });
 
+export default router;
+
 // ── Orchestration endpoints ───────────────────────────────────────────────────
 
 // GET /api/providers/vercel/repos — list GitHub repos connected to Vercel
@@ -426,5 +432,3 @@ router.post('/sync', requireAuth, requireRole('admin', 'developer'), async (req:
     res.status(500).json({ error: e.message });
   }
 });
-
-export default router;
