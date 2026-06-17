@@ -15,14 +15,15 @@ export interface ProviderMeta {
   regions?: string[];
 }
 
-const PROVIDER_META: Record<string, ProviderMeta> = {
+export const PROVIDER_META: Record<string, ProviderMeta> = {
   render: {
     id: 'render', name: 'Render', tier: 'free', isDemo: false,
     description: 'Deploy web services, static sites, and databases with zero DevOps on Render\'s global infrastructure.',
     capabilities: ['Web Services', 'Static Sites', 'Databases', 'Cron Jobs', 'Private Services'],
     credentialKeys: [
       { key: 'render_api_key', label: 'API Key', placeholder: 'rnd_xxxxxxxxxxxx', required: true, masked: true, hint: 'Found in Render Dashboard → Account → API Keys' },
-      { key: 'render_owner_id', label: 'Owner ID', placeholder: 'usr_xxxxxxxxxxxx or tea_xxxxxxxxxxxx', required: true, hint: 'Your user or team ID from Render Dashboard' },
+      // render_owner_id is optional — Podium auto-fetches available owners if not provided
+      { key: 'render_owner_id', label: 'Owner / Workspace ID (optional)', placeholder: 'Auto-detected from API key', required: false, hint: 'Leave blank to auto-select your default workspace. Set to a specific team ID to deploy into that workspace.' },
     ],
     regions: ['oregon', 'ohio', 'virginia', 'frankfurt', 'singapore'],
   },
@@ -32,7 +33,7 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
     capabilities: ['Auto-deploy from Git', 'Databases', 'Private Networking', 'Cron Jobs', 'Volume Storage'],
     credentialKeys: [
       { key: 'railway_token', label: 'API Token', placeholder: 'Your Railway API token', required: true, masked: true, hint: 'Found in Railway Dashboard → Account Settings → API Tokens' },
-      { key: 'railway_project_id', label: 'Project ID (optional)', placeholder: 'Leave empty to create new project', required: false, hint: 'Deploy into an existing Railway project' },
+      { key: 'railway_project_id', label: 'Project ID (optional)', placeholder: 'Leave empty to create new project', required: false, hint: 'Deploy into an existing Railway project. Leave blank to create a new project automatically.' },
     ],
     regions: ['us-west1', 'us-east4', 'europe-west4', 'asia-southeast1'],
   },
@@ -42,7 +43,7 @@ const PROVIDER_META: Record<string, ProviderMeta> = {
     capabilities: ['Edge Network', 'Serverless Functions', 'Preview Deployments', 'Analytics', 'DX Platform'],
     credentialKeys: [
       { key: 'vercel_token', label: 'API Token', placeholder: 'Your Vercel API token', required: true, masked: true, hint: 'Found in Vercel Dashboard → Settings → Tokens' },
-      { key: 'vercel_team_id', label: 'Team ID (optional)', placeholder: 'team_xxxxxxxxxxxx', required: false, hint: 'Required for team deployments. Leave empty for personal account.' },
+      { key: 'vercel_team_id', label: 'Team ID (optional)', placeholder: 'team_xxxxxxxxxxxx', required: false, hint: 'Required for team deployments. Leave empty for personal account. Found in Team Settings → General.' },
     ],
     regions: ['iad1', 'sfo1', 'fra1', 'sin1', 'hnd1'],
   },
@@ -133,8 +134,14 @@ class ProviderManager {
   async deleteDeployment(id: string, credentials: Record<string, string>, deploymentId: string): Promise<void> {
     return this.get(id).deleteDeployment(credentials, deploymentId);
   }
+
+  // Provider-specific extras
+  async listRenderOwners(apiKey: string): Promise<Array<{ id: string; name: string; type: string; email?: string }>> {
+    const provider = this.get('render') as RenderProvider;
+    return provider.listOwners(apiKey);
+  }
 }
 
 // Singleton
 export const providerManager = new ProviderManager();
-export { PROVIDER_META };
+//export { PROVIDER_META };

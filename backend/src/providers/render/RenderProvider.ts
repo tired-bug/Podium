@@ -16,7 +16,7 @@ export class RenderProvider implements IProvider {
 
   async connect(creds: Record<string, string>) {
     try {
-      const r = await this.client(creds.render_api_key).get('/owners?limit=1');
+      const r = await this.client(creds.render_api_key).get('/owners?limit=20');
       if (r.status === 200) return { ok: true };
       return { ok: false, error: 'Unexpected response from Render API' };
     } catch (e: any) {
@@ -24,11 +24,42 @@ export class RenderProvider implements IProvider {
     }
   }
 
+  /**
+   * Fetch all Render owners/workspaces for the given API key.
+   * Returns array of { id, name, type, email }.
+   */
+  async listOwners(apiKey: string): Promise<Array<{ id: string; name: string; type: string; email?: string }>> {
+    const r = await this.client(apiKey).get('/owners?limit=20').catch((e: any) => {
+      throw new Error(e?.response?.data?.message || e.message || 'Failed to list Render owners');
+    });
+
+    return (r.data || []).map((item: any) => {
+      const owner = item.owner || item;
+      return {
+        id: owner.id,
+        name: owner.name,
+        type: owner.type || 'user',
+        email: owner.email,
+      };
+    });
+  }
+
   async deploy(creds: Record<string, string>, opts: DeployOptions, _localId: string): Promise<DeployResult> {
     const c = this.client(creds.render_api_key);
-    const ownerId = creds.render_owner_id;
 
-    console.log(`[render] Creating service name=${opts.name} region=${opts.region}`);
+    // Resolve owner ID: use saved creds, or fetch the first available owner automatically
+    let ownerId = creds.render_owner_id;
+    if (!ownerId) {
+      console.log('[render] No owner ID provided, fetching available owners...');
+      const owners = await this.listOwners(creds.render_api_key);
+      if (owners.length === 0) {
+        throw new Error('No Render owners/workspaces found for this API key');
+      }
+      ownerId = owners[0].id;
+      console.log(`[render] Auto-selected owner: id=${ownerId} name=${owners[0].name}`);
+    }
+
+    console.log(`[render] Creating service name=${opts.name} ownerId=${ownerId} region=${opts.region}`);
 
     const envVars = opts.envVars
       ? Object.entries(opts.envVars).map(([key, value]) => ({ key, value }))
@@ -52,13 +83,12 @@ export class RenderProvider implements IProvider {
     } else if (opts.image) {
       payload.image = { ownerId, imagePath: opts.image };
     } else {
-      throw new Error('Render requires either a repoUrl or an image');
+      throw new Error('Render requires either a repoUrl or a Docker image');
     }
 
-    // Throws on API error — caller (providers route) catches and marks deployment as failed
     const r = await c.post('/services', payload).catch((e: any) => {
       const msg = e?.response?.data?.message || e?.response?.data?.errors?.[0] || e.message || 'Render API error';
-      console.error(`[render] Service create failed: ${msg}`, e?.response?.data);
+      console.error(`[render] Service create failed: ${msg}`, JSON.stringify(e?.response?.data));
       throw new Error(msg);
     });
 
@@ -77,7 +107,6 @@ export class RenderProvider implements IProvider {
   async getStatus(creds: Record<string, string>, deploymentId: string): Promise<ProviderStatus> {
     console.log(`[render] getStatus serviceId=${deploymentId}`);
 
-    // Throws on error — caller decides how to handle
     const r = await this.client(creds.render_api_key).get(`/services/${deploymentId}`).catch((e: any) => {
       const msg = e?.response?.data?.message || e.message;
       console.error(`[render] getStatus failed: ${msg}`);
@@ -105,7 +134,6 @@ export class RenderProvider implements IProvider {
   async getLogs(creds: Record<string, string>, deploymentId: string): Promise<ProviderLog[]> {
     console.log(`[render] getLogs serviceId=${deploymentId}`);
 
-    // Get latest deploy for this service
     const deploys = await this.client(creds.render_api_key)
       .get(`/services/${deploymentId}/deploys?limit=1`)
       .catch((e: any) => {

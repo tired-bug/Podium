@@ -5,11 +5,30 @@ import { signToken, hashPassword, comparePassword, requireAuth, requireRole, Aut
 
 const router = Router();
 
+// ── Setup status ─────────────────────────────────────────────────────────────
+// Returns needsSetup:true ONLY if no admin user exists yet.
+// Checks the settings flag first (fast path), then falls back to user count.
 router.get('/setup', (_req, res) => {
-  const count = getDb().prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
-  res.json({ needsSetup: count.c === 0 });
+  const db = getDb();
+
+  // Check the persistent initialization flag
+  const initFlag = db.prepare("SELECT value FROM settings WHERE key='app_initialized'").get() as any;
+  if (initFlag?.value === 'true') {
+    return res.json({ needsSetup: false });
+  }
+
+  // Fallback: check if any admin user exists
+  const adminCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role='admin'").get() as { c: number };
+  if (adminCount.c > 0) {
+    // Lazily set the flag so future checks are fast
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
+    return res.json({ needsSetup: false });
+  }
+
+  return res.json({ needsSetup: true });
 });
 
+// ── Login ─────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -36,6 +55,7 @@ router.post('/login', async (req, res) => {
   });
 });
 
+// ── Signup / First-time admin creation ───────────────────────────────────────
 router.post('/signup', async (req, res) => {
   const { username, email, password, inviteCode } = req.body;
   if (!username || !email || !password) {
@@ -46,11 +66,18 @@ router.post('/signup', async (req, res) => {
   }
 
   const db = getDb();
-  const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number };
-  const isFirst = userCount.c === 0;
+
+  // Determine if this is the very first user (setup flow)
+  const initFlag = db.prepare("SELECT value FROM settings WHERE key='app_initialized'").get() as any;
+  const isInitialized = initFlag?.value === 'true';
+
+  const adminCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role='admin'").get() as { c: number };
+  const isFirst = !isInitialized && adminCount.c === 0;
+
   let role = 'viewer';
 
   if (!isFirst) {
+    // App is already initialized — require an invite code
     if (!inviteCode) return res.status(400).json({ error: 'Invite code required' });
     const invite = db.prepare(`
       SELECT * FROM invites WHERE code = ? AND used_by IS NULL AND expires_at > datetime('now')
@@ -71,9 +98,14 @@ router.post('/signup', async (req, res) => {
   db.prepare('INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?)')
     .run(id, username, email, hash, role);
 
-  
   if (!isFirst) {
+    // Update invite to point to the real user id
     db.prepare("UPDATE invites SET used_by = ? WHERE used_by = 'pending'").run(id);
+  } else {
+    // Mark app as initialized — this MUST happen after first admin creation
+    // and MUST be persisted to Turso via the write queue
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
+    console.log('[auth] ✓ First admin created — app marked as initialized');
   }
 
   const token = signToken({ sub: id, username, role });
@@ -83,6 +115,7 @@ router.post('/signup', async (req, res) => {
   });
 });
 
+// ── Current user ─────────────────────────────────────────────────────────────
 router.get('/me', requireAuth, (req: AuthRequest, res: Response) => {
   const user = getDb()
     .prepare('SELECT id, username, email, role, last_login, created_at FROM users WHERE id = ?')
@@ -91,6 +124,7 @@ router.get('/me', requireAuth, (req: AuthRequest, res: Response) => {
   return res.json(user);
 });
 
+// ── User management (admin only) ──────────────────────────────────────────────
 router.get('/users', requireAuth, requireRole('admin'), (_req, res: Response) => {
   const users = getDb()
     .prepare('SELECT id, username, email, role, last_login, created_at FROM users ORDER BY created_at ASC')

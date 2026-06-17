@@ -1,7 +1,7 @@
-
 import path from 'path';
 import fs from 'fs';
 
+// Suppress Node.js sqlite experimental warnings
 const _origEmit = process.emitWarning.bind(process);
 (process as any).emitWarning = (msg: string, ...args: any[]) => {
   if (typeof msg === 'string' && msg.includes('SQLite')) return;
@@ -23,6 +23,7 @@ let _local: any = null;
 let _turso: any = null;
 let _writeQueue: Array<{ sql: string; params: any[] }> = [];
 let _flushing = false;
+let _useTurso = false;
 
 function getDbPath(): string {
   const dataDir = process.env.PODIUM_DATA_DIR || path.join(process.cwd(), 'data');
@@ -54,9 +55,9 @@ function createShim(local: any): SyncDb {
   return {
     exec(sql: string) {
       local.exec(sql);
-      if (_turso) {
+      if (_turso && _useTurso) {
         _turso.executeMultiple(sql).catch((e: any) => {
-          if (!String(e).includes('already exists')) {
+          if (!String(e).includes('already exists') && !String(e).includes('duplicate column')) {
             console.error('[turso] exec error:', e);
           }
         });
@@ -75,7 +76,7 @@ function createShim(local: any): SyncDb {
         },
         run(...params: any[]) {
           const result = localStmt.run(...params);
-          if (isWrite && _turso) {
+          if (isWrite && _turso && _useTurso) {
             _writeQueue.push({ sql, params });
           }
           return result;
@@ -91,6 +92,16 @@ export function getDb(): SyncDb {
 }
 
 export async function initDb(): Promise<void> {
+  const tursoUrl   = process.env.TURSO_DATABASE_URL;
+  const tursoToken = process.env.TURSO_AUTH_TOKEN;
+
+  // ── CRITICAL: Fail fast if Turso env vars are missing in production ──────
+  if (process.env.NODE_ENV === 'production' && (!tursoUrl || !tursoToken)) {
+    console.error('[db] FATAL: TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set in production.');
+    console.error('[db] Refusing to start with local SQLite in production — data would be lost on redeploy.');
+    process.exit(1);
+  }
+
   const sqlite = require('node:sqlite');
   const dbPath = getDbPath();
   _local = new sqlite.DatabaseSync(dbPath);
@@ -98,32 +109,69 @@ export async function initDb(): Promise<void> {
   _local.exec('PRAGMA foreign_keys = ON');
   _local.exec('PRAGMA synchronous = NORMAL');
 
-  const tursoUrl   = process.env.TURSO_DATABASE_URL;
-  const tursoToken = process.env.TURSO_AUTH_TOKEN;
-
   if (tursoUrl && tursoToken) {
     try {
       const { createClient } = require('@libsql/client');
       _turso = createClient({ url: tursoUrl, authToken: tursoToken });
+
+      // Verify connection works
+      await _turso.execute('SELECT 1');
+      _useTurso = true;
+
+      console.log('[db] ✓ Turso connection established');
+      console.log(`[db] Database URL: ${tursoUrl}`);
+
+      // Apply schema to Turso first so tables exist before we sync
+      await applySchemaToTurso();
       await syncFromTurso();
-      console.log('[turso] Connected and synced ✓');
+      console.log('[turso] ✓ Synced from Turso');
     } catch (err) {
-      console.error('[turso] Connection failed, running local-only:', err);
+      console.error('[turso] ✗ Connection failed:', err);
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[db] FATAL: Cannot connect to Turso in production. Exiting.');
+        process.exit(1);
+      }
+      console.warn('[db] Falling back to local SQLite (development only)');
       _turso = null;
+      _useTurso = false;
     }
   } else {
-    console.log('[db] No Turso credentials — using local SQLite only');
+    console.log('[db] No Turso credentials — using local SQLite');
+    _useTurso = false;
   }
 
   applySchema();
-  applyMigrations(); // NEW: run column migrations after schema
+  applyMigrations();
   applyDefaults();
   migrateModels();
-  applyExtendedSchema();
 
+  // Print startup diagnostics
+  await printDiagnostics();
+
+  // Seed demo data only in development and only if no real data exists
   if (process.env.NODE_ENV === 'development') seedDemoData();
 
-  console.log(`[db] Ready — ${dbPath}`);
+  console.log(`[db] ✓ Ready — ${_useTurso ? 'Turso' : 'local SQLite'} @ ${dbPath}`);
+}
+
+async function applySchemaToTurso() {
+  if (!_turso) return;
+
+  const schemaSql = getSchemaSQL();
+  const statements = schemaSql
+    .split(';')
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+
+  for (const stmt of statements) {
+    try {
+      await _turso.execute(stmt);
+    } catch (e: any) {
+      if (!String(e).includes('already exists') && !String(e).includes('duplicate column')) {
+        console.warn(`[turso] Schema stmt warning: ${e.message}`);
+      }
+    }
+  }
 }
 
 async function syncFromTurso() {
@@ -132,7 +180,7 @@ async function syncFromTurso() {
     'users', 'invites', 'deployments', 'cloud_deployments',
     'metrics', 'build_logs', 'ai_conversations', 'anomalies',
     'settings', 'selfhosted_deployments', 'github_repos',
-    'user_profiles', 'notifications',
+    'user_profiles', 'notifications', 'domain_bindings',
   ];
 
   for (const table of TABLES) {
@@ -157,8 +205,30 @@ async function syncFromTurso() {
   }
 }
 
-function applySchema() {
-  _local.exec(`
+async function printDiagnostics() {
+  const db = createShim(_local);
+  try {
+    const userCount = (db.prepare('SELECT COUNT(*) as c FROM users').get() as any)?.c ?? 0;
+    const deployCount = (db.prepare('SELECT COUNT(*) as c FROM cloud_deployments').get() as any)?.c ?? 0;
+    const initialized = (db.prepare("SELECT value FROM settings WHERE key='app_initialized'").get() as any)?.value;
+
+    console.log('');
+    console.log('╔══════════════════════════════════════╗');
+    console.log('║       Podium Startup Diagnostics     ║');
+    console.log('╠══════════════════════════════════════╣');
+    console.log(`║  DB Provider : ${(_useTurso ? 'Turso (remote)' : 'Local SQLite  ').padEnd(22)}║`);
+    console.log(`║  Initialized : ${(initialized === 'true' ? 'Yes' : 'No').padEnd(22)}║`);
+    console.log(`║  Users       : ${String(userCount).padEnd(22)}║`);
+    console.log(`║  Deployments : ${String(deployCount).padEnd(22)}║`);
+    console.log('╚══════════════════════════════════════╝');
+    console.log('');
+  } catch (e) {
+    console.warn('[db] Could not print diagnostics:', e);
+  }
+}
+
+function getSchemaSQL(): string {
+  return `
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE,
@@ -322,26 +392,30 @@ function applySchema() {
       deployment_id TEXT NOT NULL,
       port TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
+    )
+  `;
+}
+
+function applySchema() {
+  _local.exec(getSchemaSQL());
 }
 
 /**
- * Adds columns to existing tables that were created before the schema was updated.
- * Uses ALTER TABLE ... ADD COLUMN which is safe to call even if the column exists
- * by wrapping in try/catch.
+ * Non-destructive column migrations. Safe to run on every startup.
  */
 function applyMigrations() {
   const migrations = [
     `ALTER TABLE cloud_deployments ADD COLUMN provider_deployment_id TEXT`,
     `ALTER TABLE cloud_deployments ADD COLUMN provider_error TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN source_type TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN repo_url TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN docker_image TEXT`,
   ];
   for (const sql of migrations) {
     try {
       _local.exec(sql);
-      console.log(`[db] Migration applied: ${sql}`);
     } catch (_e: any) {
-      // Column already exists — this is expected on subsequent starts
+      // Column already exists — expected on subsequent starts, safe to ignore
     }
   }
 }
@@ -367,6 +441,7 @@ function applyDefaults() {
     ['cloudflare_tunnel_id', ''],
     ['cloudflare_tunnel_token', ''],
     ['cloudflare_tunnel_domain', ''],
+    // app_initialized is NOT set here — it is only set after first admin creation
   ];
   for (const [k, v] of defaults) stmt.run(k, v);
 }
@@ -376,7 +451,9 @@ function migrateModels() {
   const row = _local.prepare("SELECT value FROM settings WHERE key='groq_model'").get() as any;
   if (row?.value && DEPRECATED.includes(row.value)) {
     _local.prepare("UPDATE settings SET value='llama-3.3-70b-versatile' WHERE key='groq_model'").run();
-    if (_turso) _writeQueue.push({ sql: "UPDATE settings SET value='llama-3.3-70b-versatile' WHERE key='groq_model'", params: [] });
+    if (_turso && _useTurso) {
+      _writeQueue.push({ sql: "UPDATE settings SET value='llama-3.3-70b-versatile' WHERE key='groq_model'", params: [] });
+    }
     console.log(`[db] Migrated deprecated model "${row.value}" → llama-3.3-70b-versatile`);
   }
 }
@@ -386,6 +463,10 @@ export function ensureExtendedSchema(): void {
 }
 
 function seedDemoData(): void {
+  // Only seed if no users exist (truly first run) AND app is not initialized
+  const userCount = (_local.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c;
+  if (userCount > 0) return;
+
   const row = _local.prepare('SELECT COUNT(*) as c FROM deployments').get() as { c: number };
   if (row.c > 0) return;
 
@@ -415,8 +496,4 @@ function seedDemoData(): void {
 
   const lIns = _local.prepare('INSERT INTO build_logs (deployment_id, level, message) VALUES (?, ?, ?)');
   for (const d of demos) lIns.run(d.id, 'info', `Deployment "${d.name}" created (demo mode)`);
-}
-
-function applyExtendedSchema() {
-  // no-op kept for compatibility
 }

@@ -99,7 +99,33 @@ function ConnectionWizard({
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const update = (k: string, v: string) => setValues(prev => ({ ...prev, [k]: v }));
+  const [renderOwners, setRenderOwners] = useState<Array<{ id: string; name: string; type: string }>>([]);
+  const [fetchingOwners, setFetchingOwners] = useState(false);
+
+  const update = (k: string, v: string) => {
+    setValues(prev => ({ ...prev, [k]: v }));
+    // When Render API key changes, auto-fetch available owners
+    if (provider.id === 'render' && k === 'render_api_key' && v.length > 10) {
+      fetchRenderOwners(v);
+    }
+  };
+
+  const fetchRenderOwners = async (apiKey?: string) => {
+    if (provider.id !== 'render') return;
+    setFetchingOwners(true);
+    try {
+      // Save API key temporarily so backend can use it
+      if (apiKey) {
+        await api.post('/api/providers/render/credentials', { render_api_key: apiKey });
+      }
+      const r = await api.get('/api/providers/render/owners');
+      setRenderOwners(r.data || []);
+    } catch {
+      setRenderOwners([]);
+    } finally {
+      setFetchingOwners(false);
+    }
+  };
 
   const copyToClip = (text: string, key: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -209,6 +235,44 @@ function ConnectionWizard({
               {provider.credentialKeys.map(k => {
                 const showVal = show[k.key];
                 const isMasked = !values[k.key] && !!provider.credentialsMasked[k.key];
+
+                // Render: show owner dropdown for render_owner_id
+                if (provider.id === 'render' && k.key === 'render_owner_id') {
+                  return (
+                    <div key={k.key}>
+                      <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>
+                        {k.label}
+                      </label>
+                      {fetchingOwners ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', color: 'var(--text-muted)', fontSize: '13px' }}>
+                          <Spinner size={12} color="var(--accent-blue)" /> Fetching workspaces…
+                        </div>
+                      ) : renderOwners.length > 0 ? (
+                        <select
+                          value={values[k.key] || ''}
+                          onChange={e => setValues(prev => ({ ...prev, [k.key]: e.target.value }))}
+                          style={{ width: '100%', padding: '10px 14px', background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '14px', fontFamily: 'var(--font-sans)', outline: 'none', cursor: 'pointer' }}
+                        >
+                          <option value="">Auto-select default workspace</option>
+                          {renderOwners.map(o => (
+                            <option key={o.id} value={o.id}>{o.name} ({o.type}) — {o.id}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <Input
+                          label=""
+                          type="text"
+                          value={isMasked ? '' : (values[k.key] || '')}
+                          onChange={e => setValues(prev => ({ ...prev, [k.key]: e.target.value }))}
+                          placeholder={isMasked ? '••••• (leave empty to keep current)' : 'Enter API key above to auto-populate'}
+                          hint={k.hint}
+                        />
+                      )}
+                      <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>{k.hint}</p>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={k.key}>
                     <Input
