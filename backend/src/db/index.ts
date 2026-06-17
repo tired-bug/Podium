@@ -109,6 +109,12 @@ export async function initDb(): Promise<void> {
   _local.exec('PRAGMA foreign_keys = ON');
   _local.exec('PRAGMA synchronous = NORMAL');
 
+  // Local schema must exist BEFORE we sync from Turso, otherwise every
+  // INSERT OR REPLACE during sync fails with "no such table" and is
+  // silently swallowed, leaving the local DB empty even though Turso has data.
+  applySchema();
+  applyMigrations();
+
   if (tursoUrl && tursoToken) {
     try {
       const { createClient } = require('@libsql/client');
@@ -140,8 +146,6 @@ export async function initDb(): Promise<void> {
     _useTurso = false;
   }
 
-  applySchema();
-  applyMigrations();
   applyDefaults();
   migrateModels();
 
@@ -198,9 +202,7 @@ async function syncFromTurso() {
       }
       console.log(`[turso] Synced ${result.rows.length} rows from ${table}`);
     } catch (e: any) {
-      if (!String(e).includes('no such table')) {
-        console.error(`[turso] Sync error for ${table}:`, e);
-      }
+      console.error(`[turso] Sync error for ${table}:`, e?.message || e);
     }
   }
 }
