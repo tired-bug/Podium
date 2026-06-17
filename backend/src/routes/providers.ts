@@ -317,8 +317,6 @@ router.delete('/:id/credentials', requireAuth, requireRole('admin'), (req, res) 
   }
 });
 
-export default router;
-
 // ── Orchestration endpoints ───────────────────────────────────────────────────
 
 // GET /api/providers/vercel/repos — list GitHub repos connected to Vercel
@@ -428,3 +426,5 @@ router.post('/sync', requireAuth, requireRole('admin', 'developer'), async (req:
     res.status(500).json({ error: e.message });
   }
 });
+
+export default router;

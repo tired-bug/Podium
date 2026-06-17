@@ -140,30 +140,35 @@ class ProviderManager {
     const provider = this.get('render') as RenderProvider;
     return provider.listOwners(apiKey);
   }
-
-  async listGithubRepos(apiKey: string, teamId?: string): Promise<Array<{ id: number; fullName: string; private: boolean; defaultBranch: string }>> {
-    const provider = this.get('vercel') as VercelProvider;
-    return provider.listGithubRepos({ vercel_token: apiKey, vercel_team_id: teamId || '' });
-  }
-
-  async listRailwayWorkspaces(token: string): Promise<Array<{ id: string; name: string }>> {
-    const provider = this.get('railway') as RailwayProvider;
-    return provider.listWorkspaces(token);
-  }
-
-  async listRailwayProjects(token: string): Promise<Array<{ id: string; name: string }>> {
-    const provider = this.get('railway') as RailwayProvider;
-    return provider.listProjects(token);
-  }
-
-  async listProviderDeployments(providerId: string, creds: Record<string, string>): Promise<any[]> {
-    const provider = this.get(providerId) as any;
-    if (typeof provider.listDeployments === 'function') {
-      return provider.listDeployments(creds);
-    }
-    return [];
-  }
 }
 
 // Singleton
 export const providerManager = new ProviderManager();
+//export { PROVIDER_META };
+
+// Add orchestration methods to ProviderManager class
+// (These extend the singleton instance since TypeScript class is already exported)
+const _pm = providerManager as any;
+
+_pm.listGithubRepos = async function(apiKey: string, teamId?: string) {
+  const provider = this.get('vercel') as any;
+  return provider.listGithubRepos({ vercel_token: apiKey, vercel_team_id: teamId });
+};
+
+_pm.listRailwayWorkspaces = async function(token: string) {
+  const provider = this.get('railway') as any;
+  return provider.listWorkspaces(token);
+};
+
+_pm.listRailwayProjects = async function(token: string) {
+  const provider = this.get('railway') as any;
+  return provider.listProjects(token);
+};
+
+_pm.listProviderDeployments = async function(providerId: string, creds: Record<string, string>) {
+  const provider = this.get(providerId) as any;
+  if (typeof provider.listDeployments === 'function') {
+    return provider.listDeployments(creds);
+  }
+  return [];
+};

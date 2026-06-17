@@ -239,5 +239,4 @@ export class RailwayProvider implements IProvider {
     const data = await this.gql(token, `query { teams { edges { node { id name } } } }`).catch(() => ({ teams: { edges: [] } }));
     return (data?.teams?.edges || []).map((e: any) => ({ id: e.node.id, name: e.node.name }));
   }
-
 }
