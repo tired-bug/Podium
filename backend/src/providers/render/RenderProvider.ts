@@ -169,4 +169,28 @@ export class RenderProvider implements IProvider {
     });
     console.log(`[render] Service deleted: serviceId=${deploymentId}`);
   }
+
+  /**
+   * List all active services in the account.
+   */
+  async listDeployments(creds: Record<string, string>): Promise<Array<{ id: string; name: string; status: string; url?: string; createdAt?: string }>> {
+    const apiKey = creds.render_api_key;
+    const r = await this.client(apiKey).get('/services?limit=100').catch((e: any) => {
+      throw new Error(e?.response?.data?.message || e.message);
+    });
+    return (r.data || []).map((item: any) => {
+      const svc = item.service || item;
+      const statusMap: Record<string, string> = {
+        live: 'live', deploying: 'building', build_failed: 'failed',
+        deactivated: 'failed', suspended: 'failed', not_deployed: 'queued',
+      };
+      return {
+        id: svc.id,
+        name: svc.name,
+        status: statusMap[svc.suspended === 'suspended' ? 'suspended' : (svc.serviceDetails?.url ? 'live' : 'building')] || 'building',
+        url: svc.serviceDetails?.url,
+        createdAt: svc.createdAt,
+      };
+    });
+  }
 }

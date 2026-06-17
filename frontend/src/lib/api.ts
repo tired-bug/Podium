@@ -18,8 +18,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('podium_token');
-      window.location.href = '/login';
+      // Skip redirect for the auth-check endpoint itself — AuthContext handles that state
+      const url = error.config?.url || '';
+      if (!url.includes('/api/auth/me')) {
+        localStorage.removeItem('podium_token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

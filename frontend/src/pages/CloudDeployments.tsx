@@ -167,6 +167,7 @@ const EMPTY_FORM = {
   provider: '', name: '', repoUrl: '', branch: 'main',
   image: '', region: '', buildCommand: '', startCommand: '',
   envVars: [{ key: '', value: '' }],
+  renderOwnerId: '', railwayTeamId: '',
 };
 
 function DeployWizard({ providers, onClose, onDeployed }: {
@@ -181,12 +182,39 @@ function DeployWizard({ providers, onClose, onDeployed }: {
   const [showVals, setShowVals] = useState<Record<number, boolean>>({});
   const [deploying, setDeploying] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [githubRepos, setGithubRepos] = useState<Array<{ fullName: string; defaultBranch: string }>>([]);
+  const [loadingRepos, setLoadingRepos] = useState(false);
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
+  const [renderOwners, setRenderOwners] = useState<Array<{ id: string; name: string }>>([]);
+  const [railwayWorkspaces, setRailwayWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
 
   const upd = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
   const stepId = STEPS[step].id;
 
   const connectedProviders = providers.filter(p => p.connected && !p.isDemo);
   const selectedProvider = providers.find(p => p.id === form.provider);
+
+  // Load repos/workspaces when provider is selected
+  useEffect(() => {
+    if (!form.provider) return;
+    if (form.provider === 'vercel') {
+      setLoadingRepos(true);
+      api.get('/api/providers/vercel/repos')
+        .then(r => setGithubRepos(r.data || []))
+        .catch(() => {})
+        .finally(() => setLoadingRepos(false));
+    }
+    if (form.provider === 'render') {
+      api.get('/api/providers/render/owners')
+        .then(r => setRenderOwners(r.data || []))
+        .catch(() => {});
+    }
+    if (form.provider === 'railway') {
+      api.get('/api/providers/railway/workspaces')
+        .then(r => setRailwayWorkspaces(r.data || []))
+        .catch(() => {});
+    }
+  }, [form.provider]);
 
   const addEnvVar = () => upd('envVars', [...form.envVars, { key: '', value: '' }]);
   const removeEnvVar = (i: number) => upd('envVars', form.envVars.filter((_, idx) => idx !== i));
@@ -322,6 +350,62 @@ function DeployWizard({ providers, onClose, onDeployed }: {
 
               <Input label="Repository URL" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} />
 
+              {/* GitHub repo picker for Vercel */}
+              {form.provider === 'vercel' && (
+                <div style={{ marginTop: -4, marginBottom: 4 }}>
+                  {loadingRepos ? (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Spinner size={11} color="var(--text-muted)" /> Loading connected repos...
+                    </div>
+                  ) : githubRepos.length > 0 ? (
+                    <div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Or pick from connected GitHub repos:</div>
+                      <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {githubRepos.map(r => (
+                          <button key={r.fullName} onClick={() => { upd('repoUrl', `https://github.com/${r.fullName}`); upd('branch', r.defaultBranch); upd('name', r.fullName.split('/')[1]); }}
+                            style={{ padding: '6px 10px', background: form.repoUrl === `https://github.com/${r.fullName}` ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.repoUrl === `https://github.com/${r.fullName}` ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <GitBranch size={11} color="var(--text-muted)" />{r.fullName}
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>{r.defaultBranch}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Render owner picker */}
+              {form.provider === 'render' && renderOwners.length > 1 && (
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Workspace:</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {renderOwners.map(o => (
+                      <button key={o.id} onClick={() => upd('renderOwnerId', o.id)}
+                        style={{ padding: '6px 10px', background: form.renderOwnerId === o.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.renderOwnerId === o.id ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {o.name}
+                        {form.renderOwnerId === o.id && <CheckCircle size={11} color="var(--accent-blue)" style={{ marginLeft: 'auto' }} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Railway workspace picker */}
+              {form.provider === 'railway' && railwayWorkspaces.length > 0 && (
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Team/Workspace (optional):</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {railwayWorkspaces.map(w => (
+                      <button key={w.id} onClick={() => upd('railwayTeamId', form.railwayTeamId === w.id ? '' : w.id)}
+                        style={{ padding: '6px 10px', background: form.railwayTeamId === w.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.railwayTeamId === w.id ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {w.name}
+                        {form.railwayTeamId === w.id && <CheckCircle size={11} color="var(--accent-blue)" style={{ marginLeft: 'auto' }} />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {form.repoUrl && (
                 <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
               )}
@@ -429,6 +513,77 @@ function DeployWizard({ providers, onClose, onDeployed }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+interface InventoryItem {
+  id: string; name: string; status: string; url?: string; createdAt?: string;
+}
+
+function InventoryPanel({ providers }: { providers: ProviderMeta[] }) {
+  const [inventory, setInventory] = useState<Record<string, InventoryItem[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const { success, error: showError } = useToast();
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api.get('/api/providers/inventory');
+      setInventory(r.data || {});
+    } catch {} finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const triggerSync = async () => {
+    setSyncing(true);
+    try {
+      await api.post('/api/providers/sync');
+      success('Sync triggered — refreshing...');
+      await load();
+    } catch (e) { showError(parseApiError(e)); }
+    finally { setSyncing(false); }
+  };
+
+  const connectedProviders = providers.filter(p => p.connected && !p.isDemo);
+  if (connectedProviders.length === 0) return null;
+
+  const totalResources = Object.values(inventory).reduce((s, arr) => s + arr.length, 0);
+
+  return (
+    <Card style={{ padding: '16px 18px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Provider Inventory</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>{totalResources} resources discovered across {connectedProviders.length} providers</div>
+        </div>
+        <Button size="sm" variant="ghost" icon={<RefreshCw size={12} className={syncing ? 'spin' : ''} />} onClick={triggerSync} disabled={syncing}>
+          {syncing ? 'Syncing...' : 'Sync Now'}
+        </Button>
+      </div>
+      {loading ? (
+        <Skeleton height={60} />
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+          {connectedProviders.map(p => {
+            const items = inventory[p.id] || [];
+            const live = items.filter(i => i.status === 'live').length;
+            return (
+              <div key={p.id} style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  {LOGOS[p.id]}
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{items.length}</span> resources &nbsp;·&nbsp;
+                  <span style={{ color: 'var(--accent-green)' }}>{live} live</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function CloudDeployments() {
   const { can } = useRole();
   const navigate = useNavigate();
@@ -436,11 +591,13 @@ export default function CloudDeployments() {
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const { success, error: showError } = useToast();
 
   const load = useCallback(async () => {
     try {
       const [dRes, pRes] = await Promise.all([
-        api.get('/api/cloud'),
+        api.get('/api/providers/deployments'),
         api.get('/api/providers'),
       ]);
       setDeps(dRes.data || []);
@@ -449,6 +606,16 @@ export default function CloudDeployments() {
   }, []);
 
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
+
+  const triggerSync = async () => {
+    setSyncing(true);
+    try {
+      await api.post('/api/providers/sync');
+      success('Synced provider deployments');
+      await load();
+    } catch (e) { showError(parseApiError(e)); }
+    finally { setSyncing(false); }
+  };
 
   const connectedCount = providers.filter(p => p.connected && !p.isDemo).length;
 
@@ -469,6 +636,9 @@ export default function CloudDeployments() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Button size="sm" variant="ghost" icon={<Globe size={13} />} onClick={() => navigate('/providers')}>
               {connectedCount} provider{connectedCount !== 1 ? 's' : ''} connected
+            </Button>
+            <Button size="sm" variant="ghost" icon={<RefreshCw size={13} className={syncing ? 'spin' : ''} />} onClick={triggerSync} disabled={syncing}>
+              {syncing ? 'Syncing...' : 'Sync'}
             </Button>
             <Button size="sm" icon={<RefreshCw size={13} />} onClick={load}>Refresh</Button>
             {can.createDeployment && (
@@ -492,6 +662,9 @@ export default function CloudDeployments() {
           </Card>
         ))}
       </div>
+
+      {/* Provider inventory */}
+      <InventoryPanel providers={providers} />
 
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

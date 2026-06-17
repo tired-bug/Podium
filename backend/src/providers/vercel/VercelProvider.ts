@@ -236,4 +236,53 @@ export class VercelProvider implements IProvider {
 
     console.log(`[vercel] Deployment deleted: deploymentId=${deploymentId}`);
   }
+
+  /**
+   * List all recent deployments for the account/team.
+   */
+  async listDeployments(creds: Record<string, string>): Promise<Array<{ id: string; name: string; status: string; url?: string; createdAt?: string }>> {
+    const teamId = creds.vercel_team_id || undefined;
+    const params = teamId ? `?teamId=${teamId}&limit=50` : '?limit=50';
+    const r = await this.client(creds.vercel_token).get(`/v6/deployments${params}`).catch((e: any) => {
+      throw new Error(e?.response?.data?.error?.message || e.message);
+    });
+    const statusMap: Record<string, string> = {
+      READY: 'live', BUILDING: 'building', ERROR: 'failed',
+      CANCELED: 'failed', QUEUED: 'queued', INITIALIZING: 'building',
+    };
+    return (r.data?.deployments || []).map((d: any) => ({
+      id: d.uid,
+      name: d.name,
+      status: statusMap[d.state] || 'building',
+      url: d.url ? `https://${d.url}` : undefined,
+      createdAt: d.createdAt ? new Date(d.createdAt).toISOString() : undefined,
+    }));
+  }
+
+  /**
+   * List GitHub repos connected to Vercel account.
+   */
+  async listGithubRepos(creds: Record<string, string>): Promise<Array<{ id: number; fullName: string; private: boolean; defaultBranch: string }>> {
+    const teamId = creds.vercel_team_id || undefined;
+    const params = teamId ? `?teamId=${teamId}` : '';
+    const c = this.client(creds.vercel_token);
+    const allRepos: any[] = [];
+    try {
+      const nsRes = await c.get(`/v1/integrations/git-namespaces${params}`);
+      for (const ns of nsRes.data?.namespaces || []) {
+        try {
+          const reposRes = await c.get(`/v1/integrations/search-repos?namespace=${ns.id}${teamId ? `&teamId=${teamId}` : ''}&limit=100`);
+          allRepos.push(...(reposRes.data?.repos || []));
+        } catch { /* skip */ }
+      }
+    } catch {
+      // If namespaces fail, try listing projects for linked repos
+    }
+    return allRepos.map((r: any) => ({
+      id: r.id,
+      fullName: r.full_name,
+      private: r.private || false,
+      defaultBranch: r.default_branch || 'main',
+    }));
+  }
 }

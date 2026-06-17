@@ -133,7 +133,7 @@ function PwStrength({ pw }: { pw: string }) {
 }
 
 export default function LoginPage() {
-  const { login, user } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
   const { success, error: showError } = useToast();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('login');
@@ -153,12 +153,18 @@ export default function LoginPage() {
   const [suConfirm, setSuConfirm] = useState('');
   const [inviteCode, setInviteCode] = useState('');
 
-  useEffect(() => { if (user) navigate('/dashboard', { replace: true }); }, [user]);
+  // Redirect if already authenticated (wait for auth loading to settle first)
   useEffect(() => {
+    if (!authLoading && user) navigate('/dashboard', { replace: true });
+  }, [user, authLoading]);
+
+  // Only check setup after auth loading is done to avoid racing with token verification
+  useEffect(() => {
+    if (authLoading) return;
     api.get('/api/auth/setup').then(({ data }) => {
       if (data.needsSetup) { setNeedsSetup(true); setMode('signup'); }
     }).catch(() => {});
-  }, []);
+  }, [authLoading]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

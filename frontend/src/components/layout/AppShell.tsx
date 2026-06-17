@@ -1,6 +1,5 @@
 import React, { ReactNode, Suspense } from 'react';
 import { Navigate } from 'react-router-dom';
-import { TitleBar } from './TitleBar';
 import { Topbar } from './Topbar';
 import { Sidebar } from './Sidebar';
 import { Spinner } from '../ui/Badge';
@@ -26,7 +25,6 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-primary)' }}>
-      <TitleBar />
       <Topbar />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <Sidebar />

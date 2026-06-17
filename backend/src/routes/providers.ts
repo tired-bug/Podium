@@ -318,3 +318,113 @@ router.delete('/:id/credentials', requireAuth, requireRole('admin'), (req, res) 
 });
 
 export default router;
+
+// ── Orchestration endpoints ───────────────────────────────────────────────────
+
+// GET /api/providers/vercel/repos — list GitHub repos connected to Vercel
+router.get('/vercel/repos', requireAuth, async (req: any, res: Response) => {
+  const creds = getCredentials('vercel');
+  if (!creds.vercel_token) {
+    return res.status(400).json({ error: 'Vercel API token not configured' });
+  }
+  try {
+    const provider = (providerManager as any).get('vercel');
+    const repos = await provider.listGithubRepos(creds);
+    res.json(repos);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/providers/vercel/deployments — list all Vercel deployments
+router.get('/vercel/deployments', requireAuth, async (req: any, res: Response) => {
+  const creds = getCredentials('vercel');
+  if (!creds.vercel_token) {
+    return res.status(400).json({ error: 'Vercel API token not configured' });
+  }
+  try {
+    const provider = (providerManager as any).get('vercel');
+    const deployments = await provider.listDeployments(creds);
+    res.json(deployments);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/providers/railway/workspaces
+router.get('/railway/workspaces', requireAuth, async (req: any, res: Response) => {
+  const creds = getCredentials('railway');
+  if (!creds.railway_token) {
+    return res.status(400).json({ error: 'Railway API token not configured' });
+  }
+  try {
+    const provider = (providerManager as any).get('railway');
+    const workspaces = await provider.listWorkspaces(creds.railway_token);
+    res.json(workspaces);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/providers/railway/projects
+router.get('/railway/projects', requireAuth, async (req: any, res: Response) => {
+  const creds = getCredentials('railway');
+  if (!creds.railway_token) {
+    return res.status(400).json({ error: 'Railway API token not configured' });
+  }
+  try {
+    const provider = (providerManager as any).get('railway');
+    const projects = await provider.listProjects(creds.railway_token);
+    res.json(projects);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/providers/render/services — list all Render services
+router.get('/render/services', requireAuth, async (req: any, res: Response) => {
+  const creds = getCredentials('render');
+  if (!creds.render_api_key) {
+    return res.status(400).json({ error: 'Render API key not configured' });
+  }
+  try {
+    const provider = (providerManager as any).get('render');
+    const services = await provider.listDeployments(creds);
+    res.json(services);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/providers/inventory — all deployments across all connected providers
+router.get('/inventory', requireAuth, async (req: any, res: Response) => {
+  const results: Record<string, any[]> = {};
+  for (const providerId of ['vercel', 'render', 'railway']) {
+    const meta = PROVIDER_META[providerId];
+    if (!meta) continue;
+    const creds = getCredentials(providerId);
+    const requiredKeys = meta.credentialKeys.filter(k => k.required);
+    if (!requiredKeys.every(k => !!creds[k.key])) continue;
+    try {
+      const provider = (providerManager as any).get(providerId);
+      if (typeof provider.listDeployments === 'function') {
+        results[providerId] = await provider.listDeployments(creds);
+      }
+    } catch (e: any) {
+      results[providerId] = [];
+      console.warn(`[inventory] ${providerId} failed:`, e.message);
+    }
+  }
+  res.json(results);
+});
+
+// POST /api/providers/sync — trigger manual sync
+router.post('/sync', requireAuth, requireRole('admin', 'developer'), async (req: any, res: Response) => {
+  try {
+    const { triggerSync } = require('../services/SyncService');
+    await triggerSync();
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});

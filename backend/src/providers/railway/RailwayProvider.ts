@@ -177,4 +177,67 @@ export class RailwayProvider implements IProvider {
     `, { id: deploymentId });
     console.log(`[railway] Service deleted: serviceId=${deploymentId}`);
   }
+
+  /**
+   * List all services across all projects.
+   */
+  async listDeployments(creds: Record<string, string>): Promise<Array<{ id: string; name: string; status: string; url?: string; createdAt?: string }>> {
+    const data = await this.gql(creds.railway_token, `
+      query {
+        projects {
+          edges {
+            node {
+              id name
+              services {
+                edges {
+                  node {
+                    id name
+                    deployments(first: 1) {
+                      edges {
+                        node {
+                          id status
+                          staticUrl
+                          createdAt
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `);
+
+    const results: any[] = [];
+    const statusMap: Record<string, string> = {
+      SUCCESS: 'live', DEPLOYING: 'building', BUILDING: 'building',
+      FAILED: 'failed', CRASHED: 'failed', REMOVED: 'deleted', WAITING: 'queued',
+    };
+
+    for (const project of (data?.projects?.edges || [])) {
+      for (const svc of (project.node?.services?.edges || [])) {
+        const dep = svc.node?.deployments?.edges?.[0]?.node;
+        results.push({
+          id: dep?.id || svc.node.id,
+          name: `${project.node.name}/${svc.node.name}`,
+          status: dep ? (statusMap[dep.status] || 'building') : 'queued',
+          url: dep?.staticUrl || undefined,
+          createdAt: dep?.createdAt,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * List Railway workspaces/teams.
+   */
+  async listWorkspaces(token: string): Promise<Array<{ id: string; name: string }>> {
+    const data = await this.gql(token, `query { teams { edges { node { id name } } } }`).catch(() => ({ teams: { edges: [] } }));
+    return (data?.teams?.edges || []).map((e: any) => ({ id: e.node.id, name: e.node.name }));
+  }
+
 }
