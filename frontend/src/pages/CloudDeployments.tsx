@@ -17,6 +17,7 @@ import api from '../lib/api';
 interface CloudDep {
   id: string; provider: string; name: string; region?: string;
   status: string; url?: string; config: string; logs: string;
+  provider_deployment_id?: string; provider_error?: string;
   created_at: string; updated_at: string;
 }
 
@@ -109,6 +110,8 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
             {dep.region && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{dep.region}</span>}
             {config.repoUrl && <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{config.repoUrl.replace('https://github.com/', '')}</span>}
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Updated {timeAgo(dep.updated_at)}</span>
+            {dep.provider_deployment_id && <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>ID: {dep.provider_deployment_id}</span>}
+            {dep.provider_error && <span style={{ fontSize: '11px', color: 'var(--accent-red)', fontWeight: 600 }}>⚠ {dep.provider_error}</span>}
           </div>
         </div>
 

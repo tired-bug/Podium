@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios from 'axios';
 import { IProvider, DeployOptions, DeployResult, ProviderStatus, ProviderLog } from '../IProvider';
 
 export class RailwayProvider implements IProvider {
@@ -12,7 +12,10 @@ export class RailwayProvider implements IProvider {
       { query, variables },
       { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 30000 }
     );
-    if (r.data.errors?.length) throw new Error(r.data.errors[0].message);
+    if (r.data.errors?.length) {
+      const msg = r.data.errors.map((e: any) => e.message).join('; ');
+      throw new Error(`Railway GraphQL error: ${msg}`);
+    }
     return r.data.data;
   }
 
@@ -26,111 +29,113 @@ export class RailwayProvider implements IProvider {
     }
   }
 
-  async deploy(creds: Record<string, string>, opts: DeployOptions, deploymentId: string): Promise<DeployResult> {
-    try {
-      let projectId = creds.railway_project_id;
+  async deploy(creds: Record<string, string>, opts: DeployOptions, _localId: string): Promise<DeployResult> {
+    console.log(`[railway] Deploying service name=${opts.name}`);
 
-      // Create project if not specified
-      if (!projectId) {
-        const created = await this.gql(creds.railway_token, `
-          mutation($name: String!) {
-            projectCreate(input: { name: $name }) { id name }
-          }`, { name: opts.name });
-        projectId = created.projectCreate.id;
-      }
+    let projectId = creds.railway_project_id;
 
-      // Create service
-      const svcData = await this.gql(creds.railway_token, `
-        mutation($projectId: String!, $name: String!) {
-          serviceCreate(input: { projectId: $projectId, name: $name }) { id name }
-        }`, { projectId, name: opts.name });
-
-      const serviceId = svcData.serviceCreate.id;
-
-      // Set environment variables
-      if (opts.envVars && Object.keys(opts.envVars).length > 0) {
-        const vars = Object.entries(opts.envVars).map(([name, value]) => ({ name, value }));
-        await this.gql(creds.railway_token, `
-          mutation($serviceId: String!, $vars: [VariableUpsertInput!]!) {
-            variableCollectionUpsert(input: { serviceId: $serviceId, variables: $vars })
-          }`, { serviceId, vars });
-      }
-
-      // Deploy from repo if provided
-      if (opts.repoUrl) {
-        await this.gql(creds.railway_token, `
-          mutation($serviceId: String!, $repo: String!, $branch: String!) {
-            serviceConnect(id: $serviceId, input: { repo: $repo, branch: $branch })
-          }`, { serviceId, repo: opts.repoUrl, branch: opts.branch || 'main' });
-      }
-
-      return {
-        deploymentId: serviceId,
-        url: `https://${opts.name}.up.railway.app`,
-        status: 'building',
-      };
-    } catch (e: any) {
-      throw new Error(e.message || 'Railway deploy failed');
+    if (!projectId) {
+      console.log(`[railway] No project ID provided, creating new project name=${opts.name}`);
+      const created = await this.gql(creds.railway_token, `
+        mutation($name: String!) {
+          projectCreate(input: { name: $name }) { id name }
+        }`, { name: opts.name });
+      projectId = created.projectCreate.id;
+      console.log(`[railway] Project created: projectId=${projectId}`);
     }
+
+    const svcData = await this.gql(creds.railway_token, `
+      mutation($projectId: String!, $name: String!) {
+        serviceCreate(input: { projectId: $projectId, name: $name }) { id name }
+      }`, { projectId, name: opts.name });
+
+    const serviceId = svcData.serviceCreate.id;
+    console.log(`[railway] Service created: serviceId=${serviceId}`);
+
+    if (opts.envVars && Object.keys(opts.envVars).length > 0) {
+      const vars = Object.entries(opts.envVars).map(([name, value]) => ({ name, value }));
+      await this.gql(creds.railway_token, `
+        mutation($serviceId: String!, $vars: [VariableUpsertInput!]!) {
+          variableCollectionUpsert(input: { serviceId: $serviceId, variables: $vars })
+        }`, { serviceId, vars });
+      console.log(`[railway] Set ${vars.length} env vars on serviceId=${serviceId}`);
+    }
+
+    if (opts.repoUrl) {
+      console.log(`[railway] Connecting repo ${opts.repoUrl} branch=${opts.branch || 'main'} to serviceId=${serviceId}`);
+      await this.gql(creds.railway_token, `
+        mutation($serviceId: String!, $repo: String!, $branch: String!) {
+          serviceConnect(id: $serviceId, input: { repo: $repo, branch: $branch })
+        }`, { serviceId, repo: opts.repoUrl, branch: opts.branch || 'main' });
+    }
+
+    return {
+      deploymentId: serviceId,
+      url: `https://${opts.name}.up.railway.app`,
+      status: 'building',
+    };
   }
 
   async getStatus(creds: Record<string, string>, deploymentId: string): Promise<ProviderStatus> {
-    try {
-      const data = await this.gql(creds.railway_token, `
-        query($id: String!) {
-          service(id: $id) {
-            id name
-            deployments(first: 1) {
-              edges { node { id status createdAt } }
-            }
+    console.log(`[railway] getStatus serviceId=${deploymentId}`);
+
+    const data = await this.gql(creds.railway_token, `
+      query($id: String!) {
+        service(id: $id) {
+          id name
+          deployments(first: 1) {
+            edges { node { id status createdAt } }
           }
-        }`, { id: deploymentId });
+        }
+      }`, { id: deploymentId });
 
-      const dep = data.service?.deployments?.edges?.[0]?.node;
-      const statusMap: Record<string, ProviderStatus['status']> = {
-        SUCCESS: 'live', DEPLOYING: 'deploying', BUILDING: 'building',
-        FAILED: 'failed', CRASHED: 'failed', REMOVED: 'suspended',
-      };
+    const dep = data.service?.deployments?.edges?.[0]?.node;
+    const statusMap: Record<string, ProviderStatus['status']> = {
+      SUCCESS: 'live', DEPLOYING: 'deploying', BUILDING: 'building',
+      FAILED: 'failed', CRASHED: 'failed', REMOVED: 'suspended',
+      WAITING: 'queued', SKIPPED: 'failed',
+    };
 
-      return {
-        deploymentId,
-        status: statusMap[dep?.status] || 'queued',
-        updatedAt: dep?.createdAt || new Date().toISOString(),
-      };
-    } catch {
-      return { deploymentId, status: 'queued', updatedAt: new Date().toISOString() };
-    }
+    const rawStatus = dep?.status || 'BUILDING';
+    const mapped = statusMap[rawStatus] || 'building';
+    console.log(`[railway] serviceId=${deploymentId} rawStatus=${rawStatus} mapped=${mapped}`);
+
+    return {
+      deploymentId,
+      status: mapped,
+      updatedAt: dep?.createdAt || new Date().toISOString(),
+    };
   }
 
   async getLogs(creds: Record<string, string>, deploymentId: string): Promise<ProviderLog[]> {
-    try {
-      const data = await this.gql(creds.railway_token, `
-        query($id: String!) {
-          service(id: $id) {
-            deployments(first: 1) {
-              edges { node { id logs } }
-            }
-          }
-        }`, { id: deploymentId });
+    console.log(`[railway] getLogs serviceId=${deploymentId}`);
 
-      const logs = data.service?.deployments?.edges?.[0]?.node?.logs || '';
-      return logs.split('\n').filter(Boolean).map((line: string) => ({
-        time: new Date().toISOString(),
-        message: line,
-        level: 'info' as const,
-      }));
-    } catch {
-      return [{ time: new Date().toISOString(), message: 'Logs unavailable', level: 'warn' }];
+    const data = await this.gql(creds.railway_token, `
+      query($id: String!) {
+        service(id: $id) {
+          deployments(first: 1) {
+            edges { node { id logs } }
+          }
+        }
+      }`, { id: deploymentId });
+
+    const logText = data.service?.deployments?.edges?.[0]?.node?.logs || '';
+    if (!logText) {
+      return [{ time: new Date().toISOString(), message: 'No logs available yet', level: 'info' }];
     }
+
+    return logText.split('\n').filter(Boolean).map((line: string) => ({
+      time: new Date().toISOString(),
+      message: line,
+      level: 'info' as const,
+    }));
   }
 
   async deleteDeployment(creds: Record<string, string>, deploymentId: string): Promise<void> {
-    try {
-      await this.gql(creds.railway_token, `
-        mutation($id: String!) { serviceDelete(id: $id) }
-      `, { id: deploymentId });
-    } catch (e: any) {
-      throw new Error(e.message || 'Delete failed');
-    }
+    console.log(`[railway] deleteDeployment serviceId=${deploymentId}`);
+    await this.gql(creds.railway_token, `
+      mutation($id: String!) { serviceDelete(id: $id) }
+    `, { id: deploymentId });
+    console.log(`[railway] Service deleted: serviceId=${deploymentId}`);
   }
 }

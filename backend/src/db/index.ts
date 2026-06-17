@@ -1,5 +1,4 @@
 
-
 import path from 'path';
 import fs from 'fs';
 
@@ -43,7 +42,6 @@ async function flushQueue() {
     );
   } catch (err) {
     console.error('[turso] Batch write error:', err);
-    
     _writeQueue = [...batch, ..._writeQueue];
   } finally {
     _flushing = false;
@@ -56,10 +54,8 @@ function createShim(local: any): SyncDb {
   return {
     exec(sql: string) {
       local.exec(sql);
-      
       if (_turso) {
         _turso.executeMultiple(sql).catch((e: any) => {
-          
           if (!String(e).includes('already exists')) {
             console.error('[turso] exec error:', e);
           }
@@ -95,7 +91,6 @@ export function getDb(): SyncDb {
 }
 
 export async function initDb(): Promise<void> {
-  
   const sqlite = require('node:sqlite');
   const dbPath = getDbPath();
   _local = new sqlite.DatabaseSync(dbPath);
@@ -103,7 +98,6 @@ export async function initDb(): Promise<void> {
   _local.exec('PRAGMA foreign_keys = ON');
   _local.exec('PRAGMA synchronous = NORMAL');
 
-  
   const tursoUrl   = process.env.TURSO_DATABASE_URL;
   const tursoToken = process.env.TURSO_AUTH_TOKEN;
 
@@ -111,8 +105,6 @@ export async function initDb(): Promise<void> {
     try {
       const { createClient } = require('@libsql/client');
       _turso = createClient({ url: tursoUrl, authToken: tursoToken });
-
-      
       await syncFromTurso();
       console.log('[turso] Connected and synced ✓');
     } catch (err) {
@@ -123,8 +115,8 @@ export async function initDb(): Promise<void> {
     console.log('[db] No Turso credentials — using local SQLite only');
   }
 
-  
   applySchema();
+  applyMigrations(); // NEW: run column migrations after schema
   applyDefaults();
   migrateModels();
   applyExtendedSchema();
@@ -158,7 +150,6 @@ async function syncFromTurso() {
       }
       console.log(`[turso] Synced ${result.rows.length} rows from ${table}`);
     } catch (e: any) {
-      
       if (!String(e).includes('no such table')) {
         console.error(`[turso] Sync error for ${table}:`, e);
       }
@@ -217,6 +208,8 @@ function applySchema() {
       region TEXT,
       status TEXT NOT NULL DEFAULT 'queued',
       url TEXT,
+      provider_deployment_id TEXT,
+      provider_error TEXT,
       config TEXT NOT NULL DEFAULT '{}',
       logs TEXT NOT NULL DEFAULT '[]',
       source_type TEXT,
@@ -333,6 +326,26 @@ function applySchema() {
   `);
 }
 
+/**
+ * Adds columns to existing tables that were created before the schema was updated.
+ * Uses ALTER TABLE ... ADD COLUMN which is safe to call even if the column exists
+ * by wrapping in try/catch.
+ */
+function applyMigrations() {
+  const migrations = [
+    `ALTER TABLE cloud_deployments ADD COLUMN provider_deployment_id TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN provider_error TEXT`,
+  ];
+  for (const sql of migrations) {
+    try {
+      _local.exec(sql);
+      console.log(`[db] Migration applied: ${sql}`);
+    } catch (_e: any) {
+      // Column already exists — this is expected on subsequent starts
+    }
+  }
+}
+
 function applyDefaults() {
   const stmt = _local.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   const defaults: [string, string][] = [
@@ -369,7 +382,7 @@ function migrateModels() {
 }
 
 export function ensureExtendedSchema(): void {
-  
+  // no-op kept for compatibility
 }
 
 function seedDemoData(): void {
@@ -405,5 +418,5 @@ function seedDemoData(): void {
 }
 
 function applyExtendedSchema() {
-  
+  // no-op kept for compatibility
 }

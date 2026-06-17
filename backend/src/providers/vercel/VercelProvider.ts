@@ -24,82 +24,104 @@ export class VercelProvider implements IProvider {
     }
   }
 
-  async deploy(creds: Record<string, string>, opts: DeployOptions, deploymentId: string): Promise<DeployResult> {
-    try {
-      const c = this.client(creds.vercel_token);
-      const teamId = creds.vercel_team_id;
+  async deploy(creds: Record<string, string>, opts: DeployOptions, _localId: string): Promise<DeployResult> {
+    console.log(`[vercel] Deploying name=${opts.name} repoUrl=${opts.repoUrl}`);
 
-      const payload: any = {
-        name: opts.name,
-        gitSource: opts.repoUrl ? {
-          type: 'github',
-          repoUrl: opts.repoUrl,
-          ref: opts.branch || 'main',
-        } : undefined,
-        env: opts.envVars
-          ? Object.entries(opts.envVars).map(([key, value]) => ({ key, value, target: ['production'] }))
-          : [],
-      };
+    const c = this.client(creds.vercel_token);
+    const teamId = creds.vercel_team_id;
 
-      const params = teamId ? `?teamId=${teamId}` : '';
-      const r = await c.post(`/v13/deployments${params}`, payload);
-      const dep = r.data;
+    const payload: any = {
+      name: opts.name,
+      gitSource: opts.repoUrl ? {
+        type: 'github',
+        repoUrl: opts.repoUrl,
+        ref: opts.branch || 'main',
+      } : undefined,
+      env: opts.envVars
+        ? Object.entries(opts.envVars).map(([key, value]) => ({ key, value, target: ['production'] }))
+        : [],
+    };
 
-      return {
-        deploymentId: dep.id,
-        url: dep.url ? `https://${dep.url}` : undefined,
-        status: dep.readyState === 'READY' ? 'live' : 'building',
-      };
-    } catch (e: any) {
-      throw new Error(e?.response?.data?.error?.message || 'Vercel deploy failed');
+    const params = teamId ? `?teamId=${teamId}` : '';
+    const r = await c.post(`/v13/deployments${params}`, payload).catch((e: any) => {
+      const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e.message || 'Vercel API error';
+      console.error(`[vercel] Deploy failed: ${msg}`, e?.response?.data);
+      throw new Error(msg);
+    });
+
+    const dep = r.data;
+    const vercelDepId = dep.id;
+
+    if (!vercelDepId) {
+      console.error('[vercel] No deployment ID in response:', JSON.stringify(dep));
+      throw new Error('Vercel returned no deployment ID');
     }
+
+    const url = dep.url ? `https://${dep.url}` : undefined;
+    const status = dep.readyState === 'READY' ? 'live' : 'building';
+    console.log(`[vercel] Deployment created: vercelDepId=${vercelDepId} url=${url} readyState=${dep.readyState}`);
+
+    return { deploymentId: vercelDepId, url, status };
   }
 
   async getStatus(creds: Record<string, string>, deploymentId: string): Promise<ProviderStatus> {
-    try {
-      const teamId = creds.vercel_team_id;
-      const params = teamId ? `?teamId=${teamId}` : '';
-      const r = await this.client(creds.vercel_token).get(`/v13/deployments/${deploymentId}${params}`);
-      const dep = r.data;
+    console.log(`[vercel] getStatus deploymentId=${deploymentId}`);
 
-      const statusMap: Record<string, ProviderStatus['status']> = {
-        READY: 'live', BUILDING: 'building', DEPLOYING: 'deploying',
-        ERROR: 'failed', CANCELED: 'failed', QUEUED: 'queued',
-      };
+    const teamId = creds.vercel_team_id;
+    const params = teamId ? `?teamId=${teamId}` : '';
+    const r = await this.client(creds.vercel_token).get(`/v13/deployments/${deploymentId}${params}`).catch((e: any) => {
+      const msg = e?.response?.data?.error?.message || e.message;
+      console.error(`[vercel] getStatus failed: ${msg}`);
+      throw new Error(msg);
+    });
 
-      return {
-        deploymentId,
-        status: statusMap[dep.readyState] || 'queued',
-        url: dep.url ? `https://${dep.url}` : undefined,
-        updatedAt: dep.updatedAt ? new Date(dep.updatedAt).toISOString() : new Date().toISOString(),
-      };
-    } catch {
-      return { deploymentId, status: 'queued', updatedAt: new Date().toISOString() };
-    }
+    const dep = r.data;
+    const statusMap: Record<string, ProviderStatus['status']> = {
+      READY: 'live', BUILDING: 'building', DEPLOYING: 'deploying',
+      ERROR: 'failed', CANCELED: 'failed', QUEUED: 'queued',
+      INITIALIZING: 'building',
+    };
+
+    const mapped = statusMap[dep.readyState] || 'building';
+    console.log(`[vercel] deploymentId=${deploymentId} readyState=${dep.readyState} mapped=${mapped}`);
+
+    return {
+      deploymentId,
+      status: mapped,
+      url: dep.url ? `https://${dep.url}` : undefined,
+      updatedAt: dep.updatedAt ? new Date(dep.updatedAt).toISOString() : new Date().toISOString(),
+    };
   }
 
   async getLogs(creds: Record<string, string>, deploymentId: string): Promise<ProviderLog[]> {
-    try {
-      const teamId = creds.vercel_team_id;
-      const params = teamId ? `?teamId=${teamId}` : '';
-      const r = await this.client(creds.vercel_token).get(`/v2/deployments/${deploymentId}/events${params}`);
-      return (r.data || []).map((e: any) => ({
-        time: e.created ? new Date(e.created).toISOString() : new Date().toISOString(),
-        message: e.text || e.payload?.text || JSON.stringify(e.payload || ''),
-        level: e.type === 'error' ? 'error' as const : 'info' as const,
-      }));
-    } catch {
-      return [{ time: new Date().toISOString(), message: 'Logs unavailable', level: 'warn' }];
-    }
+    console.log(`[vercel] getLogs deploymentId=${deploymentId}`);
+
+    const teamId = creds.vercel_team_id;
+    const params = teamId ? `?teamId=${teamId}` : '';
+    const r = await this.client(creds.vercel_token).get(`/v2/deployments/${deploymentId}/events${params}`).catch((e: any) => {
+      const msg = e?.response?.data?.error?.message || e.message;
+      console.error(`[vercel] getLogs failed: ${msg}`);
+      throw new Error(msg);
+    });
+
+    return (r.data || []).map((e: any) => ({
+      time: e.created ? new Date(e.created).toISOString() : new Date().toISOString(),
+      message: e.text || e.payload?.text || JSON.stringify(e.payload || ''),
+      level: e.type === 'error' ? 'error' as const : 'info' as const,
+    }));
   }
 
   async deleteDeployment(creds: Record<string, string>, deploymentId: string): Promise<void> {
-    try {
-      const teamId = creds.vercel_team_id;
-      const params = teamId ? `?teamId=${teamId}` : '';
-      await this.client(creds.vercel_token).delete(`/v13/deployments/${deploymentId}${params}`);
-    } catch (e: any) {
-      throw new Error(e?.response?.data?.error?.message || 'Delete failed');
-    }
+    console.log(`[vercel] deleteDeployment deploymentId=${deploymentId}`);
+
+    const teamId = creds.vercel_team_id;
+    const params = teamId ? `?teamId=${teamId}` : '';
+    await this.client(creds.vercel_token).delete(`/v13/deployments/${deploymentId}${params}`).catch((e: any) => {
+      const msg = e?.response?.data?.error?.message || e.message || 'Delete failed';
+      console.error(`[vercel] Delete failed: ${msg}`);
+      throw new Error(msg);
+    });
+
+    console.log(`[vercel] Deployment deleted: deploymentId=${deploymentId}`);
   }
 }
