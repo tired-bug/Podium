@@ -154,9 +154,7 @@ export class VercelProvider implements IProvider {
     const branch = opts.branch || 'main';
 
     // Build deployment payload
-    const envVars = opts.envVars
-      ? Object.entries(opts.envVars).map(([key, value]) => ({ key, value, target: ['production'] as string[] }))
-      : [];
+    const envVars = opts.envVars || {};
 
     let payload: any;
 
