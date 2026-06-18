@@ -27,12 +27,25 @@ function maskCredentials(creds: Record<string, string>): Record<string, string> 
 }
 
 // ─── Ensure user_id column exists on cloud_deployments ────────────────────────
-// Called at startup from index.ts — safe to call multiple times
+// Called at startup from index.ts — safe to call multiple times.
+// Uses PRAGMA table_info so ALTER TABLE is never executed when the column
+// already exists — eliminates "duplicate column name" errors on restart.
 export function ensureDeploymentUserIdColumn(): void {
   const db = getDb();
-  const cols = ['user_id TEXT', 'creator_username TEXT'];
-  for (const col of cols) {
-    try { db.prepare(`ALTER TABLE cloud_deployments ADD COLUMN ${col}`).run(); } catch { /* exists */ }
+  type ColInfo = { name: string };
+  const existing = (db.prepare('PRAGMA table_info(cloud_deployments)').all() as ColInfo[])
+    .map(r => r.name);
+
+  const needed: Array<{ colDef: string; colName: string }> = [
+    { colName: 'user_id',          colDef: 'user_id TEXT' },
+    { colName: 'creator_username', colDef: 'creator_username TEXT' },
+  ];
+
+  for (const { colName, colDef } of needed) {
+    if (!existing.includes(colName)) {
+      db.prepare(`ALTER TABLE cloud_deployments ADD COLUMN ${colDef}`).run();
+      console.log(`[providers] Added column ${colName} to cloud_deployments`);
+    }
   }
 }
 
@@ -212,6 +225,21 @@ router.get('/deployments/:id/logs', requireAuth, async (req: AuthRequest, res: R
   }
 });
 
+// DELETE /api/providers/deployments/failed — purge all failed records owned by user
+// NOTE: This MUST be registered before DELETE /deployments/:id so Express does not
+// match the literal segment "failed" as an :id parameter (which would return 404).
+router.delete('/deployments/failed', requireAuth, (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
+  if (isAdmin) {
+    const result = db.prepare("DELETE FROM cloud_deployments WHERE status='failed'").run();
+    return res.json({ deleted: result.changes });
+  }
+  const result = db.prepare("DELETE FROM cloud_deployments WHERE status='failed' AND user_id=?").run(userId);
+  return res.json({ deleted: result.changes });
+});
+
 // DELETE /api/providers/deployments/:id
 router.delete('/deployments/:id', requireAuth, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   const db = getDb();
@@ -339,19 +367,6 @@ router.post('/sync', requireAuth, requireRole('admin', 'developer'), async (_req
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
-});
-
-// DELETE /api/providers/deployments/failed — purge all failed records owned by user
-router.delete('/deployments/failed', requireAuth, (req: AuthRequest, res: Response) => {
-  const db = getDb();
-  const userId = req.user!.sub;
-  const isAdmin = req.user!.role === 'admin';
-  if (isAdmin) {
-    const result = db.prepare("DELETE FROM cloud_deployments WHERE status='failed'").run();
-    return res.json({ deleted: result.changes });
-  }
-  const result = db.prepare("DELETE FROM cloud_deployments WHERE status='failed' AND user_id=?").run(userId);
-  return res.json({ deleted: result.changes });
 });
 
 // ─── /:id wildcard routes — MUST come after all static routes ─────────────────
