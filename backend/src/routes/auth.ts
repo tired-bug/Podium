@@ -5,6 +5,7 @@ import { signToken, hashPassword, comparePassword, requireAuth, requireRole, Aut
 
 const router = Router();
 
+// ── Login ─────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -24,6 +25,7 @@ router.post('/login', async (req, res) => {
     .prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?")
     .run(user.id);
 
+  // Role is always sourced from the database — never from the JWT payload alone
   const token = signToken({ sub: user.id, username: user.username, role: user.role });
   return res.json({
     token,
@@ -31,9 +33,17 @@ router.post('/login', async (req, res) => {
   });
 });
 
-// ── Signup / First-time admin creation ───────────────────────────────────────
+// ── Signup ─────────────────────────────────────────────────────────────────────
+// Role assignment rules:
+//   - 0 existing users  → admin  (first account, always)
+//   - 1+ existing users → developer  (subsequent accounts)
+//   - viewer is NEVER assigned automatically; only manually by an admin
+// Invite code is OPTIONAL:
+//   - omitted / blank → account created, no team attachment
+//   - provided        → validated, user attached to team referenced by invite
 router.post('/signup', async (req, res) => {
   const { username, email, password, inviteCode } = req.body;
+
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Username, email, and password required' });
   }
@@ -43,25 +53,53 @@ router.post('/signup', async (req, res) => {
 
   const db = getDb();
 
-  if (!inviteCode) return res.status(400).json({ error: 'Invite code required' });
-  const invite = db.prepare(`
-    SELECT * FROM invites WHERE code = ? AND used_by IS NULL AND expires_at > datetime('now')
-  `).get(inviteCode) as any;
-  if (!invite) return res.status(400).json({ error: 'Invalid or expired invite code' });
-  const role = invite.role;
-  db.prepare("UPDATE invites SET used_by = ?, used_at = datetime('now') WHERE id = ?")
-    .run('pending', invite.id);
+  // ── Role: determined by existing user count, not by invite ──────────────────
+  const { userCount } = db.prepare('SELECT COUNT(*) AS userCount FROM users').get() as { userCount: number };
+  const role: string = userCount === 0 ? 'admin' : 'developer';
 
+  // ── Invite code: optional — only process if non-empty ───────────────────────
+  let inviteId: string | null = null;
+  if (inviteCode && String(inviteCode).trim() !== '') {
+    const trimmedCode = String(inviteCode).trim();
+    const invite = db.prepare(`
+      SELECT * FROM invites
+      WHERE code = ? AND used_by IS NULL AND expires_at > datetime('now')
+    `).get(trimmedCode) as any;
+
+    if (!invite) {
+      return res.status(400).json({ error: 'Invalid or expired invite code' });
+    }
+    inviteId = invite.id;
+    // Mark invite as pending until real user id is available
+    db.prepare("UPDATE invites SET used_by = 'pending', used_at = datetime('now') WHERE id = ?")
+      .run(inviteId);
+  }
+
+  // ── Duplicate check ──────────────────────────────────────────────────────────
   const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
-  if (existing) return res.status(409).json({ error: 'Username or email already taken' });
+  if (existing) {
+    // Roll back pending invite mark if we bail
+    if (inviteId) {
+      db.prepare("UPDATE invites SET used_by = NULL, used_at = NULL WHERE id = ?").run(inviteId);
+    }
+    return res.status(409).json({ error: 'Username or email already taken' });
+  }
 
+  // ── Create user ──────────────────────────────────────────────────────────────
   const id = uuidv4();
   const hash = await hashPassword(password);
   db.prepare('INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?)')
     .run(id, username, email, hash, role);
 
-  // Update invite to point to the real user id
-  db.prepare("UPDATE invites SET used_by = ? WHERE used_by = 'pending'").run(id);
+  // ── Finalize invite (point to real user id) ──────────────────────────────────
+  if (inviteId) {
+    db.prepare("UPDATE invites SET used_by = ? WHERE id = ?").run(id, inviteId);
+  }
+
+  // ── Mark app as initialized after first admin is created ─────────────────────
+  if (role === 'admin') {
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
+  }
 
   const token = signToken({ sub: id, username, role });
   return res.status(201).json({
@@ -71,6 +109,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // ── Current user ─────────────────────────────────────────────────────────────
+// Role is always re-fetched from DB — JWT role is informational only
 router.get('/me', requireAuth, (req: AuthRequest, res: Response) => {
   const user = getDb()
     .prepare('SELECT id, username, email, role, last_login, created_at FROM users WHERE id = ?')

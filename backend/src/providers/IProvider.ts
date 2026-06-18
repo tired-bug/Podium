@@ -18,11 +18,17 @@ export interface DeployOptions {
 
   // Railway-specific
   projectName?: string;
+  workspaceId?: string;
 
   // Vercel-specific
   framework?: string;
   rootDirectory?: string;
   outputDirectory?: string;
+
+  // Optional token used to fetch a private GitHub repo's source archive
+  // (e.g. for providers that deploy directly from source rather than via
+  // a pre-linked git integration). Safe to omit for public repos.
+  githubToken?: string;
 }
 
 export interface DeployResult {

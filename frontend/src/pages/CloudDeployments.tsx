@@ -198,6 +198,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   const [renderOwners, setRenderOwners] = useState<Array<{ id: string; name: string }>>([]);
   const [railwayWorkspaces, setRailwayWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
+  const [railwayAutoDetect, setRailwayAutoDetect] = useState(true);
 
   const upd = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
   const stepId = STEPS[step].id;
@@ -217,15 +218,40 @@ function DeployWizard({ providers, onClose, onDeployed }: {
     }
     if (form.provider === 'render') {
       api.get('/api/providers/render/owners')
-        .then(r => setRenderOwners(r.data || []))
+        .then(r => {
+          const owners = r.data || [];
+          setRenderOwners(owners);
+          // Auto-select first owner if none selected yet
+          if (owners.length > 0 && !form.renderOwnerId) {
+            upd('renderOwnerId', owners[0].id);
+          }
+        })
         .catch(() => {});
     }
     if (form.provider === 'railway') {
       api.get('/api/providers/railway/workspaces')
-        .then(r => setRailwayWorkspaces(r.data || []))
+        .then(r => {
+          const workspaces = r.data || [];
+          setRailwayWorkspaces(workspaces);
+          // Never require the user to type a workspace ID: auto-select when
+          // there's only one option, or default to the first when auto-detect is on.
+          if (workspaces.length === 1) {
+            upd('railwayTeamId', workspaces[0].id);
+          } else if (workspaces.length > 1 && railwayAutoDetect) {
+            upd('railwayTeamId', workspaces[0].id);
+          }
+        })
         .catch(() => {});
     }
   }, [form.provider]);
+
+  // Re-apply automatic workspace selection whenever Auto Detect is toggled on
+  useEffect(() => {
+    if (form.provider !== 'railway') return;
+    if (railwayWorkspaces.length > 1 && railwayAutoDetect) {
+      upd('railwayTeamId', railwayWorkspaces[0].id);
+    }
+  }, [railwayAutoDetect]);
 
   const addEnvVar = () => upd('envVars', [...form.envVars, { key: '', value: '' }]);
   const removeEnvVar = (i: number) => upd('envVars', form.envVars.filter((_, idx) => idx !== i));
@@ -247,6 +273,10 @@ function DeployWizard({ providers, onClose, onDeployed }: {
         if (!form.renderPlan) e.renderPlan = 'Plan is required';
         if (!form.repoUrl) e.repoUrl = 'Repository is required';
         if (!form.branch) e.branch = 'Branch is required';
+        if (form.renderRuntime !== 'docker') {
+          if (!form.buildCommand.trim()) e.buildCommand = 'Build command is required';
+          if (!form.startCommand.trim()) e.startCommand = 'Start command is required';
+        }
       } else if (form.provider === 'railway') {
         if (!form.railwayProjectName) e.railwayProjectName = 'Project name is required';
         if (!form.repoUrl) e.repoUrl = 'Repository is required';
@@ -265,7 +295,8 @@ function DeployWizard({ providers, onClose, onDeployed }: {
 
   const isValid = (): boolean => {
     if (form.provider === 'render') {
-      return !!(form.name && form.renderOwnerId && form.renderRuntime && form.renderRegion && form.renderPlan && form.repoUrl && form.branch);
+      const cmdsOk = form.renderRuntime === 'docker' || (!!form.buildCommand.trim() && !!form.startCommand.trim());
+      return !!(form.name && form.renderOwnerId && form.renderRuntime && form.renderRegion && form.renderPlan && form.repoUrl && form.branch && cmdsOk);
     }
     if (form.provider === 'railway') {
       return !!(form.railwayProjectName && form.repoUrl);
@@ -304,6 +335,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
       } else if (form.provider === 'railway') {
         payload.name = form.railwayProjectName;
         payload.projectName = form.railwayProjectName;
+        if (form.railwayTeamId) payload.workspaceId = form.railwayTeamId;
       } else if (form.provider === 'vercel') {
         payload.name = form.name;
         payload.framework = form.vercelFramework;
@@ -448,8 +480,8 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                   <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" error={errors.branch} required />
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <Input label="Build Command" value={form.buildCommand} onChange={e => upd('buildCommand', e.target.value)} placeholder="npm run build" />
-                    <Input label="Start Command" value={form.startCommand} onChange={e => upd('startCommand', e.target.value)} placeholder="npm start" />
+                    <Input label="Build Command" value={form.buildCommand} onChange={e => upd('buildCommand', e.target.value)} placeholder="npm run build" required={form.renderRuntime !== 'docker'} error={errors.buildCommand} />
+                    <Input label="Start Command" value={form.startCommand} onChange={e => upd('startCommand', e.target.value)} placeholder="npm start" required={form.renderRuntime !== 'docker'} error={errors.startCommand} />
                   </div>
                 </>
               )}
@@ -463,19 +495,34 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                     <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
                   )}
 
-                  {railwayWorkspaces.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Team/Workspace (optional):</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {railwayWorkspaces.map(w => (
-                          <button key={w.id} onClick={() => upd('railwayTeamId', form.railwayTeamId === w.id ? '' : w.id)}
-                            style={{ padding: '6px 10px', background: form.railwayTeamId === w.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.railwayTeamId === w.id ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontSize: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                            {w.name}
-                            {form.railwayTeamId === w.id && <CheckCircle size={11} color="var(--accent-blue)" style={{ marginLeft: 'auto' }} />}
-                          </button>
-                        ))}
-                      </div>
+                  {railwayWorkspaces.length > 1 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={railwayAutoDetect}
+                          onChange={e => setRailwayAutoDetect(e.target.checked)}
+                        />
+                        Auto Detect Workspace
+                      </label>
+                      <Select
+                        label="Workspace"
+                        value={form.railwayTeamId}
+                        onChange={e => upd('railwayTeamId', e.target.value)}
+                        options={railwayWorkspaces.map(w => ({ value: w.id, label: w.name }))}
+                        disabled={railwayAutoDetect}
+                      />
+                      <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                        {railwayAutoDetect
+                          ? `Automatically using "${railwayWorkspaces.find(w => w.id === form.railwayTeamId)?.name || railwayWorkspaces[0].name}". Turn off to pick a different workspace.`
+                          : 'Choose the workspace to deploy into.'}
+                      </p>
                     </div>
+                  )}
+                  {railwayWorkspaces.length === 1 && (
+                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                      Workspace auto-detected: {railwayWorkspaces[0].name}
+                    </p>
                   )}
                 </>
               )}
@@ -581,6 +628,10 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                   ...(form.provider === 'railway' ? [
                     { label: 'Project Name', value: form.railwayProjectName },
                     { label: 'Repository', value: form.repoUrl },
+                    ...(railwayWorkspaces.length > 0 ? [{
+                      label: 'Workspace',
+                      value: railwayWorkspaces.find(w => w.id === form.railwayTeamId)?.name || 'Personal Workspace',
+                    }] : []),
                   ] : []),
                   ...(form.provider === 'vercel' ? [
                     { label: 'Project Name', value: form.name },
@@ -754,6 +805,14 @@ export default function CloudDeployments() {
               {syncing ? 'Syncing...' : 'Sync'}
             </Button>
             <Button size="sm" icon={<RefreshCw size={13} />} onClick={load}>Refresh</Button>
+            {can.deleteDeployment && deps.some(d => d.status === 'failed') && (
+              <Button size="sm" variant="danger" icon={<Trash2 size={13} />} onClick={async () => {
+                try {
+                  await api.delete('/api/providers/deployments/failed');
+                  await load();
+                } catch {}
+              }}>Clear Failed</Button>
+            )}
             {can.createDeployment && (
               <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => setWizardOpen(true)}>
                 New Deployment

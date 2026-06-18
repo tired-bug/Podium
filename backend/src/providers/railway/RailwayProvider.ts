@@ -59,12 +59,24 @@ export class RailwayProvider implements IProvider {
 
     if (!projectId) {
       const projectName = opts.projectName || opts.name;
-      console.log(`[railway] No project ID — creating new project name=${projectName}`);
-      const created = await this.gql(creds.railway_token, `
-        mutation($name: String!) {
-          projectCreate(input: { name: $name }) { id name }
-        }`, { name: projectName });
-      projectId = created.projectCreate.id;
+      const workspaceId = opts.workspaceId || creds.railway_team_id || undefined;
+      console.log(`[railway] No project ID — creating new project name=${projectName} workspaceId=${workspaceId}`);
+
+      if (workspaceId) {
+        // Team workspace: workspaceId is required by Railway API
+        const created = await this.gql(creds.railway_token, `
+          mutation($name: String!, $workspaceId: String!) {
+            projectCreate(input: { name: $name, workspaceId: $workspaceId }) { id name }
+          }`, { name: projectName, workspaceId });
+        projectId = created.projectCreate.id;
+      } else {
+        // Personal account: no workspaceId needed
+        const created = await this.gql(creds.railway_token, `
+          mutation($name: String!) {
+            projectCreate(input: { name: $name }) { id name }
+          }`, { name: projectName });
+        projectId = created.projectCreate.id;
+      }
       console.log(`[railway] Project created: projectId=${projectId}`);
     }
 
@@ -234,10 +246,26 @@ export class RailwayProvider implements IProvider {
   }
 
   /**
-   * List Railway workspaces/teams.
+   * List all workspaces accessible to the authenticated user — the personal
+   * account workspace plus any team workspaces. Used to drive automatic
+   * workspace selection so the user never has to type a workspace ID.
    */
   async listWorkspaces(token: string): Promise<Array<{ id: string; name: string }>> {
-    const data = await this.gql(token, `query { teams { edges { node { id name } } } }`).catch(() => ({ teams: { edges: [] } }));
-    return (data?.teams?.edges || []).map((e: any) => ({ id: e.node.id, name: e.node.name }));
+    const data = await this.gql(token, `
+      query {
+        me { id name }
+        teams { edges { node { id name } } }
+      }
+    `).catch(() => ({ me: null, teams: { edges: [] } }));
+
+    const workspaces: Array<{ id: string; name: string }> = [];
+    if (data?.me?.id) {
+      // Empty id means "no workspaceId" — Railway treats this as the personal account
+      workspaces.push({ id: '', name: 'Personal Workspace' });
+    }
+    for (const e of (data?.teams?.edges || [])) {
+      workspaces.push({ id: e.node.id, name: e.node.name });
+    }
+    return workspaces;
   }
 }

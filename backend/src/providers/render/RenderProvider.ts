@@ -69,29 +69,54 @@ export class RenderProvider implements IProvider {
       ? Object.entries(opts.envVars).map(([key, value]) => ({ key, value }))
       : [];
 
+    // Render API v1 service creation payload
+    // For repo-based services: serviceDetails.env = runtime (node/python/ruby/go/rust/elixir/docker)
+    // For docker image services: serviceDetails.env = 'image'
+    // plan goes inside serviceDetails
+    const isDockerImage = !opts.repoUrl && !!opts.image;
+    const isDockerRuntime = runtime === 'docker';
+    const serviceEnv = isDockerImage ? 'image' : (isDockerRuntime ? 'docker' : runtime);
+
+    // Render v1 API: buildCommand/startCommand are REQUIRED for native runtimes (node/python/etc)
+    // They must be non-empty — empty string causes "buildCommand is required" error
+    const buildCmd = opts.buildCommand && opts.buildCommand.trim() ? opts.buildCommand.trim() : null;
+    const startCmd = opts.startCommand && opts.startCommand.trim() ? opts.startCommand.trim() : null;
+
+    const serviceDetails: any = {
+      env: serviceEnv,
+      plan,
+      region,
+      numInstances: 1,
+    };
+
+    if (serviceEnv !== 'image' && serviceEnv !== 'docker') {
+      // Native runtime: buildCommand and startCommand go in envSpecificDetails
+      if (!buildCmd) throw new Error(`buildCommand is required for Render ${runtime} services`);
+      if (!startCmd) throw new Error(`startCommand is required for Render ${runtime} services`);
+      serviceDetails.envSpecificDetails = {
+        buildCommand: buildCmd,
+        startCommand: startCmd,
+      };
+    } else if (serviceEnv === 'docker' && opts.repoUrl) {
+      serviceDetails.dockerDetails = {
+        dockerfilePath: './Dockerfile',
+        dockerContext: '.',
+      };
+    }
+
     const payload: any = {
       type: 'web_service',
       name: opts.name,
       ownerId,
       region,
       envVars,
-      serviceDetails: {
-        runtime,
-        plan,
-        region,
-        envSpecificDetails: {
-          buildCommand: opts.buildCommand || '',
-          startCommand: opts.startCommand || '',
-        },
-      },
+      serviceDetails,
     };
 
     if (opts.repoUrl) {
       payload.repo = opts.repoUrl;
       payload.branch = opts.branch || 'main';
       payload.autoDeploy = 'yes';
-      if (opts.buildCommand) payload.buildCommand = opts.buildCommand;
-      if (opts.startCommand) payload.startCommand = opts.startCommand;
     } else if (opts.image) {
       payload.image = { ownerId, imagePath: opts.image };
     } else {

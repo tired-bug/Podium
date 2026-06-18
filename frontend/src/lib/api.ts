@@ -17,9 +17,15 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Only redirect on 401 for non-auth endpoints to avoid redirect loops
     if (error.response?.status === 401) {
-      localStorage.removeItem('podium_token');
-      window.location.href = '/login';
+      const url: string = error.config?.url || '';
+      const isAuthEndpoint = url.includes('/api/auth/login') || url.includes('/api/auth/signup') || url.includes('/api/auth/me');
+      if (!isAuthEndpoint) {
+        localStorage.removeItem('podium_token');
+        // Use SPA navigation via custom event — avoids full page reload
+        window.dispatchEvent(new CustomEvent('podium:unauthorized'));
+      }
     }
     return Promise.reject(error);
   }

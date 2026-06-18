@@ -55,21 +55,20 @@ async function syncProvider(providerId: string): Promise<void> {
       return;
     }
 
-    // Upsert provider deployments into local DB
+    // Sync only updates STATUS of existing user-owned records.
+    // Never inserts new records from sync — those would be orphaned (no user_id).
+    // Provider inventory is fetched live in /inventory endpoint instead.
     for (const dep of providerDeployments) {
-      const existing = db.prepare('SELECT id FROM cloud_deployments WHERE provider=? AND provider_deployment_id=?')
-        .get(providerId, dep.id) as any;
+      const existing = db.prepare(
+        'SELECT id FROM cloud_deployments WHERE provider=? AND provider_deployment_id=?'
+      ).get(providerId, dep.id) as any;
 
       if (existing) {
-        db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), updated_at=datetime('now') WHERE provider=? AND provider_deployment_id=?`)
-          .run(dep.status, dep.url || null, providerId, dep.id);
-      } else {
-        const { v4: uuidv4 } = require('uuid');
-        db.prepare(`
-          INSERT OR IGNORE INTO cloud_deployments (id, provider, name, status, url, provider_deployment_id, config, logs, source_type, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, '{}', '[]', 'sync', COALESCE(?, datetime('now')), datetime('now'))
-        `).run(uuidv4(), providerId, dep.name, dep.status, dep.url || null, dep.id, dep.createdAt || null);
+        db.prepare(
+          `UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), updated_at=datetime('now') WHERE provider=? AND provider_deployment_id=?`
+        ).run(dep.status, dep.url || null, providerId, dep.id);
       }
+      // No else: do not insert records without a user_id owner
     }
 
     console.log(`[sync] ${providerId}: synced ${providerDeployments.length} deployments`);

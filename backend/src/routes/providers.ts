@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/index';
-import { requireAuth, requireRole } from '../auth';
+import { requireAuth, requireRole, AuthRequest } from '../auth';
 import { providerManager, PROVIDER_META } from '../providers/ProviderManager';
 
 const router = Router();
@@ -26,40 +26,42 @@ function maskCredentials(creds: Record<string, string>): Record<string, string> 
   return masked;
 }
 
-// ─── Provider management routes ───────────────────────────────────────────────
+// ─── Ensure user_id column exists on cloud_deployments ────────────────────────
+// Called at startup from index.ts — safe to call multiple times
+export function ensureDeploymentUserIdColumn(): void {
+  const db = getDb();
+  const cols = ['user_id TEXT', 'creator_username TEXT'];
+  for (const col of cols) {
+    try { db.prepare(`ALTER TABLE cloud_deployments ADD COLUMN ${col}`).run(); } catch { /* exists */ }
+  }
+}
 
-// GET /api/providers — list all providers with status
+// ─── Provider list ─────────────────────────────────────────────────────────────
 router.get('/', requireAuth, (_req, res) => {
   const metas = providerManager.listMeta();
-  const db = getDb();
   const result = metas.map(m => {
     const creds = getCredentials(m.id);
-    // For Render, owner_id is optional — only check the API key
     const requiredKeys = m.credentialKeys.filter(k => k.required);
     const hasCredentials = requiredKeys.every(k => !!creds[k.key]);
-    return {
-      ...m,
-      connected: hasCredentials,
-      credentialsMasked: maskCredentials(creds),
-    };
+    return { ...m, connected: hasCredentials, credentialsMasked: maskCredentials(creds) };
   });
   res.json(result);
 });
 
-// ─── Deployment sub-routes (must come BEFORE /:id to avoid wildcard capture) ──
+// ─── Static sub-routes BEFORE /:id wildcard ───────────────────────────────────
 
-// POST /api/providers/deploy — create a cloud deployment
-router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (req: any, res: Response) => {
+// POST /api/providers/deploy
+router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (req: AuthRequest, res: Response) => {
   const {
     provider, name, repoUrl, branch, image, region, envVars, buildCommand, startCommand,
-    ownerId, runtime, plan, projectName, framework, rootDirectory, outputDirectory,
+    ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory,
   } = req.body;
 
   if (!provider || !name) {
     return res.status(400).json({ error: 'provider and name are required' });
   }
 
-  console.log(`[providers] Deploy request: provider=${provider} name=${name}`);
+  console.log(`[providers] Deploy: provider=${provider} name=${name} userId=${req.user?.sub}`);
 
   try {
     const meta = providerManager.getMeta(provider);
@@ -68,8 +70,6 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
     }
 
     const creds = getCredentials(provider);
-
-    // Only check truly required credentials (e.g. API key, not optional owner ID)
     const missingCreds = meta.credentialKeys
       .filter(k => k.required && !creds[k.key])
       .map(k => k.label);
@@ -79,43 +79,52 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
 
     const localId = uuidv4();
     const db = getDb();
+    const userId = req.user!.sub;
+
+    // If this repo was connected under GitHub with a token (e.g. it's private),
+    // reuse that token so providers can fetch its source without any extra
+    // setup on the user's part.
+    let githubToken: string | undefined;
+    if (repoUrl) {
+      const repoRow = db.prepare('SELECT token FROM github_repos WHERE repo_url = ?').get(repoUrl) as any;
+      if (repoRow?.token) githubToken = repoRow.token;
+    }
 
     db.prepare(`
-      INSERT INTO cloud_deployments (id, provider, name, region, status, config, logs, source_type, repo_url, docker_image, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'queued', ?, '[]', ?, ?, ?, datetime('now'), datetime('now'))
+      INSERT INTO cloud_deployments
+        (id, provider, name, region, status, config, logs, source_type, repo_url, docker_image, user_id, creator_username, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'queued', ?, '[]', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       localId, provider, name, region || null,
-      JSON.stringify({ repoUrl, branch, image, envVars, buildCommand, startCommand, ownerId, runtime, plan, projectName, framework, rootDirectory, outputDirectory }),
+      JSON.stringify({ repoUrl, branch, image, envVars, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
       repoUrl ? 'git' : (image ? 'docker' : 'unknown'),
       repoUrl || null,
-      image || null
+      image || null,
+      userId,
+      req.user!.username
     );
 
-    console.log(`[providers] Created local deployment record id=${localId}, launching provider deploy...`);
+    console.log(`[providers] Created local deployment id=${localId} userId=${userId}`);
 
-    // Fire and forget — provider deploy runs async, result persisted to DB
     (async () => {
       try {
-        console.log(`[providers] Calling ${provider}.deploy() for localId=${localId}`);
         const result = await providerManager.deploy(provider, creds, {
-          name, repoUrl, branch, image, region, envVars: envVars || {}, buildCommand, startCommand,
-          ownerId, runtime, plan, projectName, framework, rootDirectory, outputDirectory,
+          name, repoUrl, branch, image, region, envVars: envVars || {},
+          buildCommand, startCommand, ownerId, runtime, plan,
+          projectName, workspaceId, framework, rootDirectory, outputDirectory,
+          githubToken,
         }, localId);
-
-        const providerDeployId = result.deploymentId;
-        console.log(`[providers] Provider returned deploymentId=${providerDeployId} status=${result.status} url=${result.url}`);
 
         db.prepare(`
           UPDATE cloud_deployments
           SET status=?, url=COALESCE(?,url), provider_deployment_id=?, provider_error=NULL, updated_at=datetime('now')
           WHERE id=?
-        `).run(result.status, result.url || null, providerDeployId, localId);
+        `).run(result.status, result.url || null, result.deploymentId, localId);
 
-        console.log(`[providers] Updated db: localId=${localId} → provider_deployment_id=${providerDeployId} status=${result.status}`);
+        console.log(`[providers] Deploy success localId=${localId} providerDepId=${result.deploymentId} status=${result.status}`);
       } catch (err: any) {
         const errMsg = err?.message || String(err);
-        console.error(`[providers] Deploy failed for localId=${localId}:`, errMsg);
-
+        console.error(`[providers] Deploy failed localId=${localId}:`, errMsg);
         const logs = JSON.stringify([{ time: new Date().toISOString(), message: errMsg, level: 'error' }]);
         db.prepare(`
           UPDATE cloud_deployments
@@ -132,10 +141,16 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
   }
 });
 
-// GET /api/providers/deployments — list all cloud deployments
-router.get('/deployments', requireAuth, (req: any, res: Response) => {
+// GET /api/providers/deployments — scoped to current user (admins see all)
+router.get('/deployments', requireAuth, (req: AuthRequest, res: Response) => {
   const db = getDb();
-  const rows = db.prepare('SELECT * FROM cloud_deployments ORDER BY created_at DESC').all();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
+
+  const rows = isAdmin
+    ? db.prepare('SELECT * FROM cloud_deployments ORDER BY created_at DESC').all()
+    : db.prepare('SELECT * FROM cloud_deployments WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+
   res.json(rows.map(r => ({
     ...r,
     config: (() => { try { return JSON.parse((r as any).config); } catch { return {}; } })(),
@@ -144,46 +159,44 @@ router.get('/deployments', requireAuth, (req: any, res: Response) => {
 });
 
 // GET /api/providers/deployments/:id/status
-router.get('/deployments/:id/status', requireAuth, async (req, res: Response) => {
+router.get('/deployments/:id/status', requireAuth, async (req: AuthRequest, res: Response) => {
   const db = getDb();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
   const row = db.prepare('SELECT * FROM cloud_deployments WHERE id=?').get(req.params.id) as any;
   if (!row) return res.status(404).json({ error: 'Deployment not found' });
+  if (!isAdmin && row.user_id && row.user_id !== userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   const providerDepId = row.provider_deployment_id;
-  console.log(`[providers] Status poll: localId=${row.id} providerDepId=${providerDepId} provider=${row.provider}`);
-
   if (!providerDepId) {
-    // Provider deploy may still be in progress
-    console.warn(`[providers] No provider_deployment_id yet for localId=${row.id}, returning cached status=${row.status}`);
     return res.json({ deploymentId: row.id, status: row.status, url: row.url, updatedAt: row.updated_at, error: row.provider_error || undefined });
   }
 
   try {
     const creds = getCredentials(row.provider);
     const status = await providerManager.getStatus(row.provider, creds, providerDepId);
-    console.log(`[providers] Status result for providerDepId=${providerDepId}: status=${status.status}`);
-
-    db.prepare(`
-      UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), updated_at=datetime('now') WHERE id=?
-    `).run(status.status, status.url || null, row.id);
-
+    db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), updated_at=datetime('now') WHERE id=?`)
+      .run(status.status, status.url || null, row.id);
     res.json({ ...status, localId: row.id });
   } catch (e: any) {
-    console.error(`[providers] Status fetch error for providerDepId=${providerDepId}:`, e.message);
-    // Return last known DB state rather than masking the error
     res.json({ deploymentId: row.id, status: row.status, url: row.url, updatedAt: row.updated_at, error: e.message });
   }
 });
 
 // GET /api/providers/deployments/:id/logs
-router.get('/deployments/:id/logs', requireAuth, async (req, res: Response) => {
+router.get('/deployments/:id/logs', requireAuth, async (req: AuthRequest, res: Response) => {
   const db = getDb();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
   const row = db.prepare('SELECT * FROM cloud_deployments WHERE id=?').get(req.params.id) as any;
   if (!row) return res.status(404).json({ error: 'Deployment not found' });
+  if (!isAdmin && row.user_id && row.user_id !== userId) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   const providerDepId = row.provider_deployment_id;
-  console.log(`[providers] Logs request: localId=${row.id} providerDepId=${providerDepId}`);
-
   if (!providerDepId) {
     const saved = (() => { try { return JSON.parse(row.logs); } catch { return []; } })();
     return res.json(saved);
@@ -192,47 +205,36 @@ router.get('/deployments/:id/logs', requireAuth, async (req, res: Response) => {
   try {
     const creds = getCredentials(row.provider);
     const logs = await providerManager.getLogs(row.provider, creds, providerDepId);
-    console.log(`[providers] Fetched ${logs.length} log lines for providerDepId=${providerDepId}`);
     res.json(logs);
   } catch (e: any) {
-    console.error(`[providers] Logs fetch error for providerDepId=${providerDepId}:`, e.message);
     const saved = (() => { try { return JSON.parse(row.logs); } catch { return []; } })();
     res.json([...saved, { time: new Date().toISOString(), message: `Log fetch error: ${e.message}`, level: 'error' }]);
   }
 });
 
 // DELETE /api/providers/deployments/:id
-router.delete('/deployments/:id', requireAuth, requireRole('admin'), async (req, res: Response) => {
+router.delete('/deployments/:id', requireAuth, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   const db = getDb();
   const row = db.prepare('SELECT * FROM cloud_deployments WHERE id=?').get(req.params.id) as any;
   if (!row) return res.status(404).json({ error: 'Deployment not found' });
 
-  const providerDepId = row.provider_deployment_id;
-  console.log(`[providers] Delete: localId=${row.id} providerDepId=${providerDepId}`);
-
-  if (providerDepId) {
+  if (row.provider_deployment_id) {
     try {
       const creds = getCredentials(row.provider);
-      await providerManager.deleteDeployment(row.provider, creds, providerDepId);
-      console.log(`[providers] Provider delete succeeded for providerDepId=${providerDepId}`);
+      await providerManager.deleteDeployment(row.provider, creds, row.provider_deployment_id);
     } catch (e: any) {
-      console.error(`[providers] Provider delete failed for providerDepId=${providerDepId}:`, e.message);
-      // Still delete locally — orphaned records should be cleanable
+      console.error(`[providers] Provider delete failed:`, e.message);
     }
-  } else {
-    console.warn(`[providers] No provider_deployment_id for localId=${row.id} — deleting local record only`);
   }
 
   db.prepare('DELETE FROM cloud_deployments WHERE id=?').run(row.id);
   res.json({ ok: true });
 });
 
-// ─── Render-specific: list owners for owner picker UI ──────────────────────
-router.get('/render/owners', requireAuth, async (req: any, res: Response) => {
+// GET /api/providers/render/owners
+router.get('/render/owners', requireAuth, async (_req, res: Response) => {
   const creds = getCredentials('render');
-  if (!creds.render_api_key) {
-    return res.status(400).json({ error: 'Render API key not configured' });
-  }
+  if (!creds.render_api_key) return res.status(400).json({ error: 'Render API key not configured' });
   try {
     const owners = await providerManager.listRenderOwners(creds.render_api_key);
     res.json(owners);
@@ -241,126 +243,23 @@ router.get('/render/owners', requireAuth, async (req: any, res: Response) => {
   }
 });
 
-// ─── Provider-specific routes (wildcard /:id — must come AFTER static paths) ──
-
-// GET /api/providers/:id — single provider info
-router.get('/:id', requireAuth, (req, res) => {
+// GET /api/providers/render/services
+router.get('/render/services', requireAuth, async (_req, res: Response) => {
+  const creds = getCredentials('render');
+  if (!creds.render_api_key) return res.status(400).json({ error: 'Render API key not configured' });
   try {
-    const meta = providerManager.getMeta(req.params.id);
-    const creds = getCredentials(req.params.id);
-    const requiredKeys = meta.credentialKeys.filter(k => k.required);
-    const hasCredentials = requiredKeys.every(k => !!creds[k.key]);
-    res.json({ ...meta, connected: hasCredentials, credentialsMasked: maskCredentials(creds) });
-  } catch (e: any) {
-    res.status(404).json({ error: e.message });
-  }
-});
-
-// POST /api/providers/:id/connect — test connection and save credentials
-router.post('/:id/connect', requireAuth, requireRole('admin', 'developer'), async (req, res: Response) => {
-  try {
-    const meta = providerManager.getMeta(req.params.id);
-    const db = getDb();
-
-    const creds: Record<string, string> = {};
-    for (const k of meta.credentialKeys) {
-      const submitted = req.body[k.key];
-      if (submitted && submitted !== '***masked***') {
-        creds[k.key] = submitted;
-      } else {
-        const row = db.prepare('SELECT value FROM settings WHERE key=?').get(k.key) as any;
-        if (row?.value) creds[k.key] = row.value;
-      }
-    }
-
-    console.log(`[providers] Connect test: provider=${req.params.id}`);
-    const result = await providerManager.connect(req.params.id, creds);
-    if (result.ok) {
-      for (const [key, val] of Object.entries(creds)) {
-        db.prepare('INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)').run(key, val);
-      }
-      console.log(`[providers] Connect succeeded: provider=${req.params.id}`);
-    } else {
-      console.warn(`[providers] Connect failed: provider=${req.params.id} error=${result.error}`);
-    }
-    res.json(result);
-  } catch (e: any) {
-    console.error(`[providers] Connect error: provider=${req.params.id}`, e.message);
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// POST /api/providers/:id/credentials — save credentials without testing
-router.post('/:id/credentials', requireAuth, requireRole('admin'), async (req, res: Response) => {
-  try {
-    const meta = providerManager.getMeta(req.params.id);
-    const db = getDb();
-    for (const k of meta.credentialKeys) {
-      const val = req.body[k.key];
-      if (val && val !== '***masked***') {
-        db.prepare('INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)').run(k.key, val);
-      }
-    }
-    res.json({ ok: true });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// DELETE /api/providers/:id/credentials — remove credentials
-router.delete('/:id/credentials', requireAuth, requireRole('admin'), (req, res) => {
-  try {
-    const meta = providerManager.getMeta(req.params.id);
-    const db = getDb();
-    for (const k of meta.credentialKeys) {
-      db.prepare('DELETE FROM settings WHERE key=?').run(k.key);
-    }
-    res.json({ ok: true });
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-export default router;
-
-// ── Orchestration endpoints ───────────────────────────────────────────────────
-
-// GET /api/providers/vercel/repos — list GitHub repos connected to Vercel
-router.get('/vercel/repos', requireAuth, async (req: any, res: Response) => {
-  const creds = getCredentials('vercel');
-  if (!creds.vercel_token) {
-    return res.status(400).json({ error: 'Vercel API token not configured' });
-  }
-  try {
-    const provider = (providerManager as any).get('vercel');
-    const repos = await provider.listGithubRepos(creds);
-    res.json(repos);
-  } catch (e: any) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// GET /api/providers/vercel/deployments — list all Vercel deployments
-router.get('/vercel/deployments', requireAuth, async (req: any, res: Response) => {
-  const creds = getCredentials('vercel');
-  if (!creds.vercel_token) {
-    return res.status(400).json({ error: 'Vercel API token not configured' });
-  }
-  try {
-    const provider = (providerManager as any).get('vercel');
-    const deployments = await provider.listDeployments(creds);
-    res.json(deployments);
+    const provider = (providerManager as any).get('render');
+    const services = await provider.listDeployments(creds);
+    res.json(services);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
 // GET /api/providers/railway/workspaces
-router.get('/railway/workspaces', requireAuth, async (req: any, res: Response) => {
+router.get('/railway/workspaces', requireAuth, async (_req, res: Response) => {
   const creds = getCredentials('railway');
-  if (!creds.railway_token) {
-    return res.status(400).json({ error: 'Railway API token not configured' });
-  }
+  if (!creds.railway_token) return res.status(400).json({ error: 'Railway API token not configured' });
   try {
     const provider = (providerManager as any).get('railway');
     const workspaces = await provider.listWorkspaces(creds.railway_token);
@@ -371,11 +270,9 @@ router.get('/railway/workspaces', requireAuth, async (req: any, res: Response) =
 });
 
 // GET /api/providers/railway/projects
-router.get('/railway/projects', requireAuth, async (req: any, res: Response) => {
+router.get('/railway/projects', requireAuth, async (_req, res: Response) => {
   const creds = getCredentials('railway');
-  if (!creds.railway_token) {
-    return res.status(400).json({ error: 'Railway API token not configured' });
-  }
+  if (!creds.railway_token) return res.status(400).json({ error: 'Railway API token not configured' });
   try {
     const provider = (providerManager as any).get('railway');
     const projects = await provider.listProjects(creds.railway_token);
@@ -385,23 +282,34 @@ router.get('/railway/projects', requireAuth, async (req: any, res: Response) => 
   }
 });
 
-// GET /api/providers/render/services — list all Render services
-router.get('/render/services', requireAuth, async (req: any, res: Response) => {
-  const creds = getCredentials('render');
-  if (!creds.render_api_key) {
-    return res.status(400).json({ error: 'Render API key not configured' });
-  }
+// GET /api/providers/vercel/repos
+router.get('/vercel/repos', requireAuth, async (_req, res: Response) => {
+  const creds = getCredentials('vercel');
+  if (!creds.vercel_token) return res.status(400).json({ error: 'Vercel API token not configured' });
   try {
-    const provider = (providerManager as any).get('render');
-    const services = await provider.listDeployments(creds);
-    res.json(services);
+    const provider = (providerManager as any).get('vercel');
+    const repos = await provider.listGithubRepos(creds);
+    res.json(repos);
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// GET /api/providers/inventory — all deployments across all connected providers
-router.get('/inventory', requireAuth, async (req: any, res: Response) => {
+// GET /api/providers/vercel/deployments
+router.get('/vercel/deployments', requireAuth, async (_req, res: Response) => {
+  const creds = getCredentials('vercel');
+  if (!creds.vercel_token) return res.status(400).json({ error: 'Vercel API token not configured' });
+  try {
+    const provider = (providerManager as any).get('vercel');
+    const deployments = await provider.listDeployments(creds);
+    res.json(deployments);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/providers/inventory — aggregate across all connected providers
+router.get('/inventory', requireAuth, async (_req, res: Response) => {
   const results: Record<string, any[]> = {};
   for (const providerId of ['vercel', 'render', 'railway']) {
     const meta = PROVIDER_META[providerId];
@@ -422,8 +330,8 @@ router.get('/inventory', requireAuth, async (req: any, res: Response) => {
   res.json(results);
 });
 
-// POST /api/providers/sync — trigger manual sync
-router.post('/sync', requireAuth, requireRole('admin', 'developer'), async (req: any, res: Response) => {
+// POST /api/providers/sync
+router.post('/sync', requireAuth, requireRole('admin', 'developer'), async (_req, res: Response) => {
   try {
     const { triggerSync } = require('../services/SyncService');
     await triggerSync();
@@ -432,3 +340,91 @@ router.post('/sync', requireAuth, requireRole('admin', 'developer'), async (req:
     res.status(500).json({ error: e.message });
   }
 });
+
+// DELETE /api/providers/deployments/failed — purge all failed records owned by user
+router.delete('/deployments/failed', requireAuth, (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
+  if (isAdmin) {
+    const result = db.prepare("DELETE FROM cloud_deployments WHERE status='failed'").run();
+    return res.json({ deleted: result.changes });
+  }
+  const result = db.prepare("DELETE FROM cloud_deployments WHERE status='failed' AND user_id=?").run(userId);
+  return res.json({ deleted: result.changes });
+});
+
+// ─── /:id wildcard routes — MUST come after all static routes ─────────────────
+
+// GET /api/providers/:id
+router.get('/:id', requireAuth, (req, res) => {
+  try {
+    const meta = providerManager.getMeta(req.params.id);
+    const creds = getCredentials(req.params.id);
+    const requiredKeys = meta.credentialKeys.filter(k => k.required);
+    const hasCredentials = requiredKeys.every(k => !!creds[k.key]);
+    res.json({ ...meta, connected: hasCredentials, credentialsMasked: maskCredentials(creds) });
+  } catch (e: any) {
+    res.status(404).json({ error: e.message });
+  }
+});
+
+// POST /api/providers/:id/connect
+router.post('/:id/connect', requireAuth, requireRole('admin', 'developer'), async (req, res: Response) => {
+  try {
+    const meta = providerManager.getMeta(req.params.id);
+    const db = getDb();
+    const creds: Record<string, string> = {};
+    for (const k of meta.credentialKeys) {
+      const submitted = req.body[k.key];
+      if (submitted && submitted !== '***masked***') {
+        creds[k.key] = submitted;
+      } else {
+        const row = db.prepare('SELECT value FROM settings WHERE key=?').get(k.key) as any;
+        if (row?.value) creds[k.key] = row.value;
+      }
+    }
+    const result = await providerManager.connect(req.params.id, creds);
+    if (result.ok) {
+      for (const [key, val] of Object.entries(creds)) {
+        db.prepare('INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)').run(key, val);
+      }
+    }
+    res.json(result);
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /api/providers/:id/credentials
+router.post('/:id/credentials', requireAuth, requireRole('admin'), async (req, res: Response) => {
+  try {
+    const meta = providerManager.getMeta(req.params.id);
+    const db = getDb();
+    for (const k of meta.credentialKeys) {
+      const val = req.body[k.key];
+      if (val && val !== '***masked***') {
+        db.prepare('INSERT OR REPLACE INTO settings(key, value) VALUES(?, ?)').run(k.key, val);
+      }
+    }
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/providers/:id/credentials
+router.delete('/:id/credentials', requireAuth, requireRole('admin'), (req, res) => {
+  try {
+    const meta = providerManager.getMeta(req.params.id);
+    const db = getDb();
+    for (const k of meta.credentialKeys) {
+      db.prepare('DELETE FROM settings WHERE key=?').run(k.key);
+    }
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+export default router;

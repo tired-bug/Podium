@@ -34,6 +34,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  // Listen for 401 events from api interceptor (avoids full page reload)
+  useEffect(() => {
+    const handler = () => logout();
+    window.addEventListener('podium:unauthorized', handler);
+    return () => window.removeEventListener('podium:unauthorized', handler);
+  }, [logout]);
+
   const refreshUser = useCallback(async () => {
     const storedToken = localStorage.getItem('podium_token');
     if (!storedToken) { setLoading(false); return; }

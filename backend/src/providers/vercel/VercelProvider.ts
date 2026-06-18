@@ -25,61 +25,101 @@ export class VercelProvider implements IProvider {
   }
 
   /**
-   * Resolve a GitHub repo URL to the numeric Vercel repo ID needed by the API.
-   * Vercel's /v13/deployments requires gitSource.repoId (numeric) not just repoUrl.
+   * Download a GitHub repo's source as a zip archive and unpack it into an
+   * in-memory file list. This lets Vercel deployments work straight from a
+   * Vercel API token — no pre-linked GitHub↔Vercel integration required.
    */
-  private async resolveGithubRepoId(token: string, teamId: string | undefined, repoUrl: string): Promise<{ repoId: number; repoName: string }> {
-    // Extract owner/repo from URL
+  private async fetchRepoSource(repoUrl: string, branch: string, githubToken?: string): Promise<{ files: Array<{ path: string; data: Buffer }>; repoName: string }> {
     const match = repoUrl.replace(/\.git$/, '').match(/github\.com[/:]([\w.-]+)\/([\w.-]+)/);
     if (!match) throw new Error(`Cannot parse GitHub URL: ${repoUrl}`);
     const owner = match[1];
     const repo = match[2];
     const repoFullName = `${owner}/${repo}`;
 
-    const params = teamId ? `?teamId=${teamId}` : '';
-    const c = this.client(token);
+    const headers: Record<string, string> = { 'User-Agent': 'Podium-Deploy' };
+    if (githubToken) headers['Authorization'] = `token ${githubToken}`;
 
-    // Check if a Vercel project linked to this repo already exists
+    let res;
     try {
-      const projects = await c.get(`/v9/projects${params}&repoUrl=${encodeURIComponent(repoUrl)}&limit=10`);
-      const existing = (projects.data?.projects || []).find((p: any) =>
-        p.link?.repoId && (p.link?.repoFullName === repoFullName || p.link?.repoUrl === repoUrl)
-      );
-      if (existing?.link?.repoId) {
-        return { repoId: existing.link.repoId, repoName: existing.link.repoFullName || repoFullName };
+      res = await axios.get(`https://api.github.com/repos/${repoFullName}/zipball/${encodeURIComponent(branch)}`, {
+        headers,
+        responseType: 'arraybuffer',
+        maxRedirects: 5,
+        timeout: 60000,
+      });
+    } catch (e: any) {
+      const status = e?.response?.status;
+      if (status === 404) {
+        throw new Error(`Could not download "${repoFullName}" (branch "${branch}"). Check the repository URL and branch — if it's private, connect it with a token under GitHub in Podium first.`);
       }
-    } catch {
-      // ignore, will try GitHub API next
+      throw new Error(`Failed to download repository archive: ${e?.response?.data?.message || e.message}`);
     }
 
-    // Try Vercel's GitHub integration to find the repo
-    try {
-      const ghRepos = await c.get(`/v1/integrations/git-namespaces${params}`);
-      for (const ns of ghRepos.data?.namespaces || []) {
-        const nsRepos = await c.get(`/v1/integrations/search-repos?namespace=${ns.id}&query=${encodeURIComponent(repo)}${teamId ? `&teamId=${teamId}` : ''}`);
-        const found = (nsRepos.data?.repos || []).find((r: any) => r.full_name === repoFullName);
-        if (found?.id) {
-          return { repoId: found.id, repoName: found.full_name };
-        }
-      }
-    } catch {
-      // ignore
+    const AdmZip = require('adm-zip');
+    const zip = new AdmZip(Buffer.from(res.data));
+    const entries = zip.getEntries();
+    const files: Array<{ path: string; data: Buffer }> = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory) continue;
+      // GitHub wraps zipball contents in a top-level "{owner}-{repo}-{sha}/" folder
+      const parts = entry.entryName.split('/');
+      parts.shift();
+      const relPath = parts.join('/');
+      if (!relPath) continue;
+      if (relPath.startsWith('.git/')) continue;
+      if (relPath.startsWith('node_modules/')) continue;
+      files.push({ path: relPath, data: entry.getData() });
     }
 
-    throw new Error(
-      `Could not find GitHub repo "${repoFullName}" in your Vercel account. ` +
-      `Please connect GitHub to Vercel at vercel.com/account/git, then link the repository.`
-    );
+    if (files.length === 0) {
+      throw new Error(`No deployable files found in ${repoFullName}@${branch}`);
+    }
+
+    return { files, repoName: repoFullName };
   }
 
   /**
-   * Get or create a Vercel project for the given name/repo.
+   * Upload file contents to Vercel's content-addressable file store, returning
+   * the {file, sha, size} references the deployments API expects. This is the
+   * same mechanism the Vercel CLI uses to deploy a local folder without git.
    */
-  private async getOrCreateProject(token: string, teamId: string | undefined, name: string, repoId: number, repoName: string, branch: string, framework?: string, rootDirectory?: string): Promise<string> {
+  private async uploadFiles(token: string, teamId: string | undefined, files: Array<{ path: string; data: Buffer }>): Promise<Array<{ file: string; sha: string; size: number }>> {
+    const crypto = require('crypto');
+    const params = teamId ? `?teamId=${teamId}` : '';
+    const refs: Array<{ file: string; sha: string; size: number }> = [];
+
+    for (const f of files) {
+      const sha = crypto.createHash('sha1').update(f.data).digest('hex');
+      try {
+        await axios.post(`https://api.vercel.com/v2/files${params}`, f.data, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/octet-stream',
+            'x-vercel-digest': sha,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          timeout: 30000,
+        });
+      } catch (e: any) {
+        const msg = e?.response?.data?.error?.message || e.message;
+        throw new Error(`Failed to upload "${f.path}" to Vercel: ${msg}`);
+      }
+      refs.push({ file: f.path, sha, size: f.data.length });
+    }
+
+    return refs;
+  }
+
+  /**
+   * Get or create a Vercel project by name. No git repository linkage is
+   * required — source is supplied directly via the files array at deploy time.
+   */
+  private async ensureProject(token: string, teamId: string | undefined, name: string, framework?: string, rootDirectory?: string, buildCommand?: string, outputDirectory?: string): Promise<string> {
     const params = teamId ? `?teamId=${teamId}` : '';
     const c = this.client(token);
 
-    // Look for existing project with this name
     try {
       const r = await c.get(`/v9/projects/${encodeURIComponent(name)}${params}`);
       if (r.data?.id) {
@@ -90,17 +130,11 @@ export class VercelProvider implements IProvider {
       if (e?.response?.status !== 404) throw e;
     }
 
-    // Create a new project linked to the repo
-    console.log(`[vercel] Creating new project name=${name} repoId=${repoId} repoName=${repoName} framework=${framework || 'none'}`);
-    const createPayload: any = {
-      name,
-      framework: framework || null,
-      gitRepository: {
-        type: 'github',
-        repo: repoName,
-      },
-    };
+    console.log(`[vercel] Creating new project name=${name} framework=${framework || 'none'} (no GitHub link required)`);
+    const createPayload: any = { name, framework: framework || null };
     if (rootDirectory) createPayload.rootDirectory = rootDirectory;
+    if (buildCommand) createPayload.buildCommand = buildCommand;
+    if (outputDirectory) createPayload.outputDirectory = outputDirectory;
 
     const created = await c.post(`/v10/projects${params}`, createPayload).catch((e: any) => {
       const msg = e?.response?.data?.error?.message || e?.response?.data?.message || e.message;
@@ -127,21 +161,22 @@ export class VercelProvider implements IProvider {
     let payload: any;
 
     if (opts.repoUrl) {
-      // Resolve GitHub repo → get repoId required by Vercel API
-      const { repoId, repoName } = await this.resolveGithubRepoId(creds.vercel_token, teamId, opts.repoUrl);
-      console.log(`[vercel] Resolved repoId=${repoId} repoName=${repoName}`);
+      // Deploy straight from the repo's source — download it and upload the
+      // files to Vercel directly. This works for a brand new Vercel account
+      // with only a valid API token; no GitHub↔Vercel integration is needed.
+      const { files, repoName } = await this.fetchRepoSource(opts.repoUrl, branch, opts.githubToken);
+      console.log(`[vercel] Downloaded ${files.length} files from ${repoName}@${branch}`);
 
-      // Ensure project exists
-      await this.getOrCreateProject(creds.vercel_token, teamId, opts.name, repoId, repoName, branch, opts.framework, opts.rootDirectory);
+      const fileRefs = await this.uploadFiles(creds.vercel_token, teamId, files);
+      console.log(`[vercel] Uploaded ${fileRefs.length} files to Vercel`);
+
+      // Ensure project exists (created from Podium, no repo linkage needed)
+      await this.ensureProject(creds.vercel_token, teamId, opts.name, opts.framework, opts.rootDirectory, opts.buildCommand, opts.outputDirectory);
 
       payload = {
         name: opts.name,
         target: 'production',
-        gitSource: {
-          type: 'github',
-          repoId: repoId,
-          ref: branch,
-        },
+        files: fileRefs,
         env: envVars,
       };
       if (opts.buildCommand) payload.buildCommand = opts.buildCommand;

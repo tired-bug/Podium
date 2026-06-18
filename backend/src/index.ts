@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import path from 'path';
 import fs from 'fs';
 import { initDb, getDb, ensureExtendedSchema } from './db/index';
+import { ensureDeploymentUserIdColumn } from './routes/providers';
 import { v4 as uuidv4 } from 'uuid';
 import { broadcastNotification } from './routes/notifications';
 
@@ -175,7 +176,8 @@ setInterval(pruneOldData, 3_600_000);
 
 async function bootstrap() {
   await initDb();
-  ensureExtendedSchema(); 
+  ensureExtendedSchema();
+  ensureDeploymentUserIdColumn();
 
   startSyncService();
   app.listen(PORT, '0.0.0.0', () => {

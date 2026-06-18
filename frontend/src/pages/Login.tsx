@@ -180,7 +180,6 @@ export default function LoginPage() {
     if (!suEmail) errs.suEmail = 'Required';
     if (!suPw || suPw.length < 8) errs.suPw = 'Min 8 characters';
     if (suPw !== suConfirm) errs.suConfirm = 'Passwords do not match';
-    if (!inviteCode) errs.inviteCode = 'Required';
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
     try {
@@ -339,7 +338,7 @@ export default function LoginPage() {
             </div>
             <AuthInput label="CONFIRM PASSWORD" type="password" placeholder="Repeat password"
               value={suConfirm} onChange={e => setSuConfirm(e.target.value)} error={errors.suConfirm} />
-            <AuthInput label="INVITE CODE" placeholder="XXXXXXXXXXXXXXXX" value={inviteCode}
+            <AuthInput label="INVITE CODE (OPTIONAL)" placeholder="XXXXXXXXXXXXXXXX" value={inviteCode}
               onChange={e => setInviteCode(e.target.value)} error={errors.inviteCode} />
             <button type="submit" disabled={loading} style={{
               width: '100%', padding: '12px', borderRadius: 10, marginTop: 4,
