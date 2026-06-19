@@ -253,24 +253,25 @@ console.log(
    * List all services across all projects.
    */
   async listDeployments(creds: Record<string, string>): Promise<Array<{ id: string; name: string; status: string; url?: string; createdAt?: string }>> {
-    const data = await this.gql(creds.railway_token, `
-      query {
-        projects {
-          edges {
-            node {
-              id name
-              services {
-                edges {
-                  node {
-                    id name
-                    deployments(first: 1) {
-                      edges {
-                        node {
-                          id status
-                          staticUrl
-                          createdAt
-                        }
-                      }
+    const statusMap: Record<string, string> = {
+      SUCCESS: 'live', DEPLOYING: 'building', BUILDING: 'building',
+      FAILED: 'failed', CRASHED: 'failed', REMOVED: 'deleted', WAITING: 'queued',
+    };
+
+    const PROJECTS_FRAGMENT = `
+      edges {
+        node {
+          id name
+          services {
+            edges {
+              node {
+                id name
+                deployments(first: 1) {
+                  edges {
+                    node {
+                      id status
+                      staticUrl
+                      createdAt
                     }
                   }
                 }
@@ -279,24 +280,59 @@ console.log(
           }
         }
       }
-    `);
+    `;
 
-    const results: any[] = [];
-    const statusMap: Record<string, string> = {
-      SUCCESS: 'live', DEPLOYING: 'building', BUILDING: 'building',
-      FAILED: 'failed', CRASHED: 'failed', REMOVED: 'deleted', WAITING: 'queued',
+    const collect = (projectsConnection: any, results: any[]) => {
+      for (const project of (projectsConnection?.edges || [])) {
+        for (const svc of (project.node?.services?.edges || [])) {
+          const dep = svc.node?.deployments?.edges?.[0]?.node;
+          results.push({
+            id: dep?.id || svc.node.id,
+            name: `${project.node.name}/${svc.node.name}`,
+            status: dep ? (statusMap[dep.status] || 'building') : 'queued',
+            url: dep?.staticUrl || undefined,
+            createdAt: dep?.createdAt,
+          });
+        }
+      }
     };
 
-    for (const project of (data?.projects?.edges || [])) {
-      for (const svc of (project.node?.services?.edges || [])) {
-        const dep = svc.node?.deployments?.edges?.[0]?.node;
-        results.push({
-          id: dep?.id || svc.node.id,
-          name: `${project.node.name}/${svc.node.name}`,
-          status: dep ? (statusMap[dep.status] || 'building') : 'queued',
-          url: dep?.staticUrl || undefined,
-          createdAt: dep?.createdAt,
-        });
+    const results: any[] = [];
+
+    // A token's `projects` access depends on its scope (account vs workspace),
+    // and the unscoped top-level `projects` field only works reliably for
+    // account/personal-scoped tokens. So we enumerate workspaces first (which
+    // already degrades gracefully for any token type) and query projects
+    // per-workspace where we have a real workspace id, falling back to the
+    // unscoped query only for the personal-workspace case.
+    let workspaces: Array<{ id: string; name: string }> = [];
+    try {
+      workspaces = await this.listWorkspaces(creds.railway_token);
+    } catch (e: any) {
+      console.error('[railway] listDeployments: could not list workspaces:', e.message);
+      workspaces = [{ id: '', name: 'Personal Workspace' }];
+    }
+
+    for (const ws of workspaces) {
+      try {
+        if (ws.id) {
+          const data = await this.gql(creds.railway_token, `
+            query($workspaceId: String!) {
+              workspace(workspaceId: $workspaceId) {
+                projects { ${PROJECTS_FRAGMENT} }
+              }
+            }
+          `, { workspaceId: ws.id });
+          collect(data?.workspace?.projects, results);
+        } else {
+          const data = await this.gql(creds.railway_token, `
+            query { projects { ${PROJECTS_FRAGMENT} } }
+          `);
+          collect(data?.projects, results);
+        }
+      } catch (e: any) {
+        // Don't let one inaccessible workspace kill the whole sync — log and continue.
+        console.error(`[railway] listDeployments: failed for workspace "${ws.name}":`, e.message);
       }
     }
 
