@@ -45,7 +45,12 @@ export class RailwayProvider implements IProvider {
           edges { node { id name } }
         }
       }
+        
     `);
+    console.log(
+  '[railway] workspace query result:',
+  JSON.stringify(data, null, 2)
+);
     return (data?.projects?.edges || []).map((e: any) => ({
       id: e.node.id,
       name: e.node.name,
@@ -59,7 +64,34 @@ export class RailwayProvider implements IProvider {
 
     if (!projectId) {
       const projectName = opts.projectName || opts.name;
-      const workspaceId = opts.workspaceId || creds.railway_team_id || undefined;
+      let workspaceId =
+  opts.workspaceId ||
+  creds.railway_team_id ||
+  undefined;
+
+if (!workspaceId) {
+  try {
+    const workspaces = await this.listWorkspaces(
+      creds.railway_token
+    );
+
+    const teamWorkspaces =
+      workspaces.filter(w => w.id);
+
+    if (teamWorkspaces.length === 1) {
+      workspaceId = teamWorkspaces[0].id;
+
+      console.log(
+        `[railway] Auto-selected workspace ${workspaceId}`
+      );
+    }
+  } catch (err) {
+    console.warn(
+      '[railway] Workspace auto-detect failed:',
+      err
+    );
+  }
+}
       console.log(`[railway] No project ID — creating new project name=${projectName} workspaceId=${workspaceId}`);
 
       if (workspaceId) {
