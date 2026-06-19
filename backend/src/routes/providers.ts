@@ -31,22 +31,7 @@ function maskCredentials(creds: Record<string, string>): Record<string, string> 
 // Uses PRAGMA table_info so ALTER TABLE is never executed when the column
 // already exists — eliminates "duplicate column name" errors on restart.
 export function ensureDeploymentUserIdColumn(): void {
-  const db = getDb();
-  type ColInfo = { name: string };
-  const existing = (db.prepare('PRAGMA table_info(cloud_deployments)').all() as ColInfo[])
-    .map(r => r.name);
-
-  const needed: Array<{ colDef: string; colName: string }> = [
-    { colName: 'user_id',          colDef: 'user_id TEXT' },
-    { colName: 'creator_username', colDef: 'creator_username TEXT' },
-  ];
-
-  for (const { colName, colDef } of needed) {
-    if (!existing.includes(colName)) {
-      db.prepare(`ALTER TABLE cloud_deployments ADD COLUMN ${colDef}`).run();
-      console.log(`[providers] Added column ${colName} to cloud_deployments`);
-    }
-  }
+  return;
 }
 
 // ─── Provider list ─────────────────────────────────────────────────────────────

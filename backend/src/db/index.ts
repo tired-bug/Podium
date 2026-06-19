@@ -41,10 +41,20 @@ async function flushQueue() {
       batch.map(({ sql, params }) => ({ sql, args: params })),
       'write'
     );
-  } catch (err) {
-    console.error('[turso] Batch write error:', err);
-    _writeQueue = [...batch, ..._writeQueue];
-  } finally {
+  } catch (err: any) {
+  const msg = String(err);
+
+  if (
+    msg.includes('duplicate column') ||
+    msg.includes('already exists')
+  ) {
+    console.warn('[turso] Ignoring migration error:', msg);
+    return;
+  }
+
+  console.error('[turso] Batch write error:', err);
+  _writeQueue = [...batch, ..._writeQueue];
+} finally {
     _flushing = false;
   }
 }
@@ -287,6 +297,8 @@ function getSchemaSQL(): string {
       source_type TEXT,
       repo_url TEXT,
       docker_image TEXT,
+      user_id TEXT,
+      creator_username TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
