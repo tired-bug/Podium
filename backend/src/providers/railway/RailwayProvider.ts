@@ -43,9 +43,32 @@ export class RailwayProvider implements IProvider {
 
   async connect(creds: Record<string, string>) {
     try {
+      // Basic identity check — works with any token scope
       const data = await this.gql(creds.railway_token, `query { me { id name email } }`);
-      if (data?.me?.id) return { ok: true };
-      return { ok: false, error: 'Invalid Railway token' };
+      if (!data?.me?.id) return { ok: false, error: 'Invalid Railway token' };
+
+      // Scope check: me.teams requires an Account-scoped token.
+      // Project/workspace-scoped tokens return a GraphQL authorization error here,
+      // which we surface immediately so the user knows before trying to deploy.
+      try {
+        await this.gql(creds.railway_token, `
+          query {
+            me {
+              teams { edges { node { id } } }
+            }
+          }
+        `);
+      } catch (scopeErr: any) {
+        return {
+          ok: false,
+          error:
+            'This token does not have Account-level permissions. ' +
+            'Please use an Account-scoped token from Railway → Account Settings → Tokens. ' +
+            'Project-scoped tokens cannot list workspaces or create projects.',
+        };
+      }
+
+      return { ok: true };
     } catch (e: any) {
       return { ok: false, error: e.message || 'Connection failed' };
     }
@@ -304,7 +327,9 @@ console.log(
    * Teams are now accessed via `me { teams { edges { node { id name } } } }`.
    */
   async listWorkspaces(token: string): Promise<Array<{ id: string; name: string }>> {
-  const data = await this.gql(token, `
+  let data: any;
+  try {
+    data = await this.gql(token, `
     query {
       me {
         id
@@ -320,6 +345,13 @@ console.log(
       }
     }
   `);
+  } catch (e: any) {
+    throw new Error(
+      'Failed to load Railway workspaces. Make sure you are using an Account-scoped token ' +
+      '(Railway → Account Settings → Tokens). Project-scoped tokens cannot list workspaces. ' +
+      `Original error: ${e.message}`
+    );
+  }
 
   console.log(
     '[railway] RAW WORKSPACES RESPONSE:',

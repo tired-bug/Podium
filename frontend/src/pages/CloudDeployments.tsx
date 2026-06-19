@@ -199,6 +199,8 @@ function DeployWizard({ providers, onClose, onDeployed }: {
   const [renderOwners, setRenderOwners] = useState<Array<{ id: string; name: string }>>([]);
   const [railwayWorkspaces, setRailwayWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
   const [railwayAutoDetect, setRailwayAutoDetect] = useState(true);
+  const [railwayWorkspaceError, setRailwayWorkspaceError] = useState<string | null>(null);
+  const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
 
   const upd = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
   const stepId = STEPS[step].id;
@@ -229,19 +231,22 @@ function DeployWizard({ providers, onClose, onDeployed }: {
         .catch(() => {});
     }
     if (form.provider === 'railway') {
+      setLoadingWorkspaces(true);
+      setRailwayWorkspaceError(null);
       api.get('/api/providers/railway/workspaces')
         .then(r => {
           const workspaces = r.data || [];
           setRailwayWorkspaces(workspaces);
-          // Never require the user to type a workspace ID: auto-select when
-          // there's only one option, or default to the first when auto-detect is on.
-          if (workspaces.length === 1) {
-            upd('railwayTeamId', workspaces[0].id);
-          } else if (workspaces.length > 1 && railwayAutoDetect) {
+          // Auto-select when there's only one option, or default to the first when auto-detect is on.
+          if (workspaces.length >= 1 && railwayAutoDetect) {
             upd('railwayTeamId', workspaces[0].id);
           }
         })
-        .catch(() => {});
+        .catch((e: any) => {
+          const msg = e?.response?.data?.error || e?.message || 'Failed to load workspaces';
+          setRailwayWorkspaceError(msg);
+        })
+        .finally(() => setLoadingWorkspaces(false));
     }
   }, [form.provider]);
 
@@ -495,35 +500,61 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                     <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
                   )}
 
-                  {railwayWorkspaces.length > 1 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={railwayAutoDetect}
-                          onChange={e => setRailwayAutoDetect(e.target.checked)}
+                  {/* Workspace selector — always shown for Railway */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)' }}>
+                    {loadingWorkspaces ? (
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Spinner size={11} color="var(--text-muted)" /> Loading workspaces…
+                      </div>
+                    ) : railwayWorkspaceError ? (
+                      <>
+                        <p style={{ fontSize: '11px', color: 'var(--color-error, #e53)', margin: 0 }}>
+                          ⚠ {railwayWorkspaceError}
+                        </p>
+                        <Input
+                          label="Workspace ID (manual)"
+                          value={form.railwayTeamId}
+                          onChange={e => upd('railwayTeamId', e.target.value)}
+                          placeholder="Leave blank for personal account"
                         />
-                        Auto Detect Workspace
-                      </label>
-                      <Select
-                        label="Workspace"
+                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                          Enter your Railway workspace ID, or leave blank to deploy to your personal account.
+                        </p>
+                      </>
+                    ) : railwayWorkspaces.length > 0 ? (
+                      <>
+                        {railwayWorkspaces.length > 1 && (
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={railwayAutoDetect}
+                              onChange={e => setRailwayAutoDetect(e.target.checked)}
+                            />
+                            Auto Detect Workspace
+                          </label>
+                        )}
+                        <Select
+                          label="Workspace"
+                          value={form.railwayTeamId}
+                          onChange={e => upd('railwayTeamId', e.target.value)}
+                          options={railwayWorkspaces.map(w => ({ value: w.id, label: w.name }))}
+                          disabled={railwayWorkspaces.length > 1 && railwayAutoDetect}
+                        />
+                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+                          {railwayWorkspaces.length > 1 && railwayAutoDetect
+                            ? `Automatically using "${railwayWorkspaces.find(w => w.id === form.railwayTeamId)?.name || railwayWorkspaces[0].name}". Turn off to pick a different workspace.`
+                            : 'Choose the workspace to deploy into.'}
+                        </p>
+                      </>
+                    ) : (
+                      <Input
+                        label="Workspace ID (optional)"
                         value={form.railwayTeamId}
                         onChange={e => upd('railwayTeamId', e.target.value)}
-                        options={railwayWorkspaces.map(w => ({ value: w.id, label: w.name }))}
-                        disabled={railwayAutoDetect}
+                        placeholder="Leave blank for personal account"
                       />
-                      <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
-                        {railwayAutoDetect
-                          ? `Automatically using "${railwayWorkspaces.find(w => w.id === form.railwayTeamId)?.name || railwayWorkspaces[0].name}". Turn off to pick a different workspace.`
-                          : 'Choose the workspace to deploy into.'}
-                      </p>
-                    </div>
-                  )}
-                  {railwayWorkspaces.length === 1 && (
-                    <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
-                      Workspace auto-detected: {railwayWorkspaces[0].name}
-                    </p>
-                  )}
+                    )}
+                  </div>
                 </>
               )}
 
