@@ -64,16 +64,18 @@ export class RailwayProvider implements IProvider {
 
     if (!projectId) {
       const projectName = opts.projectName || opts.name;
-      let workspaceId =
-  opts.workspaceId ||
-  creds.railway_team_id ||
-  undefined;
+      let workspaceId = opts.workspaceId;
 
 if (!workspaceId) {
   try {
     const workspaces = await this.listWorkspaces(
-      creds.railway_token
-    );
+  creds.railway_token
+);
+
+console.log(
+  '[railway] autodetect workspaces:',
+  JSON.stringify(workspaces, null, 2)
+);
 
     const teamWorkspaces =
       workspaces.filter(w => w.id);
@@ -283,21 +285,49 @@ if (!workspaceId) {
    * workspace selection so the user never has to type a workspace ID.
    */
   async listWorkspaces(token: string): Promise<Array<{ id: string; name: string }>> {
-    const data = await this.gql(token, `
-      query {
-        me { id name }
-        teams { edges { node { id name } } }
+  const data = await this.gql(token, `
+    query {
+      me {
+        id
+        name
       }
-    `).catch(() => ({ me: null, teams: { edges: [] } }));
+      teams {
+        edges {
+          node {
+            id
+            name
+          }
+        }
+      }
+    }
+  `);
 
-    const workspaces: Array<{ id: string; name: string }> = [];
-    if (data?.me?.id) {
-      // Empty id means "no workspaceId" — Railway treats this as the personal account
-      workspaces.push({ id: '', name: 'Personal Workspace' });
-    }
-    for (const e of (data?.teams?.edges || [])) {
-      workspaces.push({ id: e.node.id, name: e.node.name });
-    }
-    return workspaces;
+  console.log(
+    '[railway] RAW WORKSPACES RESPONSE:',
+    JSON.stringify(data, null, 2)
+  );
+
+  const workspaces: Array<{ id: string; name: string }> = [];
+
+  if (data?.me?.id) {
+    workspaces.push({
+      id: '',
+      name: 'Personal Workspace'
+    });
   }
+
+  for (const e of (data?.teams?.edges || [])) {
+    workspaces.push({
+      id: e.node.id,
+      name: e.node.name
+    });
+  }
+
+  console.log(
+    '[railway] PARSED WORKSPACES:',
+    JSON.stringify(workspaces, null, 2)
+  );
+
+  return workspaces;
+}
 }
