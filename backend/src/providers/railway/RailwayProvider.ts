@@ -43,30 +43,15 @@ export class RailwayProvider implements IProvider {
 
   async connect(creds: Record<string, string>) {
     try {
-      // Basic identity check — works with any token scope
+      // Identity check — works with any token. We deliberately do NOT probe
+      // `me { teams }` here as a "scope check": Railway returns the exact same
+      // "Not Authorized" error both for tokens that lack permission AND for
+      // valid personal-account tokens with no teams. There's no reliable way
+      // to distinguish the two from the error message alone, so we don't try.
+      // Any real workspace/scope problems will surface in listWorkspaces(),
+      // which falls back gracefully instead of guessing at a diagnosis.
       const data = await this.gql(creds.railway_token, `query { me { id name email } }`);
       if (!data?.me?.id) return { ok: false, error: 'Invalid Railway token' };
-
-      // Scope check: me.teams requires an Account-scoped token.
-      // Project/workspace-scoped tokens return a GraphQL authorization error here,
-      // which we surface immediately so the user knows before trying to deploy.
-      try {
-        await this.gql(creds.railway_token, `
-          query {
-            me {
-              teams { edges { node { id } } }
-            }
-          }
-        `);
-      } catch (scopeErr: any) {
-        return {
-          ok: false,
-          error:
-            'This token does not have Account-level permissions. ' +
-            'Please use an Account-scoped token from Railway → Account Settings → Tokens. ' +
-            'Project-scoped tokens cannot list workspaces or create projects.',
-        };
-      }
 
       return { ok: true };
     } catch (e: any) {
@@ -346,11 +331,22 @@ console.log(
     }
   `);
   } catch (e: any) {
-    throw new Error(
-      'Failed to load Railway workspaces. Make sure you are using an Account-scoped token ' +
-      '(Railway → Account Settings → Tokens). Project-scoped tokens cannot list workspaces. ' +
-      `Original error: ${e.message}`
-    );
+    // Railway returns the identical "Not Authorized" error both for tokens that
+    // genuinely lack permission AND for valid personal-account tokens that simply
+    // have no teams. There's no reliable way to tell those apart from the error
+    // message, so we don't try to diagnose it. Instead, fall back to a minimal
+    // identity-only query. If THAT also fails, the token itself is the problem.
+    console.error('[railway] me.teams query failed, falling back to identity-only query:', e.message);
+
+    try {
+      data = await this.gql(token, `query { me { id name } }`);
+    } catch (e2: any) {
+      throw new Error(
+        'Could not connect to your Railway account. Double-check that your token is valid ' +
+        '(Railway → Account Settings → Tokens). ' +
+        `Original error: ${e2.message || e.message}`
+      );
+    }
   }
 
   console.log(
