@@ -19,9 +19,25 @@ export class RailwayProvider implements IProvider {
       }
     );
     if (r.data.errors?.length) {
-      const msg = r.data.errors.map((e: any) => e.message).join('; ');
-      throw new Error(`Railway GraphQL error: ${msg}`);
-    }
+  console.error(
+    '[railway] GRAPHQL ERRORS:',
+    JSON.stringify(r.data.errors, null, 2)
+  );
+
+  console.error(
+    '[railway] QUERY:',
+    query
+  );
+
+  console.error(
+    '[railway] VARIABLES:',
+    JSON.stringify(variables, null, 2)
+  );
+
+  const msg = r.data.errors.map((e: any) => e.message).join('; ');
+
+  throw new Error(`Railway GraphQL error: ${msg}`);
+}
     return r.data.data;
   }
 
