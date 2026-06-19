@@ -90,16 +90,15 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
 
     db.prepare(`
       INSERT INTO cloud_deployments
-        (id, provider, name, region, status, config, logs, source_type, repo_url, docker_image, user_id, creator_username, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 'queued', ?, '[]', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        (id, provider, name, region, status, config, logs, source_type, repo_url, docker_image, user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'queued', ?, '[]', ?, ?, ?, ?, datetime('now'), datetime('now'))
     `).run(
       localId, provider, name, region || null,
       JSON.stringify({ repoUrl, branch, image, envVars, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
       repoUrl ? 'git' : (image ? 'docker' : 'unknown'),
       repoUrl || null,
       image || null,
-      userId,
-      req.user!.username
+      userId
     );
 
     console.log(`[providers] Created local deployment id=${localId} userId=${userId}`);

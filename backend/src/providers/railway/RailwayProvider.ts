@@ -299,6 +299,9 @@ console.log(
    * List all workspaces accessible to the authenticated user — the personal
    * account workspace plus any team workspaces. Used to drive automatic
    * workspace selection so the user never has to type a workspace ID.
+   *
+   * NOTE: Railway GraphQL v2 removed the top-level `teams` field.
+   * Teams are now accessed via `me { teams { edges { node { id name } } } }`.
    */
   async listWorkspaces(token: string): Promise<Array<{ id: string; name: string }>> {
   const data = await this.gql(token, `
@@ -306,12 +309,12 @@ console.log(
       me {
         id
         name
-      }
-      teams {
-        edges {
-          node {
-            id
-            name
+        teams {
+          edges {
+            node {
+              id
+              name
+            }
           }
         }
       }
@@ -332,7 +335,7 @@ console.log(
     });
   }
 
-  for (const e of (data?.teams?.edges || [])) {
+  for (const e of (data?.me?.teams?.edges || [])) {
     workspaces.push({
       id: e.node.id,
       name: e.node.name

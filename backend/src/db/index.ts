@@ -298,7 +298,6 @@ function getSchemaSQL(): string {
       repo_url TEXT,
       docker_image TEXT,
       user_id TEXT,
-      creator_username TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
