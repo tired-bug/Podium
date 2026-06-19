@@ -274,6 +274,14 @@ router.get('/railway/workspaces', requireAuth, async (_req, res: Response) => {
   if (!creds.railway_token) return res.status(400).json({ error: 'Railway API token not configured' });
   try {
     const provider = (providerManager as any).get('railway');
+    // A workspace token can't enumerate workspaces via `me` (it has no
+    // personal-account identity to query) — if one's been configured manually,
+    // just confirm it resolves and return it directly instead of auto-detecting.
+    if (creds.railway_workspace_id) {
+      const ws = await provider.getWorkspace(creds.railway_token, creds.railway_workspace_id);
+      if (!ws) return res.status(400).json({ error: 'Configured Workspace ID could not be resolved with this token' });
+      return res.json([ws]);
+    }
     const workspaces = await provider.listWorkspaces(creds.railway_token);
     res.json(workspaces);
   } catch (e: any) {
@@ -287,7 +295,7 @@ router.get('/railway/projects', requireAuth, async (_req, res: Response) => {
   if (!creds.railway_token) return res.status(400).json({ error: 'Railway API token not configured' });
   try {
     const provider = (providerManager as any).get('railway');
-    const projects = await provider.listProjects(creds.railway_token);
+    const projects = await provider.listProjects(creds.railway_token, creds.railway_workspace_id);
     res.json(projects);
   } catch (e: any) {
     res.status(500).json({ error: e.message });

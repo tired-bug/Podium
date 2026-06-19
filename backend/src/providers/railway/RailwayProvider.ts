@@ -8,7 +8,7 @@ export class RailwayProvider implements IProvider {
 
   private async gql(token: string, query: string, variables?: Record<string, any>) {
     const r = await axios.post(
-      'https://backboard.railway.app/graphql/v2',
+      'https://backboard.railway.com/graphql/v2',
       { query, variables },
       {
         headers: {
@@ -41,17 +41,46 @@ export class RailwayProvider implements IProvider {
     return r.data.data;
   }
 
+  /**
+   * Resolve a single workspace by ID — used to validate a manually-configured
+   * Workspace ID (e.g. for Workspace tokens, which can't enumerate workspaces
+   * via `me`) without going through the full me-based auto-detect path.
+   */
+  async getWorkspace(token: string, workspaceId: string): Promise<{ id: string; name: string } | null> {
+    const data = await this.gql(token, `
+      query($workspaceId: String!) { workspace(workspaceId: $workspaceId) { id name } }
+    `, { workspaceId });
+    return data?.workspace?.id ? { id: data.workspace.id, name: data.workspace.name } : null;
+  }
+
   async connect(creds: Record<string, string>) {
     try {
-      // Identity check — works with any token. We deliberately do NOT probe
-      // `me { teams }` here as a "scope check": Railway returns the exact same
-      // "Not Authorized" error both for tokens that lack permission AND for
-      // valid personal-account tokens with no teams. There's no reliable way
-      // to distinguish the two from the error message alone, so we don't try.
-      // Any real workspace/scope problems will surface in listWorkspaces(),
-      // which falls back gracefully instead of guessing at a diagnosis.
+      // Workspace tokens cannot resolve `me` at all — Railway scopes that query
+      // to personal-account data only (see docs.railway.com/integrations/api).
+      // If a workspace ID has been configured, validate against the
+      // workspace-scoped query instead, since that's what such a token can
+      // actually answer.
+      if (creds.railway_workspace_id) {
+        const ws = await this.getWorkspace(creds.railway_token, creds.railway_workspace_id);
+        if (!ws) return { ok: false, error: 'Token could not access the configured Workspace ID' };
+        return { ok: true };
+      }
+
+      // No workspace ID configured — assume an account token and validate
+      // identity directly. We deliberately do NOT probe `me { teams }` here as
+      // a "scope check": Railway returns the exact same "Not Authorized" error
+      // both for tokens that lack permission AND for valid personal-account
+      // tokens with no teams. There's no reliable way to distinguish the two
+      // from the error message alone, so we don't try. Any real workspace/scope
+      // problems will surface in listWorkspaces(), which falls back gracefully
+      // instead of guessing at a diagnosis.
       const data = await this.gql(creds.railway_token, `query { me { id name email } }`);
-      if (!data?.me?.id) return { ok: false, error: 'Invalid Railway token' };
+      if (!data?.me?.id) {
+        return {
+          ok: false,
+          error: 'Invalid Railway token, or this is a Workspace/Project token — if so, also set Workspace ID in the field below.',
+        };
+      }
 
       return { ok: true };
     } catch (e: any) {
@@ -62,20 +91,28 @@ export class RailwayProvider implements IProvider {
   /**
    * List Railway projects for the authenticated user.
    */
-  async listProjects(token: string): Promise<Array<{ id: string; name: string }>> {
-    const data = await this.gql(token, `
-      query {
-        projects {
-          edges { node { id name } }
-        }
-      }
-        
-    `);
+  async listProjects(token: string, workspaceId?: string): Promise<Array<{ id: string; name: string }>> {
+    const data = workspaceId
+      ? await this.gql(token, `
+          query($workspaceId: String!) {
+            workspace(workspaceId: $workspaceId) {
+              projects { edges { node { id name } } }
+            }
+          }
+        `, { workspaceId })
+      : await this.gql(token, `
+          query {
+            projects {
+              edges { node { id name } }
+            }
+          }
+        `);
+    const projectsConnection = workspaceId ? data?.workspace?.projects : data?.projects;
     console.log(
   '[railway] workspace query result:',
   JSON.stringify(data, null, 2)
 );
-    return (data?.projects?.edges || []).map((e: any) => ({
+    return (projectsConnection?.edges || []).map((e: any) => ({
       id: e.node.id,
       name: e.node.name,
     }));
@@ -88,7 +125,7 @@ export class RailwayProvider implements IProvider {
 
     if (!projectId) {
       const projectName = opts.projectName || opts.name;
-      let workspaceId = opts.workspaceId;
+      let workspaceId = opts.workspaceId || creds.railway_workspace_id;
 
 if (!workspaceId) {
   try {
@@ -113,7 +150,7 @@ console.log(
     }
   } catch (err) {
     console.warn(
-      '[railway] Workspace auto-detect failed:',
+      '[railway] Workspace auto-detect failed (expected for Workspace tokens — set railway_workspace_id instead):',
       err
     );
   }
@@ -299,17 +336,39 @@ console.log(
 
     const results: any[] = [];
 
-    // A token's `projects` access depends on its scope (account vs workspace),
-    // and the unscoped top-level `projects` field only works reliably for
-    // account/personal-scoped tokens. So we enumerate workspaces first (which
-    // already degrades gracefully for any token type) and query projects
-    // per-workspace where we have a real workspace id, falling back to the
-    // unscoped query only for the personal-workspace case.
+    // Workspace tokens can never resolve `me` (Railway returns "Not Authorized"
+    // for that query by design — see docs.railway.com/integrations/api), so they
+    // can't be auto-discovered via listWorkspaces(). If a workspace ID has been
+    // configured manually, use it directly and skip auto-detection entirely.
+    if (creds.railway_workspace_id) {
+      try {
+        const data = await this.gql(creds.railway_token, `
+          query($workspaceId: String!) {
+            workspace(workspaceId: $workspaceId) {
+              projects { ${PROJECTS_FRAGMENT} }
+            }
+          }
+        `, { workspaceId: creds.railway_workspace_id });
+        collect(data?.workspace?.projects, results);
+      } catch (e: any) {
+        console.error(`[railway] listDeployments: failed for configured workspace "${creds.railway_workspace_id}":`, e.message);
+      }
+      return results;
+    }
+
+    // No workspace ID configured — assume an account token and auto-detect via
+    // `me`. A token's `projects` access depends on its scope (account vs
+    // workspace), and the unscoped top-level `projects` field only works
+    // reliably for account/personal-scoped tokens. So we enumerate workspaces
+    // first (which already degrades gracefully for any token type) and query
+    // projects per-workspace where we have a real workspace id, falling back to
+    // the unscoped query only for the personal-workspace case.
     let workspaces: Array<{ id: string; name: string }> = [];
     try {
       workspaces = await this.listWorkspaces(creds.railway_token);
     } catch (e: any) {
       console.error('[railway] listDeployments: could not list workspaces:', e.message);
+      console.error('[railway] If this token is a Workspace token, set Workspace ID in the Railway integration settings — workspace tokens cannot auto-detect their own workspace.');
       workspaces = [{ id: '', name: 'Personal Workspace' }];
     }
 

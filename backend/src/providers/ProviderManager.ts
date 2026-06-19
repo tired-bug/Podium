@@ -32,7 +32,8 @@ export const PROVIDER_META: Record<string, ProviderMeta> = {
     description: 'Ship code instantly. Railway handles your infrastructure so you can focus on your product.',
     capabilities: ['Auto-deploy from Git', 'Databases', 'Private Networking', 'Cron Jobs', 'Volume Storage'],
     credentialKeys: [
-      { key: 'railway_token', label: 'API Token', placeholder: 'Your Railway API token', required: true, masked: true, hint: 'Found in Railway Dashboard → Account Settings → API Tokens' },
+      { key: 'railway_token', label: 'API Token', placeholder: 'Your Railway API token', required: true, masked: true, hint: 'Account token (Account Settings → Tokens, "No workspace") works best — it can see everything. If you\'re using a Workspace token instead, also fill in Workspace ID below; workspace tokens cannot auto-detect their own workspace.' },
+      { key: 'railway_workspace_id', label: 'Workspace ID (required for Workspace tokens)', placeholder: 'e.g. 3b2e1a90-...', required: false, hint: 'Only needed if API Token above is a Workspace token. Find it in the Railway dashboard URL while viewing that workspace, or via Cmd/Ctrl+K → copy workspace ID. Leave blank for Account tokens.' },
       { key: 'railway_project_id', label: 'Project ID (optional)', placeholder: 'Leave empty to create new project', required: false, hint: 'Deploy into an existing Railway project. Leave blank to create a new project automatically.' },
     ],
     regions: ['us-west1', 'us-east4', 'europe-west4', 'asia-southeast1'],
