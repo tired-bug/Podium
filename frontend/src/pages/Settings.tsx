@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Settings as SettingsIcon, Bot, Cloud, Shield, Info, Bell,
-  Eye, EyeOff, Save, RefreshCw, CheckCircle, XCircle,
+  Settings as SettingsIcon, Bot, Shield, Info, Bell,
+  Eye, EyeOff, Save, RefreshCw, CheckCircle,
   Cpu, Database, Clock, Server, Key, AlertTriangle, Users,
-  Globe, Zap, ChevronRight,
+  Globe, Zap,
 } from 'lucide-react';
 import { Card, SectionHeader, Skeleton, Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -79,68 +79,13 @@ function MaskedInput({ settingKey, label, placeholder, hint, local, update }: {
   );
 }
 
-function ProviderCard({ name, icon, color, keys, local, update, onSave, onTest, testing, testResult }: {
-  name: string; icon: string; color: string;
-  keys: Array<{ key: string; label: string; placeholder: string; masked?: boolean }>;
-  local: Record<string, string>; update: (k: string, v: string) => void;
-  onSave: () => void; onTest?: () => void; testing?: boolean;
-  testResult?: 'success' | 'fail' | null;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const hasAnyValue = keys.some(k => local[k.key] && local[k.key] !== '***masked***' || local[k.key] === '***masked***');
 
-  return (
-    <div style={{
-      border: '1px solid var(--border)', borderRadius: 'var(--r-lg)',
-      overflow: 'hidden', transition: 'border-color 200ms',
-    }}>
-      <button
-        onClick={() => setExpanded(e => !e)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-          padding: '14px 18px', background: 'none', border: 'none',
-          cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
-        }}
-      >
-        <span style={{ fontSize: 22 }}>{icon}</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{name}</div>
-          <div style={{ fontSize: '11px', marginTop: 2, color: hasAnyValue ? 'var(--accent-green)' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-            {hasAnyValue ? <><CheckCircle size={10} />Credentials configured</> : <><XCircle size={10} />Not configured — demo mode active</>}
-          </div>
-        </div>
-        {testResult === 'success' && <CheckCircle size={16} color="var(--accent-green)" />}
-        {testResult === 'fail' && <XCircle size={16} color="var(--accent-red)" />}
-        <ChevronRight size={14} color="var(--text-muted)"
-          style={{ transform: expanded ? 'rotate(90deg)' : 'none', transition: 'transform 200ms' }} />
-      </button>
 
-      {expanded && (
-        <div style={{ padding: '0 18px 18px', borderTop: '1px solid var(--border-muted)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
-            {keys.map(k => k.masked
-              ? <MaskedInput key={k.key} settingKey={k.key} label={k.label} placeholder={k.placeholder} local={local} update={update} />
-              : <Input key={k.key} label={k.label} value={local[k.key] || ''} onChange={e => update(k.key, e.target.value)} placeholder={k.placeholder} />
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <Button size="sm" variant="primary" icon={<Save size={12} />} onClick={onSave}>Save</Button>
-            {onTest && (
-              <Button size="sm" variant="secondary" loading={testing} onClick={onTest}>Test Connection</Button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-type TabId = 'general' | 'ai' | 'cloud' | 'security' | 'team' | 'about' | 'mail';
+type TabId = 'general' | 'ai' | 'security' | 'team' | 'about' | 'mail';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'general',  label: 'General',  icon: <SettingsIcon size={14} /> },
   { id: 'ai',       label: 'AI',       icon: <Bot size={14} /> },
-  { id: 'cloud',    label: 'Cloud',    icon: <Cloud size={14} /> },
   { id: 'security', label: 'Security', icon: <Shield size={14} /> },
   { id: 'team',     label: 'Team',     icon: <Users size={14} /> },
   { id: 'about',    label: 'About',    icon: <Info size={14} /> },
@@ -419,8 +364,6 @@ export function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [health, setHealth] = useState<any>(null);
-  const [testingGroq, setTestingGroq] = useState(false);
-  const [groqTestResult, setGroqTestResult] = useState<'success' | 'fail' | null>(null);
 
   useEffect(() => {
     api.get('/api/settings').then(r => { setSettings(r.data); setLocal(r.data); }).finally(() => setLoading(false));
@@ -438,16 +381,6 @@ export function SettingsPage() {
       setSettings(data); setLocal(data);
     } catch (err) { showError(parseApiError(err)); }
     finally { setSaving(false); }
-  };
-
-  const handleTestGroq = async () => {
-    setTestingGroq(true); setGroqTestResult(null);
-    try {
-      const { data } = await api.get('/api/ai/model');
-      if (data.hasKey) { success(`Connected ✓ — model: ${data.model}`); setGroqTestResult('success'); }
-      else { showError('No API key configured'); setGroqTestResult('fail'); }
-    } catch { showError('Connection failed'); setGroqTestResult('fail'); }
-    finally { setTestingGroq(false); }
   };
 
   if (loading) return (
@@ -502,27 +435,10 @@ export function SettingsPage() {
         {}
         {tab === 'ai' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <SettingSection icon={<Bot size={18} />} title="Groq AI" description="Power the AI Assistant with a free Groq API key — get one at console.groq.com">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <MaskedInput settingKey="groq_api_key" label="API Key" placeholder="gsk_..." local={local} update={update}
-                  hint="Your Groq API key. Free tier available at console.groq.com" />
-                <Select label="Model" value={local.groq_model || 'llama3-70b-8192'} onChange={e => update('groq_model', e.target.value)}
-                  options={[
-                    { value: 'llama-3.3-70b-versatile', label: 'LLaMA 3.3 70B Versatile — Best quality (recommended)' },
-                    { value: 'llama-3.1-8b-instant', label: 'LLaMA 3.1 8B Instant — Fastest' },
-                    { value: 'mixtral-8x7b-32768', label: 'Mixtral 8×7B — Long context (32k tokens)' },
-                    { value: 'gemma2-9b-it', label: 'Gemma 2 9B — Lightweight' },
-                    { value: 'llama-3.1-70b-versatile', label: 'LLaMA 3.1 70B Versatile — High capability' },
-                  ]} />
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <Button variant="secondary" loading={testingGroq} onClick={handleTestGroq} icon={groqTestResult === 'success' ? <CheckCircle size={13} color="var(--accent-green)" /> : groqTestResult === 'fail' ? <XCircle size={13} color="var(--accent-red)" /> : undefined}>
-                    Test Connection
-                  </Button>
-                  {groqTestResult === 'success' && <span style={{ fontSize: '12px', color: 'var(--accent-green)' }}>Connected!</span>}
-                  {groqTestResult === 'fail' && <span style={{ fontSize: '12px', color: 'var(--accent-red)' }}>Connection failed</span>}
-                </div>
-              </div>
-            </SettingSection>
+            <div style={{ padding: '12px 16px', background: 'var(--accent-blue-dim)', border: '1px solid var(--border-glow)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              <Bot size={13} style={{ marginRight: 6, verticalAlign: '-2px' }} />
+              AI features are powered by a Groq API key configured by your administrator on the server. It isn't visible or editable here.
+            </div>
 
             <SettingSection icon={<AlertTriangle size={18} />} title="Anomaly Detection" description="Automatically detect infrastructure issues and create alerts">
               <ToggleRow label="Enable anomaly detection"
@@ -534,75 +450,6 @@ export function SettingsPage() {
                 <Input label="Memory Alert Threshold (MB)" type="number" value={local.memory_threshold_mb || '900'} onChange={e => update('memory_threshold_mb', e.target.value)} hint="Alert when memory exceeds this MB" />
               </div>
             </SettingSection>
-          </div>
-        )}
-
-        {}
-        {tab === 'cloud' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ padding: '12px 16px', background: 'var(--accent-blue-dim)', border: '1px solid var(--border-glow)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              <strong style={{ color: 'var(--accent-blue-2)' }}>All credentials are optional.</strong>{' '}
-              Cloud deployments work in demo mode without any credentials — add real keys to deploy to production.
-            </div>
-
-            {[
-              {
-                name: 'Amazon Web Services', icon: '☁️', color: '#FF9900',
-                keys: [
-                  { key: 'aws_access_key_id', label: 'Access Key ID', placeholder: 'AKIA...', masked: true },
-                  { key: 'aws_secret_access_key', label: 'Secret Access Key', placeholder: 'your-secret-access-key', masked: true },
-                  { key: 'aws_default_region', label: 'Default Region', placeholder: 'us-east-1' },
-                ],
-              },
-              {
-                name: 'Microsoft Azure', icon: '🔷', color: '#0078D4',
-                keys: [
-                  { key: 'azure_subscription_id', label: 'Subscription ID', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
-                  { key: 'azure_client_id', label: 'Client ID (App Registration)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
-                  { key: 'azure_client_secret', label: 'Client Secret', placeholder: 'your-secret-value', masked: true },
-                  { key: 'azure_tenant_id', label: 'Tenant ID (Directory ID)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
-                  { key: 'azure_resource_group', label: 'Resource Group', placeholder: 'podium-rg' },
-                  { key: 'azure_location', label: 'Default Location', placeholder: 'eastus' },
-                ],
-              },
-              {
-                name: 'Vercel', icon: '▲', color: '#000000',
-                keys: [
-                  { key: 'vercel_api_token', label: 'API Token', placeholder: 'vercel_...', masked: true },
-                  { key: 'vercel_team_id', label: 'Team ID (optional)', placeholder: 'team_...' },
-                ],
-              },
-              {
-                name: 'Render', icon: '🟣', color: '#46E3B7',
-                keys: [
-                  { key: 'render_api_key', label: 'API Key', placeholder: 'rnd_...', masked: true },
-                  { key: 'render_owner_id', label: 'Owner ID', placeholder: 'usr_... or tea_...' },
-                  { key: 'render_region', label: 'Default Region', placeholder: 'oregon' },
-                ],
-              },
-              {
-                name: 'Podium Self-Hosted', icon: '🏠', color: '#22c55e',
-                keys: [
-                  { key: 'selfhosted_ngrok_url', label: 'ngrok Public URL (optional)', placeholder: 'https://abc123.ngrok-free.app' },
-                ],
-              },
-              {
-                name: 'Docker Agent', icon: '🐳', color: '#2496ED',
-                keys: [
-                  { key: 'docker_agent_url', label: 'Agent URL', placeholder: 'https://abc123.ngrok-free.app' },
-                  { key: 'docker_agent_token', label: 'Agent Token', placeholder: 'paste the AGENT_TOKEN from agent/.env', masked: true },
-                ],
-              },
-              {
-                name: 'GitHub', icon: '🐙', color: '#333',
-                keys: [
-                  { key: 'github_token', label: 'Personal Access Token', placeholder: 'ghp_...', masked: true },
-                ],
-              },
-            ].map(p => (
-              <ProviderCard key={p.name} {...p} local={local} update={update}
-                onSave={() => handleSave(Object.fromEntries(p.keys.map(k => [k.key, local[k.key] || ''])))} />
-            ))}
           </div>
         )}
 

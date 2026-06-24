@@ -5,27 +5,11 @@ import { requireAuth, requireRole, AuthRequest } from '../auth';
 
 const router = Router();
 
-let dockerAvailable: boolean | null = null;
-
-async function checkDocker(): Promise<boolean> {
-  if (dockerAvailable !== null) return dockerAvailable;
-  try {
-    const Docker = require('dockerode');
-    const d = new Docker({
-      socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-    await new Promise<void>((resolve, reject) => {
-      d.ping((err: any) => err ? reject(err) : resolve());
-    });
-    dockerAvailable = true;
-    console.log('[docker] Docker Engine available ✓');
-  } catch {
-    dockerAvailable = false;
-    console.log('[docker] Docker Engine not available — running in demo mode');
-  }
-  
-  setTimeout(() => { dockerAvailable = null; }, 30_000);
-  return dockerAvailable;
-}
+// Deployments run in simulated ("demo") mode only — there is no local
+// Docker Desktop / Docker Engine integration. Lifecycle transitions
+// (building → running → stopped) are faked on a timer so the rest of the
+// platform (logs, metrics, anomalies, AI features) has something to work
+// with end-to-end.
 
 function logToDb(deploymentId: string, level: string, message: string, stream = 'stdout') {
   try {
@@ -41,7 +25,7 @@ function slugify(str: string): string {
 function simulateDeployment(id: string, name: string) {
   const db = getDb();
   db.prepare("UPDATE deployments SET status='building', updated_at=datetime('now') WHERE id=?").run(id);
-  logToDb(id, 'info', `[Demo] Starting "${name}" — Docker not running, simulating lifecycle`);
+  logToDb(id, 'info', `[Demo] Starting "${name}"...`);
 
   const steps = [
     { delay: 1200, msg: '[Demo] Pulling image from registry...' },
@@ -61,7 +45,7 @@ function simulateDeployment(id: string, name: string) {
   setTimeout(() => {
     try {
       db.prepare("UPDATE deployments SET status='running', updated_at=datetime('now') WHERE id=?").run(id);
-      logToDb(id, 'info', `[Demo] "${name}" is running in demo mode. Start Docker Desktop to deploy for real.`);
+      logToDb(id, 'info', `[Demo] "${name}" is running.`);
     } catch {}
   }, 6000);
 }
@@ -76,89 +60,6 @@ function simulateStop(id: string, name: string) {
   }, 800);
 }
 
-async function startDockerDeployment(dep: any): Promise<void> {
-  const Docker = require('dockerode');
-  const docker = new Docker({
-    socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-
-  const id = dep.id;
-  getDb().prepare("UPDATE deployments SET status='building', updated_at=datetime('now') WHERE id=?").run(id);
-  logToDb(id, 'info', `Starting deployment "${dep.name}"...`);
-
-  try {
-    const envVars: string[] = (JSON.parse(dep.env_vars || '[]') as Array<{ key: string; value: string }>)
-      .map(e => `${e.key}=${e.value}`);
-
-    const ports: Array<{ host: string; container: string }> = JSON.parse(dep.ports || '[]');
-    const portBindings: Record<string, Array<{ HostPort: string }>> = {};
-    const exposedPorts: Record<string, {}> = {};
-    for (const p of ports) {
-      const key = `${p.container}/tcp`;
-      exposedPorts[key] = {};
-      portBindings[key] = [{ HostPort: p.host }];
-    }
-
-    const imageName = dep.image || `${dep.name}:latest`;
-
-    
-    if (dep.image && (dep.image.includes('/') || dep.image.includes(':'))) {
-      logToDb(id, 'info', `Pulling image ${imageName}...`);
-      await new Promise<void>((resolve, reject) => {
-        docker.pull(imageName, {}, (err: Error | null, stream: any) => {
-          if (err) { reject(err); return; }
-          docker.modem.followProgress(stream, (err2: Error | null) => {
-            if (err2) reject(err2); else resolve();
-          });
-        });
-      });
-    }
-
-    logToDb(id, 'info', `Creating container for "${dep.name}"...`);
-    const container = await docker.createContainer({
-      Image: imageName,
-      name: dep.name,
-      Env: envVars,
-      ExposedPorts: exposedPorts,
-      HostConfig: {
-        PortBindings: portBindings,
-        Memory: parseMemory(dep.memory_limit || '512m'),
-        CpuQuota: Math.floor(parseFloat(dep.cpu_limit || '0.5') * 100_000),
-        RestartPolicy: { Name: dep.restart_policy || 'unless-stopped' },
-      },
-    });
-
-    await container.start();
-    const info = await container.inspect();
-
-    getDb().prepare("UPDATE deployments SET status='running', container_id=?, updated_at=datetime('now') WHERE id=?")
-      .run(info.Id, id);
-    logToDb(id, 'info', `✓ Container started: ${info.Id.slice(0, 12)}`);
-  } catch (err: any) {
-    getDb().prepare("UPDATE deployments SET status='failed', updated_at=datetime('now') WHERE id=?").run(id);
-    logToDb(id, 'error', `Deployment failed: ${err.message}`, 'stderr');
-  }
-}
-
-function parseMemory(limit: string): number {
-  const m = limit.match(/^(\d+)(m|g|k)?$/i);
-  if (!m) return 512 * 1024 * 1024;
-  const v = parseInt(m[1]);
-  const u = (m[2] || 'b').toLowerCase();
-  if (u === 'g') return v * 1024 * 1024 * 1024;
-  if (u === 'm') return v * 1024 * 1024;
-  if (u === 'k') return v * 1024;
-  return v;
-}
-
-async function smartStart(dep: any) {
-  const hasDocker = await checkDocker();
-  if (hasDocker) {
-    await startDockerDeployment(dep);
-  } else {
-    simulateDeployment(dep.id, dep.name);
-  }
-}
-
 router.get('/', requireAuth, (_req, res: Response) => {
   const rows = getDb().prepare('SELECT * FROM deployments ORDER BY updated_at DESC').all() as any[];
   res.json(rows.map(d => ({
@@ -166,7 +67,7 @@ router.get('/', requireAuth, (_req, res: Response) => {
     ports:     JSON.parse(d.ports     || '[]'),
     env_vars:  JSON.parse(d.env_vars  || '[]'),
     build_args: JSON.parse(d.build_args || '[]'),
-    isDemo: !d.container_id,
+    isDemo: true,
   })));
 });
 
@@ -211,8 +112,7 @@ router.post('/', requireAuth, requireRole('admin','developer'), async (req: Auth
   logToDb(id, 'info', `Deployment "${name}" created`);
 
   if (image) {
-    const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(id) as any;
-    smartStart(dep).catch(() => {});
+    simulateDeployment(id, name);
   }
 
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(id) as any;
@@ -243,16 +143,6 @@ router.delete('/:id', requireAuth, requireRole('admin'), async (req, res: Respon
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
 
-  if (dep.container_id && await checkDocker()) {
-    try {
-      const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-      const c = docker.getContainer(dep.container_id);
-      await c.stop().catch(() => {});
-      await c.remove().catch(() => {});
-    } catch {}
-  }
-
   getDb().prepare('DELETE FROM deployments WHERE id=?').run(req.params.id);
   return res.json({ ok: true });
 });
@@ -261,18 +151,7 @@ router.post('/:id/start', requireAuth, requireRole('admin','developer'), async (
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
 
-  
-  if (dep.container_id && await checkDocker()) {
-    try {
-      const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-      await docker.getContainer(dep.container_id).start();
-      getDb().prepare("UPDATE deployments SET status='running', updated_at=datetime('now') WHERE id=?").run(dep.id);
-      return res.json({ ok: true });
-    } catch {}
-  }
-
-  smartStart(dep).catch(() => {});
+  simulateDeployment(dep.id, dep.name);
   return res.json({ ok: true, message: 'Starting...' });
 });
 
@@ -280,19 +159,7 @@ router.post('/:id/stop', requireAuth, requireRole('admin','developer'), async (r
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
 
-  if (dep.container_id && await checkDocker()) {
-    try {
-      const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-      await docker.getContainer(dep.container_id).stop();
-    } catch {}
-  } else {
-    simulateStop(dep.id, dep.name);
-    return res.json({ ok: true });
-  }
-
-  getDb().prepare("UPDATE deployments SET status='stopped', updated_at=datetime('now') WHERE id=?").run(dep.id);
-  logToDb(dep.id, 'info', 'Deployment stopped');
+  simulateStop(dep.id, dep.name);
   return res.json({ ok: true });
 });
 
@@ -300,20 +167,6 @@ router.post('/:id/restart', requireAuth, requireRole('admin','developer'), async
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
 
-  if (dep.container_id && await checkDocker()) {
-    try {
-      const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-      await docker.getContainer(dep.container_id).restart();
-      getDb().prepare("UPDATE deployments SET status='running', updated_at=datetime('now') WHERE id=?").run(dep.id);
-      logToDb(dep.id, 'info', 'Deployment restarted');
-      return res.json({ ok: true });
-    } catch (err: any) {
-      return res.status(500).json({ error: err.message });
-    }
-  }
-
-  
   simulateDeployment(dep.id, dep.name);
   return res.json({ ok: true });
 });
@@ -322,18 +175,7 @@ router.post('/:id/rebuild', requireAuth, requireRole('admin','developer'), async
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });
 
-  if (dep.container_id && await checkDocker()) {
-    try {
-      const Docker = require('dockerode');
-      const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-      const c = docker.getContainer(dep.container_id);
-      await c.stop().catch(() => {});
-      await c.remove().catch(() => {});
-    } catch {}
-    getDb().prepare('UPDATE deployments SET container_id=NULL WHERE id=?').run(dep.id);
-  }
-
-  smartStart({ ...dep, container_id: null }).catch(() => {});
+  simulateDeployment(dep.id, dep.name);
   return res.json({ ok: true, message: 'Rebuilding...' });
 });
 

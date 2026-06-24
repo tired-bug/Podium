@@ -323,6 +323,12 @@ function PlatformSummaryCard({ cloudDeps }: { cloudDeps: CloudDep[] }) {
             {data.summary}
           </div>
         )}
+        {data && !data.summary && data.aiError && (
+          <div style={{ marginTop: 12, fontSize: 12, color: 'var(--accent-orange)', lineHeight: 1.7, padding: '10px 14px', background: 'var(--accent-orange-dim)', borderRadius: 'var(--r-md)', borderLeft: '3px solid var(--accent-orange)' }}>
+            <AlertTriangle size={12} color="var(--accent-orange)" style={{ marginRight: 6 }} />
+            {data.aiError}
+          </div>
+        )}
       </div>
     </div>
   );

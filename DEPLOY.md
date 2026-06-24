@@ -108,12 +108,12 @@ You now have:
 
 ---
 
-## Step 7 — Configure AI
+## Step 7 — AI is ready
 
-1. Go to **Settings → AI**
-2. Paste your Groq API key
-3. Select model: `llama-3.3-70b-versatile`
-4. Save
+AI features are powered entirely by the `GROQ_API_KEY` environment variable you
+set on Render in Step 3 — there's nothing further to configure in the app.
+The key is never stored in the database and isn't visible or editable from
+the Settings UI, by design.
 
 ---
 
@@ -127,9 +127,10 @@ Render free tier sleeps after 15 min of inactivity. First request after idle tak
 All data is stored in Turso and survives redeploys permanently. On startup, the backend
 syncs Turso → local SQLite (fast reads), and all writes are queued to Turso every 500ms.
 
-### Docker Features
-The Containers page and Docker-based deployments require Docker on the server.
-On Render free tier, these show a graceful unavailable state. All other features work fully.
+### Deployments
+Deployments run in simulated/demo mode — there is no Docker integration on the
+server. This keeps the platform fully functional on free hosting tiers like
+Render, where a long-lived Docker daemon isn't available anyway.
 
 ### CI/CD
 Both Render and Cloudflare Pages auto-deploy on every push to `main`. No extra config needed.

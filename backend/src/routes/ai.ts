@@ -6,14 +6,32 @@ import { requireAuth, AuthRequest } from '../auth';
 
 const router = Router();
 
+// The Groq API key is a server-side secret only — set GROQ_API_KEY in the
+// backend's environment. It is intentionally NOT readable/writable via the
+// API or Settings UI, so individual users/deployments can't see or change
+// the key the whole app runs on.
 function getGroqKey(): string | null {
-  const setting = getDb().prepare("SELECT value FROM settings WHERE key = 'groq_api_key'").get() as any;
-  return setting?.value || process.env.GROQ_API_KEY || null;
+  return process.env.GROQ_API_KEY || null;
 }
 
+// Model is fixed server-side. Change via GROQ_MODEL env var if needed.
 function getModel(): string {
-  const setting = getDb().prepare("SELECT value FROM settings WHERE key = 'groq_model'").get() as any;
-  return setting?.value || 'llama-3.3-70b-versatile';
+  return process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+}
+
+function isGroqAuthError(err: any): boolean {
+  return err?.response?.status === 401 || err?.response?.status === 403;
+}
+
+function groqErrorResponse(res: Response, err: any) {
+  if (!getGroqKey()) {
+    return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
+  }
+  if (isGroqAuthError(err)) {
+    return res.status(400).json({ error: 'AI features are misconfigured on this server (the configured key was rejected). Contact your administrator.' });
+  }
+  const errMsg = err?.response?.data?.error?.message || err?.message || 'AI request failed';
+  return res.status(502).json({ error: errMsg });
 }
 
 const SYSTEM_PROMPT = `You are Podium AI, an expert DevOps assistant embedded in the Podium AIOps platform.
@@ -27,19 +45,6 @@ You help DevOps engineers with:
 
 Be concise, precise, and actionable. Format code in markdown code blocks with language specifiers.
 When analyzing issues, provide step-by-step resolution plans.`;
-
-router.get('/model', requireAuth, (_req, res: Response) => {
-  const key = getGroqKey();
-  const model = getModel();
-  res.json({ model, hasKey: !!key });
-});
-
-router.put('/model', requireAuth, (req, res: Response) => {
-  const { model, apiKey } = req.body;
-  if (model) getDb().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('groq_model', ?)").run(model);
-  if (apiKey) getDb().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('groq_api_key', ?)").run(apiKey);
-  res.json({ ok: true });
-});
 
 router.get('/conversations', requireAuth, (req: AuthRequest, res: Response) => {
   const convos = getDb().prepare(`
@@ -84,7 +89,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
 
   const apiKey = getGroqKey();
   if (!apiKey) {
-    return res.status(400).json({ error: 'Groq API key not configured. Please add it in Settings → AI.' });
+    return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
   }
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -170,7 +175,9 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
     });
 
   } catch (err: any) {
-    const errMsg = err.response?.data?.error?.message || err.message;
+    const errMsg = isGroqAuthError(err)
+      ? 'AI features are misconfigured on this server (the configured key was rejected). Contact your administrator.'
+      : (err.response?.data?.error?.message || err.message);
     res.write(`data: ${JSON.stringify({ error: errMsg, done: true })}\n\n`);
     res.end();
   }
@@ -207,7 +214,7 @@ Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join(';
 4. Performance optimization tips`;
 
   const apiKey = getGroqKey();
-  if (!apiKey) return res.status(400).json({ error: 'Groq API key not configured' });
+  if (!apiKey) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
 
   try {
     const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
@@ -221,7 +228,7 @@ Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join(';
 
     return res.json({ analysis: resp.data.choices[0].message.content });
   } catch (err: any) {
-    return res.status(500).json({ error: err.response?.data?.error?.message || err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -235,7 +242,7 @@ router.post('/suggest-fix', requireAuth, async (req: AuthRequest, res: Response)
   `).all(deploymentId) as any[];
 
   const apiKey = getGroqKey();
-  if (!apiKey) return res.status(400).json({ error: 'Groq API key not configured' });
+  if (!apiKey) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
 
   const prompt = `Deployment "${dep.name}" has status "${dep.status}".
 Error/warning logs:
@@ -252,7 +259,7 @@ Provide a concise fix recommendation with exact commands or config changes neede
 
     return res.json({ suggestion: resp.data.choices[0].message.content });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -261,7 +268,7 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
   const logs = getDb().prepare('SELECT * FROM build_logs WHERE deployment_id = ? ORDER BY id DESC LIMIT 100').all(deploymentId) as any[];
 
   const apiKey = getGroqKey();
-  if (!apiKey) return res.status(400).json({ error: 'Groq API key not configured' });
+  if (!apiKey) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
 
   const prompt = `Summarize these deployment logs in 3-5 bullet points, highlighting any issues:\n\n${
     logs.map(l => `[${l.level}] ${l.message}`).join('\n')
@@ -276,7 +283,7 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
 
     return res.json({ summary: resp.data.choices[0].message.content });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -354,7 +361,7 @@ Respond ONLY with valid JSON (no markdown, no preamble):
     const result = JSON.parse(clean);
     return res.json(result);
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -400,7 +407,7 @@ Provide a concise root cause analysis with:
     const analysis = await groqChat(SYSTEM_PROMPT, prompt, 900);
     return res.json({ rootCause: analysis, anomaly, deployment: dep });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -445,7 +452,7 @@ Respond ONLY with valid JSON:
     const clean = raw.replace(/```json|```/g, '').trim();
     return res.json(JSON.parse(clean));
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -488,7 +495,7 @@ Write a concise, professional incident report with these sections:
     const report = await groqChat(SYSTEM_PROMPT, prompt, 1500);
     return res.json({ report, generatedAt: new Date().toISOString(), deployment: dep.name });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -522,7 +529,7 @@ Respond ONLY with valid JSON:
     const clean = raw.replace(/```json|```/g, '').trim();
     return res.json(JSON.parse(clean));
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -574,7 +581,7 @@ Provide: 1) Performance winner and why, 2) Resource efficiency comparison, 3) Co
     const comparison = await groqChat(SYSTEM_PROMPT, prompt, 800);
     return res.json({ comparison, deploymentA: depA.name, deploymentB: depB.name });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    return groqErrorResponse(res, err);
   }
 });
 
@@ -604,9 +611,14 @@ Be direct, professional, and action-oriented. Mention if anything needs immediat
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
-    
+    const aiError = !getGroqKey()
+      ? 'AI features are not configured on this server. Contact your administrator.'
+      : isGroqAuthError(err)
+        ? 'AI features are misconfigured on this server (the configured key was rejected). Contact your administrator.'
+        : (err?.response?.data?.error?.message || err?.message || 'AI summary failed');
     return res.json({
       summary: null,
+      aiError,
       stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, recentErrors },
       generatedAt: new Date().toISOString(),
     });
@@ -717,6 +729,9 @@ Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
 
     return res.json({ config });
   } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'AI analysis failed' });
+    if (err.message === 'AI returned invalid JSON' || err.message === 'AI response missing required fields') {
+      return res.status(502).json({ error: err.message });
+    }
+    return groqErrorResponse(res, err);
   }
 });

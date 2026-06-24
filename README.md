@@ -1,6 +1,6 @@
 # ⚡ Podium — AIOps Platform v4.0
 
-> Manage Docker containers, multi-cloud deployments, real-time metrics, CI/CD pipelines,
+> Manage multi-cloud deployments, real-time metrics, CI/CD pipelines,
 > and an AI assistant — all in one platform. Run it as a desktop app or deploy it free to the web.
 
 ---
@@ -11,7 +11,7 @@
 |---|---|
 | 📖 **Deploy to web (free)** | See [DEPLOY.md](./DEPLOY.md) |
 | 🖥️ **Run as desktop app** | See below |
-| 🤖 **Get free AI key** | https://console.groq.com |
+| 🤖 **AI features** | Set `GROQ_API_KEY` on the server — get a free key at https://console.groq.com |
 
 ---
 
@@ -22,7 +22,6 @@
 | Node.js | **22 or 24** (required — uses built-in SQLite) |
 | npm | 9+ |
 | Git | any |
-| Docker Desktop | optional |
 
 ---
 
@@ -71,9 +70,8 @@ Output: `dist-electron/Podium-Setup-4.0.0.exe`
 |-------|------|
 | `/login` | Sign in / Create account |
 | `/dashboard` | Overview: stats, health chart, recent deployments |
-| `/deployments` | Create and manage Docker deployments |
+| `/deployments` | Create and manage deployments (simulated/demo lifecycle) |
 | `/deployments/:id` | Detail: logs, metrics, config, rebuild |
-| `/containers` | All Docker containers on this host |
 | `/cloud` | Deploy to AWS, Azure, Vercel |
 | `/github` | Connect GitHub repos, trigger builds |
 | `/logs` | Centralized log viewer with live streaming |
@@ -81,7 +79,7 @@ Output: `dist-electron/Podium-Setup-4.0.0.exe`
 | `/ai` | Groq AI chat assistant with streaming |
 | `/ai/anomalies` | Detected infrastructure anomalies |
 | `/team` | User management and invite codes |
-| `/settings` | AI, cloud credentials, security, about |
+| `/settings` | AI (server-configured), security, about |
 
 ---
 
@@ -90,7 +88,7 @@ Output: `dist-electron/Podium-Setup-4.0.0.exe`
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `JWT_SECRET` | **Yes** | Long random string (32+ chars) |
-| `GROQ_API_KEY` | For AI | Free at console.groq.com |
+| `GROQ_API_KEY` | For AI | Server-only secret powering all AI features — free at console.groq.com |
 | `PORT` | No (4000) | Backend HTTP port |
 | `PODIUM_DATA_DIR` | Production | Path to SQLite data directory |
 | `ALLOWED_ORIGINS` | Production | Comma-separated allowed frontend URLs |

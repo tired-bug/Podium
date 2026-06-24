@@ -13,12 +13,10 @@ import { broadcastNotification } from './routes/notifications';
 import authRouter from './routes/auth';
 import invitesRouter from './routes/invites';
 import deploymentsRouter from './routes/deployments';
-import containersRouter from './routes/containers';
 import metricsRouter from './routes/metrics';
 import logsRouter from './routes/logs';
 import githubRouter from './routes/github';
 import cloudRouter from './routes/cloud';
-import domainsRouter from './routes/domains';
 import aiRouter from './routes/ai';
 import settingsRouter, { healthHandler } from './routes/settings';
 import profileRouter from './routes/profile';
@@ -45,12 +43,10 @@ app.get('/api/health', healthHandler);
 app.use('/api/auth', authRouter);
 app.use('/api/invites', invitesRouter);
 app.use('/api/deployments', deploymentsRouter);
-app.use('/api/containers', containersRouter);
 app.use('/api/metrics', metricsRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/github', githubRouter);
 app.use('/api/cloud', cloudRouter);
-app.use('/api/domains', domainsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/profile', profileRouter);
@@ -71,41 +67,6 @@ if (staticPath) {
   app.get('*', (_req, res) => res.sendFile(path.join(staticPath!, 'index.html')));
 } else {
   app.get('/', (_req, res) => res.json({ status: 'Podium API running', health: '/api/health' }));
-}
-
-let Docker: any;
-try { Docker = require('dockerode'); } catch {}
-
-async function collectMetrics() {
-  if (!Docker) return;
-  const db = getDb();
-  const running = db.prepare(
-    "SELECT * FROM deployments WHERE status='running' AND container_id IS NOT NULL"
-  ).all() as any[];
-
-  for (const dep of running) {
-    try {
-      const docker = new Docker({
-        socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
-      const stats = await new Promise<any>((resolve, reject) => {
-        docker.getContainer(dep.container_id).stats({ stream: false }, (err: any, data: any) => {
-          if (err) reject(err); else resolve(data);
-        });
-      });
-      const cpuDelta = stats.cpu_stats.cpu_usage.total_usage - stats.precpu_stats.cpu_usage.total_usage;
-      const sysDelta = stats.cpu_stats.system_cpu_usage - stats.precpu_stats.system_cpu_usage;
-      const numCPUs = stats.cpu_stats.online_cpus || 1;
-      const cpu = sysDelta > 0 ? (cpuDelta / sysDelta) * numCPUs * 100 : 0;
-      const memory = (stats.memory_stats.usage - (stats.memory_stats.stats?.cache || 0)) / 1024 / 1024;
-      db.prepare(
-        'INSERT INTO metrics (deployment_id, timestamp, cpu, memory, network_in, network_out) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(dep.id, Date.now(), cpu, memory,
-        (stats.networks?.eth0?.rx_bytes || 0) / 1024,
-        (stats.networks?.eth0?.tx_bytes || 0) / 1024,
-      );
-      detectAnomalies(dep.id, dep.name, cpu, memory);
-    } catch {}
-  }
 }
 
 function generateSimulatedMetrics() {
@@ -170,7 +131,6 @@ function pruneOldData() {
   ).run();
 }
 
-setInterval(() => collectMetrics().catch(() => {}), 10_000);
 setInterval(generateSimulatedMetrics, 12_000);
 setInterval(pruneOldData, 3_600_000);
 

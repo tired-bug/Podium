@@ -239,7 +239,7 @@ export default function LoginPage() {
               </span>
             </h1>
             <p style={{ fontSize: '15px', color: 'rgba(160,160,200,0.85)', lineHeight: 1.75, maxWidth: 380, marginBottom: 40 }}>
-              Docker management, multi-cloud deployments, real-time metrics, and an AI assistant — all in one native desktop app.
+              Multi-cloud deployments, real-time metrics, and an AI assistant — all in one native desktop app.
             </p>
           </div>
 

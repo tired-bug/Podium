@@ -11,8 +11,6 @@ const Login        = lazy(() => import('./pages/Login'));
 const Dashboard    = lazy(() => import('./pages/Dashboard'));
 const Deployments  = lazy(() => import('./pages/Deployments'));
 const DeploymentDetail = lazy(() => import('./pages/DeploymentDetail'));
-const Containers   = lazy(() => import('./pages/Containers'));
-const Domains      = lazy(() => import('./pages/Domains'));
 const NaturalDeploy = lazy(() => import('./pages/NaturalDeploy'));
 const GitHub       = lazy(() => import('./pages/GitHub'));
 const Logs         = lazy(() => import('./pages/Logs'));
@@ -38,8 +36,6 @@ const PROTECTED_ROUTES = [
   { path: '/dashboard',       el: <Dashboard /> },
   { path: '/deployments',     el: <Deployments /> },
   { path: '/deployments/:id', el: <DeploymentDetail /> },
-  { path: '/containers',      el: <Containers /> },
-  { path: '/domains',          el: <Domains /> },
   { path: '/deploy',          el: <NaturalDeploy /> },
   { path: '/github',          el: <GitHub /> },
   { path: '/logs',            el: <Logs /> },

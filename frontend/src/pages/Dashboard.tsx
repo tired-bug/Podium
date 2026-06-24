@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Rocket, Container, AlertTriangle, Cloud, CheckCircle,
-  TrendingUp, TrendingDown, RefreshCw, AlertCircle,
+  TrendingUp, TrendingDown, RefreshCw,
   Activity, Zap,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, Skeleton } from '../components/ui/Badge';
@@ -107,7 +107,6 @@ export default function Dashboard() {
   const [cloudDeps,  setCloudDeps]  = useState<any[]>([]);
   const [metrics,    setMetrics]    = useState<any[]>([]);
   const [resolving,  setResolving]  = useState<string | null>(null);
-  const [dockerUp,   setDockerUp]   = useState<boolean | null>(null);
   const { success, error: showError } = useToast();
 
   const fetchAll = useCallback(async () => {
@@ -118,15 +117,6 @@ export default function Dashboard() {
     if (anomRes.status === 'fulfilled') setAnomalies(anomRes.value.data);
     if (cloudRes.status === 'fulfilled') setCloudDeps(cloudRes.value.data);
 
-    
-    try {
-      await api.get('/api/containers');
-      setDockerUp(true);
-    } catch (err: any) {
-      setDockerUp(err?.response?.data?.dockerUnavailable ? false : true);
-    }
-
-    
     const days = Array.from({ length: 7 }, (_, i) => ({
       timestamp: Date.now() - (6 - i) * 86_400_000,
       successRate: 82 + Math.random() * 18,
@@ -151,7 +141,7 @@ export default function Dashboard() {
 
   const statCards = [
     { label: 'Total Deployments', value: deployments.length, icon: <Rocket size={20} color="#fff" />,    gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', trend: 12,  onClick: () => navigate('/deployments') },
-    { label: 'Running Containers', value: running,           icon: <Container size={20} color="#fff" />,  gradient: 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/containers') },
+    { label: 'Running Deployments', value: running,          icon: <Container size={20} color="#fff" />,  gradient: 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/deployments') },
     { label: 'Active Anomalies',   value: anomalies.length,  icon: <AlertTriangle size={20} color="#fff" />, gradient: anomalies.length > 0 ? 'linear-gradient(135deg,#ef4444,#f59e0b)' : 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/ai/anomalies') },
     { label: 'Cloud Deployments',  value: cloudDeps.length,  icon: <Cloud size={20} color="#fff" />,      gradient: 'linear-gradient(135deg,#22d3ee,#6366f1)',  onClick: () => navigate('/cloud') },
   ];
@@ -166,25 +156,6 @@ export default function Dashboard() {
         </div>
         <Button icon={<RefreshCw size={14} />} onClick={() => { fetchAll(); refetch(); }} size="sm">Refresh</Button>
       </div>
-
-      {}
-      {dockerUp === false && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          padding: '12px 16px', borderRadius: 'var(--r-lg)',
-          background: 'var(--accent-orange-dim)',
-          border: '1px solid rgba(245,158,11,0.35)',
-          animation: 'float-up 300ms ease-out',
-        }}>
-          <AlertCircle size={18} color="var(--accent-orange)" style={{ flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-orange)' }}>Docker Desktop is not running</div>
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: 2 }}>
-              Deployments are running in demo/simulation mode. Start Docker Desktop to manage real containers.
-            </div>
-          </div>
-        </div>
-      )}
 
       {}
       <div className="anim-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>

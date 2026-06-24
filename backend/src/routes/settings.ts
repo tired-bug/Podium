@@ -12,15 +12,14 @@ router.get('/', requireAuth, requireRole('admin'), (_req, res: Response) => {
   const rows = getDb().prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
   const settings: Record<string, string> = {};
   for (const r of rows) {
-    
+    if (r.key === 'groq_api_key' || r.key === 'groq_model') continue; // server-only, not exposed via this API
     if (r.key.includes('key') || r.key.includes('secret') || r.key.includes('token') || r.key.includes('password')) {
       settings[r.key] = r.value ? '***masked***' : '';
     } else {
       settings[r.key] = r.value;
     }
   }
-  
-  settings.groq_key_configured = (!!getDb().prepare("SELECT value FROM settings WHERE key = 'groq_api_key'").get() || !!process.env.GROQ_API_KEY) ? 'true' : 'false';
+  settings.groq_key_configured = process.env.GROQ_API_KEY ? 'true' : 'false';
   res.json(settings);
 });
 
@@ -29,6 +28,7 @@ router.put('/', requireAuth, requireRole('admin'), (req: any, res: Response) => 
   const stmt = getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
 
   for (const [key, value] of Object.entries(updates)) {
+    if (key === 'groq_api_key' || key === 'groq_model') continue; // server-only secret, not settable via API
     if (value === '***masked***') continue; 
     stmt.run(key, value);
   }
