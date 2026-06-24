@@ -3,13 +3,14 @@ import {
   Bot, Zap, Shield, FileText, DollarSign, GitCompare,
   AlertTriangle, Cpu, RefreshCw, CheckCircle, XCircle,
   Copy, BarChart2, Loader, Sparkles, Activity,
-  TrendingUp, Target, Search, ChevronRight,
+  TrendingUp, Target, Search, ChevronRight, Globe, Plug,
+  ExternalLink, Clock,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useDeployments } from '../hooks/useDeployments';
 import { useToast } from '../contexts/ToastContext';
 import api from '../lib/api';
-import { copyToClipboard } from '../lib/utils';
+import { copyToClipboard, timeAgo } from '../lib/utils';
 
 interface Deployment { id: string; name: string; status: string; }
 
@@ -383,74 +384,91 @@ function SecurityScanCard({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
-/* ── Natural Language Deploy card (in AI Hub) ───────────────────────────── */
-function NaturalDeployCard() {
-  const [description, setDescription] = useState('');
-  const [result, setResult] = useState<any>(null);
+/* ── Global Deployments (cross-provider overview) ────────────────────────── */
+function GlobalDeploymentsCard() {
+  const [cloudDeps, setCloudDeps] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const { error: showError } = useToast();
 
-  const EXAMPLES = [
-    'Node.js REST API on port 3000 with PostgreSQL',
-    'Nginx reverse proxy with 512MB RAM',
-    'Redis cache with AOF persistence, port 6379',
-  ];
-
-  const run = async () => {
-    if (!description.trim()) return;
-    setLoading(true);
-    try {
-      const { data } = await api.post('/api/ai/natural-deploy', { description: description.trim() });
-      setResult(data.config || data);
-    } catch (e: any) { showError(e.response?.data?.error || e.message); }
-    setLoading(false);
+  const PROVIDER_LOGOS: Record<string, React.ReactNode> = {
+    render:  <svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="#46E3B7"/><path d="M8 4 L11 8 L8 12 L5 8 Z" fill="#fff" fillOpacity=".9"/></svg>,
+    railway: <svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="#0B0D0E"/><rect x="3" y="7" width="10" height="2" rx="1" fill="#fff"/><rect x="5" y="4" width="2" height="8" rx="1" fill="#fff"/><rect x="9" y="4" width="2" height="8" rx="1" fill="#fff"/></svg>,
+    vercel:  <svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="#000"/><path d="M8 4 L13 12 H3 Z" fill="#fff"/></svg>,
+    aws:     <svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="#232F3E"/><text x="2" y="11" fontSize="6" fill="#FF9900" fontWeight="700">AWS</text></svg>,
+    azure:   <svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="#0078D4"/><path d="M4 11 L8 4 L10 8 L7 8 L11 11 Z" fill="#fff" fillOpacity=".9"/></svg>,
+    gcp:     <svg viewBox="0 0 16 16" width="14" height="14"><rect width="16" height="16" rx="4" fill="#fff"/><circle cx="8" cy="8" r="5" fill="none" stroke="#4285F4" strokeWidth="2"/></svg>,
   };
 
+  const STATUS_DOT: Record<string, string> = {
+    live: 'var(--accent-green)', building: 'var(--accent-blue)',
+    deploying: 'var(--accent-cyan)', failed: 'var(--accent-red)',
+    queued: 'var(--accent-orange)', suspended: 'var(--text-muted)',
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/api/providers/deployments');
+      setCloudDeps(data || []);
+    } catch {} finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const live = cloudDeps.filter(d => d.status === 'live').length;
+  const building = cloudDeps.filter(d => ['building','deploying','queued'].includes(d.status)).length;
+  const failed = cloudDeps.filter(d => d.status === 'failed').length;
+
   return (
-    <FeatureCard icon={<Zap size={16} />} title="Natural Language Deploy" subtitle="Describe in plain English → instant config" accent="var(--accent-blue)" badge="AI">
-      <textarea
-        value={description}
-        onChange={e => setDescription(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && description.trim()) { e.preventDefault(); run(); } }}
-        placeholder="e.g. A Node.js REST API with PostgreSQL on port 3000, 512MB RAM"
-        rows={3}
-        style={{
-          width: '100%', padding: '10px 12px', background: 'var(--bg-elevated)',
-          border: '1px solid var(--border)', borderRadius: 'var(--r-md)',
-          color: 'var(--text-primary)', fontSize: 13, resize: 'vertical',
-          fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none',
-          lineHeight: 1.6,
-        }}
-      />
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
-        {EXAMPLES.map((ex, i) => (
-          <button key={i} onClick={() => setDescription(ex)} style={{
-            fontSize: 10, padding: '3px 8px', background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)', borderRadius: 'var(--r-pill)',
-            cursor: 'pointer', color: 'var(--text-muted)', transition: 'all 120ms',
-          }}>{ex.length > 32 ? ex.slice(0, 32) + '…' : ex}</button>
+    <FeatureCard icon={<Globe size={16} />} title="Global Deployments" subtitle="Live view across all connected providers" accent="var(--accent-blue)" badge="LIVE">
+      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+        {[
+          { label: 'Live', value: live, color: 'var(--accent-green)' },
+          { label: 'Building', value: building, color: 'var(--accent-blue)' },
+          { label: 'Failed', value: failed, color: 'var(--accent-red)' },
+        ].map(s => (
+          <div key={s.label} style={{ flex: 1, padding: '8px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>{s.label}</div>
+          </div>
         ))}
       </div>
-      <RunButton loading={loading} onClick={run} disabled={!description.trim()} icon={<Zap size={13} />} label="Generate Config" loadingLabel="Generating..." />
-      {result && (
-        <ResultCard title="Generated Config" accent="var(--accent-blue)" onCopy={() => copyToClipboard(JSON.stringify(result, null, 2))}>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-            {result.name && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent-blue)', background: 'rgba(99,102,241,0.1)', padding: '2px 8px', borderRadius: 'var(--r-pill)' }}>{result.name}</span>}
-            {result.image && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', padding: '2px 8px', borderRadius: 'var(--r-pill)' }}>{result.image}</span>}
-            {result.memory_limit && <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '2px 8px', borderRadius: 'var(--r-pill)' }}>RAM: {result.memory_limit}</span>}
-          </div>
-          {result.reasoning && (
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.6, marginBottom: 10 }}>{result.reasoning}</div>
-          )}
-          <a href="/deploy" style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-            padding: '8px', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)',
-            borderRadius: 'var(--r-md)', color: 'var(--accent-blue)', fontSize: 12, fontWeight: 600,
-            textDecoration: 'none', transition: 'all 150ms',
-          }}>
-            Open AI Deploy for full config <ChevronRight size={12} />
-          </a>
-        </ResultCard>
+      <button onClick={load} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 11, marginBottom: 10, padding: 0 }}>
+        <RefreshCw size={11} style={{ animation: loading ? 'spin .7s linear infinite' : 'none' }} /> Refresh
+      </button>
+      {loading && cloudDeps.length === 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)', fontSize: 12 }}>
+          <Loader size={13} style={{ animation: 'spin .7s linear infinite' }} /> Loading deployments...
+        </div>
+      ) : cloudDeps.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
+          No cloud deployments yet. <a href="/deploy" style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}>AI Deploy →</a>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+          {cloudDeps.slice(0, 8).map((d: any) => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', border: '1px solid var(--border-muted)' }}>
+              <div style={{ flexShrink: 0 }}>{PROVIDER_LOGOS[d.provider] || <Globe size={14} />}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{d.provider} · {timeAgo(d.updated_at)}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: STATUS_DOT[d.status] || 'var(--text-muted)' }} />
+                <span style={{ fontSize: 10, color: STATUS_DOT[d.status] || 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>{d.status}</span>
+              </div>
+              {d.url && (
+                <a href={d.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                  <ExternalLink size={11} />
+                </a>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {cloudDeps.length > 0 && (
+        <a href="/cloud" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10, padding: '7px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 'var(--r-md)', color: 'var(--accent-blue)', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+          View all cloud deployments <ChevronRight size={12} />
+        </a>
       )}
     </FeatureCard>
   );
@@ -588,17 +606,26 @@ export default function AIHub() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-.01em' }}>AI Intelligence Hub</h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: '3px 0 0' }}>
-            8 AI-powered DevOps tools — risk scoring, root cause analysis, security scans & more
+            Global deployment intelligence — AI analysis, risk scoring, security scans & cross-provider visibility
           </p>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <a href="/providers" style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px', background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--r-md)', color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600,
+            textDecoration: 'none',
+          }}>
+            <Plug size={13} /> Providers
+          </a>
           <a href="/deploy" style={{
             display: 'flex', alignItems: 'center', gap: 6,
             padding: '8px 14px', background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
             borderRadius: 'var(--r-md)', color: '#fff', fontSize: 13, fontWeight: 600,
             textDecoration: 'none', boxShadow: '0 0 16px rgba(99,102,241,0.3)',
           }}>
-            <Zap size={13} /> AI Deploy
+            <Sparkles size={13} /> AI Deploy
           </a>
         </div>
       </div>
@@ -608,11 +635,11 @@ export default function AIHub() {
 
       {/* Grid of tools */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+        <GlobalDeploymentsCard />
         <RiskScoreCard deployments={deps} />
         <RootCauseCard deployments={deps} />
         <OptimizeCard deployments={deps} />
         <SecurityScanCard deployments={deps} />
-        <NaturalDeployCard />
         <IncidentReportCard deployments={deps} />
         <CostAnalysisCard />
         <CompareCard deployments={deps} />

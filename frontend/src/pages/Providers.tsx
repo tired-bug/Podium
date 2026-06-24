@@ -3,6 +3,7 @@ import {
   CheckCircle, XCircle, Zap, Eye, EyeOff, Copy, Check,
   ChevronRight, AlertTriangle, RefreshCw, Trash2, Globe,
   Shield, Cpu, Database, Cloud, Server, ArrowRight, X,
+  Container, Play, Square, RotateCcw, Sparkles, ExternalLink,
 } from 'lucide-react';
 import { Card, SectionHeader, Badge, Spinner } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -486,6 +487,163 @@ function ProviderCard({
   );
 }
 
+// ── Docker Container Status ───────────────────────────────────────────────────
+
+const containerStatusColor = (s: string) => {
+  if (s === 'running') return 'var(--accent-green)';
+  if (s === 'exited') return 'var(--text-muted)';
+  if (s === 'paused') return 'var(--accent-yellow, #eab308)';
+  return 'var(--accent-orange)';
+};
+
+interface DockerContainer {
+  id: string; shortId: string; name: string; image: string;
+  status: string; statusText: string;
+  ports: Array<{ IP?: string; PrivatePort: number; PublicPort?: number; Type: string }>;
+  created: number;
+}
+
+function LocalDockerSection() {
+  const { can } = useRole();
+  const { success, error: showError } = useToast();
+  const [containers, setContainers] = useState<DockerContainer[]>([]);
+  const [dockerError, setDockerError] = useState<string | null>(null);
+  const [loadingContainers, setLoadingContainers] = useState(true);
+  const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState('');
+
+  const fetchContainers = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/containers');
+      setContainers(data);
+      setDockerError(null);
+    } catch (err: any) {
+      setDockerError(err?.response?.data?.error || err.message || 'Docker unavailable');
+    } finally {
+      setLoadingContainers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchContainers();
+    const t = setInterval(fetchContainers, 10000);
+    return () => clearInterval(t);
+  }, [fetchContainers]);
+
+  const doAction = async (id: string, action: string) => {
+    setActionLoading(prev => ({ ...prev, [id]: action }));
+    try {
+      await api.post(`/api/containers/${id}/${action}`);
+      success(`Container ${action}ed`);
+      fetchContainers();
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setActionLoading(prev => { const n = { ...prev }; delete n[id]; return n; }); }
+  };
+
+  const filtered = containers.filter(c =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase()) || c.image.toLowerCase().includes(search.toLowerCase())
+  );
+  const running = containers.filter(c => c.status === 'running').length;
+
+  return (
+    <div>
+      {/* Section header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ width: 24, height: 24, borderRadius: 'var(--r-md)', background: 'rgba(34,211,238,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Container size={13} color="var(--accent-cyan)" />
+        </div>
+        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Local Docker — This Host</span>
+        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        <Button size="sm" icon={<RefreshCw size={12} />} onClick={fetchContainers}>Refresh</Button>
+      </div>
+
+      {/* Stats + search */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        {[
+          { label: 'Total', value: containers.length, color: 'var(--text-secondary)' },
+          { label: 'Running', value: running, color: 'var(--accent-green)' },
+          { label: 'Stopped', value: containers.filter(c => c.status === 'exited').length, color: 'var(--text-muted)' },
+        ].map(s => (
+          <div key={s.label} style={{ padding: '6px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ fontSize: '16px', fontWeight: 800, color: s.color }}>{s.value}</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>{s.label}</span>
+          </div>
+        ))}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search containers..."
+          style={{ padding: '6px 12px', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '12px', fontFamily: 'var(--font-sans)', outline: 'none', flex: 1, minWidth: 160, maxWidth: 280 }}
+        />
+      </div>
+
+      {dockerError ? (
+        <div style={{ padding: '14px 18px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 'var(--r-lg)', display: 'flex', gap: 12, alignItems: 'center' }}>
+          <AlertTriangle size={16} color="var(--accent-orange)" style={{ flexShrink: 0 }} />
+          <div>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent-orange)' }}>Docker Unavailable</div>
+            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: 2 }}>{dockerError}</div>
+          </div>
+        </div>
+      ) : loadingContainers ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {[1,2,3].map(i => <div key={i} style={{ height: 44, background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', animation: 'pulse 1.5s ease-in-out infinite' }} />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ padding: '28px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+          <Container size={28} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
+          {search ? 'No containers match your search.' : 'No Docker containers found on this host.'}
+        </div>
+      ) : (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-secondary)' }}>
+                  {['ID', 'Name', 'Image', 'Status', 'Ports', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '9px 14px', fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 700, textAlign: 'left', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(c => (
+                  <tr key={c.id} style={{ borderTop: '1px solid var(--border-muted)' }}>
+                    <td style={{ padding: '9px 14px', fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>{c.shortId}</td>
+                    <td style={{ padding: '9px 14px', fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>{c.name}</td>
+                    <td style={{ padding: '9px 14px', fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.image}</td>
+                    <td style={{ padding: '9px 14px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 'var(--r-pill)', background: containerStatusColor(c.status) + '22', color: containerStatusColor(c.status), fontSize: '11px', fontWeight: 600 }}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: containerStatusColor(c.status) }} />
+                        {c.statusText || c.status}
+                      </span>
+                    </td>
+                    <td style={{ padding: '9px 14px', fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {c.ports?.filter(p => p.PublicPort).map(p => `${p.PublicPort}:${p.PrivatePort}`).join(', ') || '—'}
+                    </td>
+                    <td style={{ padding: '9px 14px' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        {can.manageContainers && c.status !== 'running' && (
+                          <Button size="sm" variant="success" icon={<Play size={10} />} loading={actionLoading[c.id] === 'start'} onClick={() => doAction(c.id, 'start')} />
+                        )}
+                        {can.manageContainers && c.status === 'running' && (
+                          <>
+                            <Button size="sm" variant="ghost" icon={<Square size={10} />} loading={actionLoading[c.id] === 'stop'} onClick={() => doAction(c.id, 'stop')} />
+                            <Button size="sm" variant="ghost" icon={<RotateCcw size={10} />} loading={actionLoading[c.id] === 'restart'} onClick={() => doAction(c.id, 'restart')} />
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Providers Page ──────────────────────────────────────────────────────
 
 export default function Providers() {
@@ -507,12 +665,15 @@ export default function Providers() {
   const connected = providers.filter(p => p.connected).length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <SectionHeader
-        title="Cloud Providers"
-        subtitle="Connect deployment platforms to enable one-click cloud deploys"
+        title="Providers"
+        subtitle="Cloud deployment platforms and local infrastructure — all in one place"
         action={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <a href="/deploy" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: 'linear-gradient(135deg,var(--accent-blue),var(--accent-purple))', borderRadius: 'var(--r-md)', color: '#fff', fontSize: '12px', fontWeight: 600, textDecoration: 'none', boxShadow: '0 0 14px rgba(99,102,241,0.3)' }}>
+              <Sparkles size={13} /> AI Deploy
+            </a>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '4px 10px', borderRadius: 'var(--r-pill)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
               {connected} / {providers.length} connected
             </div>
@@ -570,6 +731,9 @@ export default function Providers() {
               ))}
             </div>
           </div>
+
+          {/* Local Docker */}
+          <LocalDockerSection />
         </>
       )}
 

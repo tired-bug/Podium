@@ -587,6 +587,13 @@ export function SettingsPage() {
                 ],
               },
               {
+                name: 'Docker Agent', icon: '🐳', color: '#2496ED',
+                keys: [
+                  { key: 'docker_agent_url', label: 'Agent URL', placeholder: 'https://abc123.ngrok-free.app' },
+                  { key: 'docker_agent_token', label: 'Agent Token', placeholder: 'paste the AGENT_TOKEN from agent/.env', masked: true },
+                ],
+              },
+              {
                 name: 'GitHub', icon: '🐙', color: '#333',
                 keys: [
                   { key: 'github_token', label: 'Personal Access Token', placeholder: 'ghp_...', masked: true },
