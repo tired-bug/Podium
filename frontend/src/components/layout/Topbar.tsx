@@ -10,15 +10,11 @@ import api from '../../lib/api';
 const GRADIENTS = [
   'linear-gradient(135deg,#6366f1,#a855f7)',
   'linear-gradient(135deg,#22d3ee,#6366f1)',
-  'linear-gradient(135deg,#10b981,#22d3ee)',
-  'linear-gradient(135deg,#f59e0b,#ef4444)',
+  'linear-gradient(135deg,#30d158,#22d3ee)',
+  'linear-gradient(135deg,#ff9f0a,#ff453a)',
   'linear-gradient(135deg,#ec4899,#a855f7)',
-  'linear-gradient(135deg,#14b8a6,#10b981)',
+  'linear-gradient(135deg,#5ac8fa,#30d158)',
 ];
-
-const NOTIF_ICONS: Record<string, string> = {
-  deployment: '🚀', anomaly: '⚠️', build: '🔨', team: '👤', cloud: '☁️', system: '⚡',
-};
 
 export function Topbar() {
   const { user, logout }        = useAuth();
@@ -26,10 +22,10 @@ export function Topbar() {
   const { avatar, displayName } = useProfile();
   const navigate                = useNavigate();
 
-  const [menuOpen,   setMenuOpen]   = useState(false);
-  const [notifOpen,  setNotifOpen]  = useState(false);
-  const [notifs,     setNotifs]     = useState<any[]>([]);
-  const [unread,     setUnread]     = useState(0);
+  const [menuOpen,  setMenuOpen]  = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs,    setNotifs]    = useState<any[]>([]);
+  const [unread,    setUnread]    = useState(0);
 
   const menuRef  = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -80,7 +76,6 @@ export function Topbar() {
   const initials = (displayName || user?.username || '??').slice(0, 2).toUpperCase();
   const label    = displayName || user?.username || '';
 
-  
   const IconBtn = ({ label: lbl, onClick, children, badge }: {
     label: string; onClick: () => void; children: React.ReactNode; badge?: number;
   }) => {
@@ -89,12 +84,12 @@ export function Topbar() {
       <button aria-label={lbl} onClick={onClick}
         onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
         style={{
-          width: 36, height: 36, borderRadius: 'var(--r-lg)',
+          width: 32, height: 32, borderRadius: 'var(--r-md)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: hov ? 'var(--bg-glass-light)' : 'transparent',
           border: `1px solid ${hov ? 'var(--border)' : 'transparent'}`,
           cursor: 'pointer', color: hov ? 'var(--text-primary)' : 'var(--text-secondary)',
-          transition: 'all 150ms', position: 'relative',
+          transition: 'all 120ms', position: 'relative',
         }}>
         {children}
         {badge != null && badge > 0 && (
@@ -104,92 +99,105 @@ export function Topbar() {
     );
   };
 
+  const dropdownItem = (icon: React.ReactNode, lbl: string, action: () => void, danger = false) => (
+    <button key={lbl} onClick={action}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+        padding: '9px 14px', background: 'none', border: 'none',
+        cursor: 'pointer', color: danger ? 'var(--accent-red)' : 'var(--text-secondary)',
+        fontSize: '13px', textAlign: 'left', transition: 'background 100ms, color 100ms',
+        fontFamily: 'var(--font-sans)', letterSpacing: '-0.01em',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = danger ? 'var(--accent-red-dim)' : 'var(--bg-glass-light)';
+        if (!danger) e.currentTarget.style.color = 'var(--text-primary)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'none';
+        e.currentTarget.style.color = danger ? 'var(--accent-red)' : 'var(--text-secondary)';
+      }}
+    >
+      {icon}{lbl}
+    </button>
+  );
+
   return (
     <header style={{
       height: 'var(--topbar-height)',
-      background: 'var(--bg-glass)',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
+      background: 'var(--bg-secondary)',
       borderBottom: '1px solid var(--border)',
       display: 'flex', alignItems: 'center',
-      padding: '0 20px', gap: 8, flexShrink: 0,
+      padding: '0 20px', gap: 6, flexShrink: 0,
       position: 'relative', zIndex: 50,
     }}>
       <div style={{ flex: 1 }} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-
-        {}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <IconBtn label="Toggle theme" onClick={toggleTheme}>
-          {isDark ? <Sun size={15} /> : <Moon size={15} />}
+          {isDark ? <Sun size={14} /> : <Moon size={14} />}
         </IconBtn>
 
-        {}
+        {/* Notifications */}
         <div ref={notifRef} style={{ position: 'relative' }}>
           <IconBtn label="Notifications" badge={unread}
             onClick={() => { setNotifOpen(o => !o); if (!notifOpen) fetchNotifs(); }}>
-            <Bell size={15} />
+            <Bell size={14} />
           </IconBtn>
 
           {notifOpen && (
             <div style={{
               position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 1000,
-              width: 360, background: 'var(--bg-elevated)',
+              width: 348, background: 'var(--bg-elevated)',
               border: '1px solid var(--border)', borderRadius: 'var(--r-xl)',
               boxShadow: 'var(--shadow-xl)', overflow: 'hidden',
-              animation: 'slide-down 150ms ease-out',
+              animation: 'slide-down 140ms ease-out',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid var(--border-muted)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: '14px', fontWeight: 700 }}>Notifications</span>
+                  <span style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '-0.01em' }}>Notifications</span>
                   {unread > 0 && (
-                    <span style={{ background: 'var(--accent-blue)', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: 'var(--r-pill)' }}>
-                      {unread} new
+                    <span style={{ background: 'var(--accent)', color: '#fff', fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r-pill)' }}>
+                      {unread}
                     </span>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 6 }}>
                   {unread > 0 && (
-                    <button onClick={markAllRead} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-blue-2)', fontSize: '11px', fontFamily: 'var(--font-sans)' }}>
+                    <button onClick={markAllRead} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-2)', fontSize: '11px', fontFamily: 'var(--font-sans)' }}>
                       Mark all read
                     </button>
                   )}
                   <button onClick={clearRead} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 2 }}>
-                    <Trash2 size={12} />
+                    <Trash2 size={11} />
                   </button>
                 </div>
               </div>
-
-              <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+              <div style={{ maxHeight: 360, overflowY: 'auto' }}>
                 {notifs.length === 0 ? (
                   <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    <Bell size={28} style={{ opacity: .3, display: 'block', margin: '0 auto 8px' }} />
-                    All caught up!
+                    All caught up
                   </div>
                 ) : notifs.map(n => (
                   <div key={n.id}
                     onClick={() => { markRead(n.id); if (n.link) { navigate(n.link); setNotifOpen(false); } }}
                     style={{
-                      display: 'flex', gap: 12, padding: '12px 16px',
+                      display: 'flex', gap: 10, padding: '11px 14px',
                       borderBottom: '1px solid var(--border-muted)',
                       background: n.read ? 'transparent' : 'var(--accent-blue-dim)',
-                      cursor: 'pointer', transition: 'background 120ms',
+                      cursor: 'pointer', transition: 'background 100ms',
                     }}
                     onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-glass-light)'}
                     onMouseLeave={e => e.currentTarget.style.background = n.read ? 'transparent' : 'var(--accent-blue-dim)'}
                   >
-                    <div style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', flexShrink: 0, background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>
-                      {NOTIF_ICONS[n.type] || '📌'}
-                    </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>{n.title}</span>
-                        {!n.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-blue)', flexShrink: 0 }} />}
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{n.title}</span>
+                        {!n.read && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />}
                       </div>
                       <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: 2, lineHeight: 1.4 }}>{n.message}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 4 }}>{timeAgo(n.created_at)}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 3 }}>{timeAgo(n.created_at)}</div>
                     </div>
-                    {n.link && <ExternalLink size={11} color="var(--text-muted)" style={{ flexShrink: 0, marginTop: 2 }} />}
+                    {n.link && <ExternalLink size={10} color="var(--text-muted)" style={{ flexShrink: 0, marginTop: 3 }} />}
                   </div>
                 ))}
               </div>
@@ -197,46 +205,41 @@ export function Topbar() {
           )}
         </div>
 
-        {}
-        <div ref={menuRef} style={{ position: 'relative', marginLeft: 4 }}>
+        {/* User menu */}
+        <div ref={menuRef} style={{ position: 'relative', marginLeft: 6 }}>
           <button
             onClick={() => setMenuOpen(o => !o)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8,
+              display: 'flex', alignItems: 'center', gap: 7,
               padding: '4px 8px 4px 4px', borderRadius: 'var(--r-lg)',
               background: menuOpen ? 'var(--bg-glass-light)' : 'transparent',
               border: `1px solid ${menuOpen ? 'var(--border)' : 'transparent'}`,
-              cursor: 'pointer', transition: 'all 150ms',
+              cursor: 'pointer', transition: 'all 120ms',
             }}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-glass-light)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
             onMouseLeave={e => { if (!menuOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; } }}
           >
-            {}
             <div style={{
-              width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+              width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
               background: avatar ? 'transparent' : GRADIENTS[gradIdx],
               overflow: 'hidden',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 0 2px var(--border-glow)',
-              fontSize: '11px', fontWeight: 800, color: '#fff',
+              fontSize: '10px', fontWeight: 700, color: '#fff',
             }}>
               {avatar
                 ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : initials
               }
             </div>
-
-            {}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2, maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                 {label}
               </span>
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'capitalize', lineHeight: 1.2 }}>
                 {user?.role}
               </span>
             </div>
-
-            <ChevronDown size={11} color="var(--text-muted)"
+            <ChevronDown size={10} color="var(--text-muted)"
               style={{ transform: menuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 150ms', flexShrink: 0 }} />
           </button>
 
@@ -245,18 +248,16 @@ export function Topbar() {
               position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 1000,
               background: 'var(--bg-elevated)', border: '1px solid var(--border)',
               borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-xl)',
-              minWidth: 210, overflow: 'hidden',
-              animation: 'slide-down 150ms ease-out',
+              minWidth: 200, overflow: 'hidden',
+              animation: 'slide-down 140ms ease-out',
             }}>
-              {}
-              <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-muted)', display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-muted)', display: 'flex', gap: 10, alignItems: 'center' }}>
                 <div style={{
-                  width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                  width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
                   background: avatar ? 'transparent' : GRADIENTS[gradIdx],
                   overflow: 'hidden',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '14px', fontWeight: 800, color: '#fff',
-                  boxShadow: '0 0 0 2px var(--border-glow)',
+                  fontSize: '12px', fontWeight: 700, color: '#fff',
                 }}>
                   {avatar
                     ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -264,7 +265,7 @@ export function Topbar() {
                   }
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
                     {label}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -272,28 +273,10 @@ export function Topbar() {
                   </div>
                 </div>
               </div>
-
-              {[
-                { icon: <User size={13} />,     label: 'My Profile', action: () => { navigate('/profile');  setMenuOpen(false); } },
-                { icon: <Settings size={13} />, label: 'Settings',   action: () => { navigate('/settings'); setMenuOpen(false); } },
-              ].map(item => (
-                <button key={item.label} onClick={item.action}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '13px', textAlign: 'left', transition: 'background 120ms', fontFamily: 'var(--font-sans)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-glass-light)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                >
-                  {item.icon}{item.label}
-                </button>
-              ))}
-
+              {dropdownItem(<User size={12} />, 'My Profile', () => { navigate('/profile'); setMenuOpen(false); })}
+              {dropdownItem(<Settings size={12} />, 'Settings', () => { navigate('/settings'); setMenuOpen(false); })}
               <div style={{ borderTop: '1px solid var(--border-muted)' }}>
-                <button onClick={handleLogout}
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-red)', fontSize: '13px', textAlign: 'left', transition: 'background 120ms', fontFamily: 'var(--font-sans)' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-red-dim)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                >
-                  <LogOut size={13} />Sign out
-                </button>
+                {dropdownItem(<LogOut size={12} />, 'Sign out', handleLogout, true)}
               </div>
             </div>
           )}

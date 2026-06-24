@@ -7,6 +7,7 @@ import { ProfileProvider } from './contexts/ProfileContext';
 import { AppShell, ProtectedRoute } from './components/layout/AppShell';
 import { Spinner } from './components/ui/Badge';
 
+const Landing      = lazy(() => import('./pages/Landing'));
 const Login        = lazy(() => import('./pages/Login'));
 const Dashboard    = lazy(() => import('./pages/Dashboard'));
 const Deployments  = lazy(() => import('./pages/Deployments'));
@@ -27,7 +28,7 @@ const CloudDeploys = lazy(() => import('./pages/CloudDeployments'));
 function PageLoader() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '50vh' }}>
-      <Spinner size={28} color="var(--accent-blue)" />
+      <Spinner size={24} color="var(--accent)" />
     </div>
   );
 }
@@ -59,11 +60,11 @@ export default function App() {
             <BrowserRouter>
               <Suspense fallback={<PageLoader />}>
                 <Routes>
+                  {/* Public landing page */}
+                  <Route path="/" element={<Landing />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Navigate to="/login" replace />} />
-                  <Route path="/" element={
-                    <ProtectedRoute><AppShell><Navigate to="/dashboard" replace /></AppShell></ProtectedRoute>
-                  } />
+                  {/* Protected app routes */}
                   {PROTECTED_ROUTES.map(({ path, el }) => (
                     <Route key={path} path={path} element={
                       <ProtectedRoute>
@@ -73,7 +74,7 @@ export default function App() {
                       </ProtectedRoute>
                     } />
                   ))}
-                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Suspense>
             </BrowserRouter>
