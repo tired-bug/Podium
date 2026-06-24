@@ -3,7 +3,8 @@ import {
   Settings as SettingsIcon, Bot, Shield, Info, Bell,
   Eye, EyeOff, Save, RefreshCw, CheckCircle,
   Cpu, Database, Clock, Server, Key, AlertTriangle, Users,
-  Globe, Zap,
+  Globe, Zap, ChevronRight, Lock, Mail, Activity, BarChart2,
+  ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { Card, SectionHeader, Skeleton, Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -13,47 +14,45 @@ import { useAuth } from '../contexts/AuthContext';
 import { parseApiError, timeAgo } from '../lib/utils';
 import api from '../lib/api';
 
-function SettingSection({ icon, title, description, children, danger }: {
-  icon: React.ReactNode; title: string; description?: string;
-  children: React.ReactNode; danger?: boolean;
+// ── Toggle ────────────────────────────────────────────────────────────────
+
+function Toggle({ checked, onChange, accent = 'var(--accent-blue)' }: {
+  checked: boolean; onChange: (v: boolean) => void; accent?: string;
 }) {
   return (
-    <Card style={{ borderColor: danger ? 'var(--accent-red)' : undefined }}>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 20 }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: 'var(--r-md)', flexShrink: 0,
-          background: danger ? 'var(--accent-red-dim)' : 'var(--accent-blue-dim)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: danger ? 'var(--accent-red)' : 'var(--accent-blue)',
-        }}>
-          {icon}
-        </div>
-        <div>
-          <div style={{ fontSize: '14px', fontWeight: 700, color: danger ? 'var(--accent-red)' : 'var(--text-primary)' }}>{title}</div>
-          {description && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.5 }}>{description}</div>}
-        </div>
-      </div>
-      {children}
-    </Card>
+    <button
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', flexShrink: 0,
+        background: checked ? accent : 'var(--bg-elevated)',
+        position: 'relative', transition: 'background 200ms',
+        boxShadow: checked ? `0 0 10px ${accent}55` : 'inset 0 0 0 1px var(--border)',
+      }}
+    >
+      <span style={{
+        position: 'absolute', top: 3, left: checked ? 21 : 3, width: 16, height: 16,
+        borderRadius: '50%', background: '#fff', transition: 'left 200ms',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+      }} />
+    </button>
   );
 }
 
-function ToggleRow({ label, description, checked, onChange }: {
-  label: string; description?: string; checked: boolean; onChange: (v: boolean) => void;
+function ToggleRow({ label, description, checked, onChange, accent }: {
+  label: string; description?: string; checked: boolean; onChange: (v: boolean) => void; accent?: string;
 }) {
   return (
-    <div className="settings-item">
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '12px 0', borderBottom: '1px solid var(--border-muted)' }}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>{label}</div>
-        {description && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>{description}</div>}
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}</div>
+        {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.5 }}>{description}</div>}
       </div>
-      <label className="toggle-switch">
-        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
-        <span className="toggle-slider" />
-      </label>
+      <Toggle checked={checked} onChange={onChange} accent={accent} />
     </div>
   );
 }
+
+// ── Masked Input ──────────────────────────────────────────────────────────
 
 function MaskedInput({ settingKey, label, placeholder, hint, local, update }: {
   settingKey: string; label: string; placeholder: string;
@@ -79,18 +78,70 @@ function MaskedInput({ settingKey, label, placeholder, hint, local, update }: {
   );
 }
 
-
+// ── Sidebar nav ───────────────────────────────────────────────────────────
 
 type TabId = 'general' | 'ai' | 'security' | 'team' | 'about' | 'mail';
 
-const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
-  { id: 'general',  label: 'General',  icon: <SettingsIcon size={14} /> },
-  { id: 'ai',       label: 'AI',       icon: <Bot size={14} /> },
-  { id: 'security', label: 'Security', icon: <Shield size={14} /> },
-  { id: 'team',     label: 'Team',     icon: <Users size={14} /> },
-  { id: 'about',    label: 'About',    icon: <Info size={14} /> },
-  { id: 'mail',     label: 'Email',    icon: <Bell size={14} /> },
+const TABS: { id: TabId; label: string; icon: React.ReactNode; description: string }[] = [
+  { id: 'general',  label: 'General',   icon: <Globe size={15} />,       description: 'Platform basics' },
+  { id: 'ai',       label: 'AI',        icon: <Bot size={15} />,         description: 'Anomaly detection' },
+  { id: 'security', label: 'Security',  icon: <Lock size={15} />,        description: 'Auth & access control' },
+  { id: 'mail',     label: 'Email',     icon: <Mail size={15} />,        description: 'SMTP configuration' },
+  { id: 'team',     label: 'Team',      icon: <Users size={15} />,       description: 'Members & invites' },
+  { id: 'about',    label: 'System',    icon: <Server size={15} />,      description: 'Health & status' },
 ];
+
+function SettingsSidebar({ tab, setTab }: { tab: TabId; setTab: (t: TabId) => void }) {
+  return (
+    <div style={{ width: 200, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      {TABS.map(t => {
+        const active = tab === t.id;
+        return (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+              borderRadius: 'var(--r-md)', border: `1px solid ${active ? 'var(--border-glow)' : 'transparent'}`,
+              background: active ? 'linear-gradient(135deg,var(--accent-blue-dim),var(--accent-purple-dim))' : 'transparent',
+              color: active ? 'var(--accent-blue-2)' : 'var(--text-secondary)',
+              cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)',
+              transition: 'all 150ms', width: '100%',
+            }}
+            onMouseEnter={e => { if (!active) { e.currentTarget.style.background = 'var(--bg-glass-light)'; e.currentTarget.style.color = 'var(--text-primary)'; } }}
+            onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)'; } }}
+          >
+            <span style={{ flexShrink: 0, display: 'flex', color: active ? 'var(--accent-blue-2)' : 'inherit' }}>{t.icon}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: active ? 700 : 500 }}>{t.label}</div>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{t.description}</div>
+            </div>
+            {active && <ChevronRight size={12} style={{ flexShrink: 0, opacity: 0.5 }} />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Section wrapper ───────────────────────────────────────────────────────
+
+function Section({ title, description, children, accent = 'var(--accent-blue)' }: {
+  title: string; description?: string; children: React.ReactNode; accent?: string;
+}) {
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
+      <div style={{ height: 2, background: accent === 'var(--accent-blue)' ? 'linear-gradient(90deg,var(--accent-blue),var(--accent-purple))' : accent }} />
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-muted)' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
+        {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.5 }}>{description}</div>}
+      </div>
+      <div style={{ padding: '18px 20px' }}>{children}</div>
+    </div>
+  );
+}
+
+// ── AI Anomalies ──────────────────────────────────────────────────────────
 
 export function AIAnomalies() {
   const { success, error: showError } = useToast();
@@ -179,6 +230,8 @@ export function AIAnomalies() {
   );
 }
 
+// ── Team ──────────────────────────────────────────────────────────────────
+
 export function Team() {
   const { user } = useAuth();
   const { success, error: showError } = useToast();
@@ -204,13 +257,8 @@ export function Team() {
   const handleGenerate = async () => {
     setInviteLoading(true);
     try {
-      const { data } = await api.post('/api/invites', {
-        role: inviteRole,
-        expiryHours: parseInt(inviteExpiry),
-        email: inviteEmail || undefined,
-      });
-      setGenerated(data);
-      fetch();
+      const { data } = await api.post('/api/invites', { role: inviteRole, expiryHours: parseInt(inviteExpiry), email: inviteEmail || undefined });
+      setGenerated(data); fetch();
     } catch (err) { showError(parseApiError(err)); }
     finally { setInviteLoading(false); }
   };
@@ -225,36 +273,28 @@ export function Team() {
 
       {inviteOpen && (
         <Card style={{ borderColor: 'var(--accent-blue)', animation: 'float-up 200ms ease-out' }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 16, display:'flex', alignItems:'center', gap:8 }}>
+          <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
             {generated ? <><CheckCircle size={16} color="var(--accent-green)" />Invite Ready</> : '+ Invite Team Member'}
           </div>
           {!generated ? (
-            <div style={{ display: 'flex', flexDirection:'column', gap:14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <Select label="Role" value={inviteRole} onChange={e => setInviteRole(e.target.value)}
-                  options={[
-                    { value: 'viewer',    label: '👁 Viewer — read only' },
-                    { value: 'developer', label: '⚙️ Developer — manage deployments' },
-                    { value: 'admin',     label: '🔑 Admin — full access' },
-                  ]} />
+                  options={[{ value: 'viewer', label: '👁 Viewer — read only' }, { value: 'developer', label: '⚙️ Developer — manage deployments' }, { value: 'admin', label: '🔑 Admin — full access' }]} />
                 <Select label="Expires in" value={inviteExpiry} onChange={e => setInviteExpiry(e.target.value)}
                   options={[{ value: '24', label: '24 hours' }, { value: '48', label: '48 hours' }, { value: '168', label: '7 days' }]} />
               </div>
-              <Input label="Send to Email (optional)"
-                type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-                placeholder="colleague@company.com"
-                hint="Leave empty to just generate a code you can share manually" />
-              <div style={{ padding:'10px 14px', background:'var(--bg-elevated)', borderRadius:'var(--r-md)', border:'1px solid var(--border)', fontSize:'12px', color:'var(--text-muted)', lineHeight:1.6 }}>
-                <strong style={{color:'var(--text-secondary)'}}>Role permissions:</strong>
-                <div style={{marginTop:6, display:'flex', flexDirection:'column', gap:4}}>
+              <Input label="Send to Email (optional)" type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="colleague@company.com" hint="Leave empty to generate a code to share manually" />
+              <div style={{ padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                <strong style={{ color: 'var(--text-secondary)' }}>Role permissions:</strong>
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <div>👁 <strong>Viewer</strong> — read-only access to all pages, no actions</div>
-                  <div>⚙️ <strong>Developer</strong> — can create/manage deployments, containers, GitHub</div>
+                  <div>⚙️ <strong>Developer</strong> — can create/manage deployments, GitHub</div>
                   <div>🔑 <strong>Admin</strong> — full access including team management and settings</div>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Button variant="primary" loading={inviteLoading} onClick={handleGenerate}
-                  icon={inviteEmail ? <span>📧</span> : undefined}>
+                <Button variant="primary" loading={inviteLoading} onClick={handleGenerate} icon={inviteEmail ? <span>📧</span> : undefined}>
                   {inviteEmail ? 'Generate & Send Email' : 'Generate Code'}
                 </Button>
                 <Button variant="ghost" onClick={() => { setInviteOpen(false); setInviteEmail(''); }}>Cancel</Button>
@@ -263,31 +303,29 @@ export function Team() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {generated.emailSent && (
-                <div style={{padding:'10px 14px', background:'var(--accent-green-dim)', border:'1px solid rgba(16,185,129,.3)', borderRadius:'var(--r-md)', fontSize:'12px', color:'var(--accent-green)', display:'flex', alignItems:'center', gap:8}}>
-                  <CheckCircle size={14}/> Email sent to <strong>{inviteEmail}</strong>
+                <div style={{ padding: '10px 14px', background: 'var(--accent-green-dim)', border: '1px solid rgba(16,185,129,.3)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--accent-green)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CheckCircle size={14} /> Email sent to <strong>{inviteEmail}</strong>
                 </div>
               )}
               {generated.emailError && (
-                <div style={{padding:'10px 14px', background:'var(--accent-orange-dim)', border:'1px solid rgba(245,158,11,.3)', borderRadius:'var(--r-md)', fontSize:'12px', color:'var(--accent-orange)'}}>
+                <div style={{ padding: '10px 14px', background: 'var(--accent-orange-dim)', border: '1px solid rgba(245,158,11,.3)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--accent-orange)' }}>
                   ⚠ Email failed: {generated.emailError} — share the code manually below.
                 </div>
               )}
               <div>
-                <div style={{fontSize:'12px', color:'var(--text-secondary)', marginBottom:6, fontWeight:600}}>INVITE CODE</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 6, fontWeight: 600 }}>INVITE CODE</div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <code style={{ flex: 1, padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', fontSize: '18px', fontFamily: 'var(--font-mono)', letterSpacing: '.12em', color: 'var(--text-primary)', border: '1px solid var(--border-glow)', textAlign:'center' }}>
+                  <code style={{ flex: 1, padding: '12px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', fontSize: '18px', fontFamily: 'var(--font-mono)', letterSpacing: '.12em', color: 'var(--text-primary)', border: '1px solid var(--border-glow)', textAlign: 'center' }}>
                     {generated.code}
                   </code>
-                  <Button icon={<CheckCircle size={13} />} onClick={() => { navigator.clipboard.writeText(generated.code); success('Copied!'); }}>
-                    Copy
-                  </Button>
+                  <Button icon={<CheckCircle size={13} />} onClick={() => { navigator.clipboard.writeText(generated.code); success('Copied!'); }}>Copy</Button>
                 </div>
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: 16, flexWrap:'wrap' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                 <span>Role: <strong style={{ color: ROLE_COLORS[inviteRole], textTransform: 'capitalize' }}>{inviteRole}</strong></span>
                 <span>Expires: {timeAgo(generated.expires_at)}</span>
               </div>
-              <div style={{display:'flex', gap:8}}>
+              <div style={{ display: 'flex', gap: 8 }}>
                 <Button variant="ghost" size="sm" onClick={() => { setGenerated(null); setInviteEmail(''); }}>Generate Another</Button>
                 <Button variant="ghost" size="sm" onClick={() => { setInviteOpen(false); setGenerated(null); setInviteEmail(''); }}>Done</Button>
               </div>
@@ -296,15 +334,11 @@ export function Team() {
         </Card>
       )}
 
-      {}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 700 }}>Members</div>
         {loading ? <div style={{ padding: 16 }}><div className="skeleton" style={{ height: 48 }} /></div> : (
           members.map((m, i) => (
-            <div key={m.id} style={{
-              display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px',
-              borderBottom: i < members.length - 1 ? '1px solid var(--border-muted)' : 'none',
-            }}>
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', borderBottom: i < members.length - 1 ? '1px solid var(--border-muted)' : 'none' }}>
               <div style={{ width: 36, height: 36, borderRadius: '50%', background: gradients[m.username.charCodeAt(0) % 5], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                 {m.username.slice(0, 2).toUpperCase()}
               </div>
@@ -316,10 +350,7 @@ export function Team() {
                 <Badge variant="role" value={m.role}>{m.role}</Badge>
               ) : (
                 <select value={m.role}
-                  onChange={async e => {
-                    await api.put(`/api/auth/users/${m.id}/role`, { role: e.target.value });
-                    success('Role updated'); fetch();
-                  }}
+                  onChange={async e => { await api.put(`/api/auth/users/${m.id}/role`, { role: e.target.value }); success('Role updated'); fetch(); }}
                   style={{ background: ROLE_COLORS[m.role] + '20', color: ROLE_COLORS[m.role], border: `1px solid ${ROLE_COLORS[m.role]}40`, borderRadius: 'var(--r-pill)', padding: '3px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer', textTransform: 'capitalize', outline: 'none' }}>
                   {['admin', 'developer', 'viewer'].map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
@@ -338,7 +369,6 @@ export function Team() {
         )}
       </Card>
 
-      {}
       {invites.filter((i: any) => !i.used_by).length > 0 && (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 700 }}>Pending Invites</div>
@@ -355,6 +385,8 @@ export function Team() {
     </div>
   );
 }
+
+// ── Main Settings Page ────────────────────────────────────────────────────
 
 export function SettingsPage() {
   const { success, error: showError } = useToast();
@@ -389,159 +421,213 @@ export function SettingsPage() {
     </div>
   );
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <SectionHeader title="Settings" subtitle="Platform configuration and credentials"
-        action={tab !== 'about' && tab !== 'team' ? (
-          <Button variant="primary" icon={<Save size={13} />} loading={saving} onClick={() => handleSave()}>
-            Save All
-          </Button>
-        ) : undefined}
-      />
+  const showSave = tab !== 'about' && tab !== 'team';
+  const currentTab = TABS.find(t => t.id === tab)!;
 
-      {}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px', borderRadius: 'var(--r-pill)',
-              background: tab === t.id ? 'var(--gradient-brand)' : 'var(--bg-card)',
-              color: tab === t.id ? '#fff' : 'var(--text-secondary)',
-              border: `1px solid ${tab === t.id ? 'transparent' : 'var(--border)'}`,
-              fontSize: '12px', fontWeight: tab === t.id ? 700 : 500,
-              cursor: 'pointer', transition: 'all 150ms', fontFamily: 'var(--font-sans)',
-              boxShadow: tab === t.id ? 'var(--glow-blue)' : 'none',
-            }}>
-            {t.icon}{t.label}
-          </button>
-        ))}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {/* Page header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 'var(--r-lg)', background: 'linear-gradient(135deg,var(--accent-blue),var(--accent-purple))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--glow-blue)' }}>
+            <SettingsIcon size={18} color="#fff" />
+          </div>
+          <div>
+            <h1 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-.01em' }}>Settings</h1>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>Platform configuration and credentials</p>
+          </div>
+        </div>
+        {showSave && (
+          <Button variant="primary" icon={<Save size={13} />} loading={saving} onClick={() => handleSave()}>
+            Save changes
+          </Button>
+        )}
       </div>
 
-      <div style={{ maxWidth: 720 }}>
+      {/* Two-column layout */}
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        {/* Sidebar */}
+        <SettingsSidebar tab={tab} setTab={setTab} />
 
-        {}
-        {tab === 'general' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <SettingSection icon={<Globe size={18} />} title="Platform" description="Basic platform configuration">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <Input label="Platform Name" value={local.platform_name || ''} onChange={e => update('platform_name', e.target.value)} hint="Shown in the browser tab and emails" />
-                <Input label="CORS Origins" value={local.cors_origins || ''} onChange={e => update('cors_origins', e.target.value)} hint="Comma-separated list of allowed origins for API access" />
-              </div>
-            </SettingSection>
+        {/* Content */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Breadcrumb */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 20, fontSize: 11, color: 'var(--text-muted)' }}>
+            <span>Settings</span>
+            <ChevronRight size={11} />
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{currentTab.label}</span>
           </div>
-        )}
 
-        {}
-        {tab === 'ai' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ padding: '12px 16px', background: 'var(--accent-blue-dim)', border: '1px solid var(--border-glow)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-              <Bot size={13} style={{ marginRight: 6, verticalAlign: '-2px' }} />
-              AI features are powered by a Groq API key configured by your administrator on the server. It isn't visible or editable here.
+          {/* ── General ──────────────────────────────────────────────── */}
+          {tab === 'general' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Section title="Platform" description="Basic configuration shown in UI and emails">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <Input label="Platform Name" value={local.platform_name || ''} onChange={e => update('platform_name', e.target.value)} hint="Shown in the browser tab and emails" />
+                  <Input label="CORS Origins" value={local.cors_origins || ''} onChange={e => update('cors_origins', e.target.value)} hint="Comma-separated list of allowed origins for API access" />
+                </div>
+              </Section>
             </div>
+          )}
 
-            <SettingSection icon={<AlertTriangle size={18} />} title="Anomaly Detection" description="Automatically detect infrastructure issues and create alerts">
-              <ToggleRow label="Enable anomaly detection"
-                description="Monitor CPU and memory thresholds across all running deployments"
-                checked={local.anomaly_detection === 'true'}
-                onChange={v => update('anomaly_detection', v ? 'true' : 'false')} />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-                <Input label="CPU Alert Threshold (%)" type="number" value={local.cpu_threshold || '90'} onChange={e => update('cpu_threshold', e.target.value)} hint="Alert when CPU exceeds this %" />
-                <Input label="Memory Alert Threshold (MB)" type="number" value={local.memory_threshold_mb || '900'} onChange={e => update('memory_threshold_mb', e.target.value)} hint="Alert when memory exceeds this MB" />
-              </div>
-            </SettingSection>
-          </div>
-        )}
-
-        {}
-        {tab === 'security' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <SettingSection icon={<Key size={18} />} title="JWT Configuration" description="Authentication token signing secrets">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <MaskedInput settingKey="jwt_secret" label="JWT Secret" placeholder="long-random-string..." local={local} update={update}
-                  hint="Must be at least 32 characters. Changing this logs all users out." />
-                <Input label="Session Expiry" value={local.jwt_expiry || '7d'} onChange={e => update('jwt_expiry', e.target.value)}
-                  hint="Format: 7d, 24h, 30m. Default: 7d" />
-              </div>
-            </SettingSection>
-
-            <SettingSection icon={<Shield size={18} />} title="Access Control" description="Rate limiting and security headers">
-              <ToggleRow label="Helmet security headers" description="Add security headers to all API responses (recommended)"
-                checked={local.helmet_enabled !== 'false'} onChange={v => update('helmet_enabled', v ? 'true' : 'false')} />
-              <ToggleRow label="Request logging" description="Log all incoming HTTP requests to console"
-                checked={local.request_logging !== 'false'} onChange={v => update('request_logging', v ? 'true' : 'false')} />
-            </SettingSection>
-          </div>
-        )}
-
-        {}
-        {tab === 'team' && <Team />}
-
-        {}
-        {tab === 'mail' && (
-          <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-            <SettingSection icon={<Bell size={18}/>} title="SMTP Email" description="Configure your mail server to send invite emails to teammates.">
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
-                <Input label="SMTP Host" value={local.smtp_host||''} onChange={e=>update('smtp_host',e.target.value)} placeholder="smtp.gmail.com" />
-                <Input label="SMTP Port" value={local.smtp_port||'587'} onChange={e=>update('smtp_port',e.target.value)} placeholder="587" />
-                <Input label="Username / Email" value={local.smtp_user||''} onChange={e=>update('smtp_user',e.target.value)} placeholder="you@gmail.com" />
-                <MaskedInput settingKey="smtp_pass" label="Password / App Password" placeholder="your-app-password" local={local} update={update} />
-                <Input label="From Address" value={local.smtp_from||''} onChange={e=>update('smtp_from',e.target.value)} placeholder="Podium <noreply@yourapp.com>" />
-                <Input label="App URL" value={local.app_url||''} onChange={e=>update('app_url',e.target.value)} placeholder="http://localhost:4000" hint="Used in invite email links" />
-              </div>
-              <div style={{marginTop:14, padding:'10px 14px', background:'var(--accent-blue-dim)', borderRadius:'var(--r-md)', border:'1px solid var(--border-glow)', fontSize:'12px', color:'var(--text-secondary)', lineHeight:1.6}}>
-                <strong style={{color:'var(--accent-blue-2)'}}>Gmail tip:</strong> Use <code style={{fontFamily:'var(--font-mono)'}}>smtp.gmail.com</code> port <code style={{fontFamily:'var(--font-mono)'}}>587</code>, and generate an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{color:'var(--accent-blue-2)'}}>App Password</a> instead of your Google account password.
-              </div>
-              <Button variant="secondary" style={{marginTop:12}} onClick={()=>handleSave({smtp_host:local.smtp_host,smtp_port:local.smtp_port,smtp_user:local.smtp_user,smtp_pass:local.smtp_pass,smtp_from:local.smtp_from,app_url:local.app_url})}>
-                Save Email Settings
-              </Button>
-            </SettingSection>
-          </div>
-        )}
-
-        {}
-        {tab === 'about' && health && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <SettingSection icon={<Zap size={18} />} title="Podium v4.0.0" description="AIOps Desktop Platform for DevOps teams">
-              {[
-                { icon: <Server size={14} />, label: 'Node.js', value: health.nodeVersion },
-                { icon: <Database size={14} />, label: 'Database', value: `${(health.dbSize / 1024).toFixed(1)} KB (SQLite)` },
-                { icon: <Clock size={14} />, label: 'Uptime', value: health.uptimeHuman },
-                { icon: <Cpu size={14} />, label: 'Memory', value: `${health.memory?.free} MB free / ${health.memory?.total} MB total` },
-                { icon: <Users size={14} />, label: 'Users', value: health.userCount },
-                { icon: <Globe size={14} />, label: 'Platform', value: health.platform },
-              ].map(row => (
-                <div key={row.label} className="settings-item">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '13px' }}>
-                    {row.icon}{row.label}
+          {/* ── AI ───────────────────────────────────────────────────── */}
+          {tab === 'ai' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px', background: 'rgba(99,102,241,0.08)', border: '1px solid var(--border-glow)', borderRadius: 'var(--r-lg)' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 'var(--r-md)', background: 'rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Bot size={15} color="var(--accent-blue-2)" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>Groq AI is active</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                    AI features are powered by a Groq API key configured as a server environment variable (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>GROQ_API_KEY</code>). It is not visible or editable here for security reasons.
                   </div>
-                  <span style={{ fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{row.value}</span>
                 </div>
-              ))}
-            </SettingSection>
+              </div>
 
-            <SettingSection icon={<CheckCircle size={18} />} title="System Status" description="All services operational">
-              {[
-                { name: 'API Server', status: 'operational' },
-                { name: 'Database', status: 'operational' },
-                { name: 'Metrics Collection', status: 'operational' },
-                { name: 'Anomaly Detection', status: local.anomaly_detection === 'true' ? 'operational' : 'disabled' },
-              ].map(s => (
-                <div key={s.name} className="settings-item">
-                  <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{s.name}</span>
-                  <span style={{
-                    fontSize: '11px', fontWeight: 700, padding: '2px 10px',
-                    borderRadius: 'var(--r-pill)', textTransform: 'capitalize',
-                    background: s.status === 'operational' ? 'var(--accent-green-dim)' : 'var(--bg-elevated)',
-                    color: s.status === 'operational' ? 'var(--accent-green)' : 'var(--text-muted)',
-                  }}>
-                    {s.status === 'operational' ? '● ' : '○ '}{s.status}
-                  </span>
+              <Section title="Anomaly Detection" description="Automatically detect infrastructure issues and create alerts" accent="linear-gradient(90deg,#f59e0b,#ef4444)">
+                <div>
+                  <ToggleRow
+                    label="Enable anomaly detection"
+                    description="Monitor CPU and memory thresholds across all running deployments"
+                    checked={local.anomaly_detection === 'true'}
+                    onChange={v => update('anomaly_detection', v ? 'true' : 'false')}
+                    accent="#f59e0b"
+                  />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 16 }}>
+                    <Input label="CPU Alert Threshold (%)" type="number" value={local.cpu_threshold || '90'} onChange={e => update('cpu_threshold', e.target.value)} hint="Alert when CPU exceeds this %" />
+                    <Input label="Memory Alert Threshold (MB)" type="number" value={local.memory_threshold_mb || '900'} onChange={e => update('memory_threshold_mb', e.target.value)} hint="Alert when memory exceeds this MB" />
+                  </div>
                 </div>
-              ))}
-            </SettingSection>
-          </div>
-        )}
+              </Section>
+            </div>
+          )}
+
+          {/* ── Security ─────────────────────────────────────────────── */}
+          {tab === 'security' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Section title="JWT Configuration" description="Authentication token signing and session duration" accent="linear-gradient(90deg,#ef4444,#a855f7)">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <MaskedInput settingKey="jwt_secret" label="JWT Secret" placeholder="long-random-string…" local={local} update={update}
+                    hint="Must be at least 32 characters. Changing this will log all users out." />
+                  <Input label="Session Expiry" value={local.jwt_expiry || '7d'} onChange={e => update('jwt_expiry', e.target.value)}
+                    hint="Format: 7d, 24h, 30m. Default: 7d" />
+                </div>
+              </Section>
+
+              <Section title="Access Control" description="Security headers and request logging">
+                <div>
+                  <ToggleRow
+                    label="Helmet security headers"
+                    description="Add security headers to all API responses (strongly recommended for production)"
+                    checked={local.helmet_enabled !== 'false'}
+                    onChange={v => update('helmet_enabled', v ? 'true' : 'false')}
+                    accent="#10b981"
+                  />
+                  <ToggleRow
+                    label="Request logging"
+                    description="Log all incoming HTTP requests to console for debugging"
+                    checked={local.request_logging !== 'false'}
+                    onChange={v => update('request_logging', v ? 'true' : 'false')}
+                    accent="#6366f1"
+                  />
+                </div>
+              </Section>
+            </div>
+          )}
+
+          {/* ── Email ────────────────────────────────────────────────── */}
+          {tab === 'mail' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <Section title="SMTP Email" description="Configure your mail server to send invite emails to teammates" accent="linear-gradient(90deg,#22d3ee,#6366f1)">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <Input label="SMTP Host" value={local.smtp_host || ''} onChange={e => update('smtp_host', e.target.value)} placeholder="smtp.gmail.com" />
+                  <Input label="SMTP Port" value={local.smtp_port || '587'} onChange={e => update('smtp_port', e.target.value)} placeholder="587" />
+                  <Input label="Username / Email" value={local.smtp_user || ''} onChange={e => update('smtp_user', e.target.value)} placeholder="you@gmail.com" />
+                  <MaskedInput settingKey="smtp_pass" label="Password / App Password" placeholder="your-app-password" local={local} update={update} />
+                  <Input label="From Address" value={local.smtp_from || ''} onChange={e => update('smtp_from', e.target.value)} placeholder="Podium <noreply@yourapp.com>" />
+                  <Input label="App URL" value={local.app_url || ''} onChange={e => update('app_url', e.target.value)} placeholder="https://yourapp.com" hint="Used in invite email links" />
+                </div>
+                <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(34,211,238,0.06)', borderRadius: 'var(--r-md)', border: '1px solid rgba(34,211,238,0.2)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  <strong style={{ color: 'var(--accent-cyan)' }}>Gmail tip:</strong> Use <code style={{ fontFamily: 'var(--font-mono)' }}>smtp.gmail.com</code> port <code style={{ fontFamily: 'var(--font-mono)' }}>587</code>, and generate an{' '}
+                  <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-cyan)' }}>App Password</a> instead of your Google account password.
+                </div>
+                <Button variant="secondary" style={{ marginTop: 14 }}
+                  onClick={() => handleSave({ smtp_host: local.smtp_host, smtp_port: local.smtp_port, smtp_user: local.smtp_user, smtp_pass: local.smtp_pass, smtp_from: local.smtp_from, app_url: local.app_url })}>
+                  Save Email Settings
+                </Button>
+              </Section>
+            </div>
+          )}
+
+          {/* ── Team ─────────────────────────────────────────────────── */}
+          {tab === 'team' && <Team />}
+
+          {/* ── System ───────────────────────────────────────────────── */}
+          {tab === 'about' && health && (() => {
+              const runtimeRows: { icon: React.ReactNode; label: string; value: any }[] = [
+                { icon: <Server size={13} />, label: 'Node.js', value: health.nodeVersion },
+                { icon: <Database size={13} />, label: 'Database', value: `${(health.dbSize / 1024).toFixed(1)} KB (SQLite)` },
+                { icon: <Clock size={13} />, label: 'Uptime', value: health.uptimeHuman },
+                { icon: <Cpu size={13} />, label: 'Memory', value: `${health.memory?.free} MB free / ${health.memory?.total} MB total` },
+                { icon: <Users size={13} />, label: 'Users', value: health.userCount },
+                { icon: <Globe size={13} />, label: 'Platform', value: health.platform },
+              ];
+              const serviceRows: { name: string; status: string; icon: React.ReactNode }[] = [
+                { name: 'API Server', status: 'operational', icon: <Activity size={13} /> },
+                { name: 'Database', status: 'operational', icon: <Database size={13} /> },
+                { name: 'Metrics Collection', status: 'operational', icon: <BarChart2 size={13} /> },
+                { name: 'Anomaly Detection', status: local.anomaly_detection === 'true' ? 'operational' : 'disabled', icon: <AlertTriangle size={13} /> },
+              ];
+              return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Version badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden', position: 'relative' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg,#6366f1,#a855f7,#22d3ee)' }} />
+                <div style={{ width: 44, height: 44, borderRadius: 'var(--r-lg)', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--glow-blue)' }}>
+                  <Zap size={20} color="#fff" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Podium v4.0.0</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>AIOps Platform for DevOps teams</div>
+                </div>
+                <div style={{ marginLeft: 'auto', padding: '4px 12px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 700, color: '#10b981', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                  All systems operational
+                </div>
+              </div>
+
+              <Section title="Runtime Information" description="Server environment details">
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {runtimeRows.map((row, i, arr) => (
+                    <div key={row.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border-muted)' : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '13px' }}>
+                        {row.icon}{row.label}
+                      </div>
+                      <span style={{ fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+
+              <Section title="Service Status" description="All subsystems and their current state">
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {serviceRows.map((s, i, arr) => (
+                    <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border-muted)' : 'none' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+                        {s.icon}{s.name}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 'var(--r-pill)', background: s.status === 'operational' ? 'rgba(16,185,129,0.1)' : 'var(--bg-elevated)', border: `1px solid ${s.status === 'operational' ? 'rgba(16,185,129,0.25)' : 'var(--border)'}` }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.status === 'operational' ? '#10b981' : 'var(--text-muted)', display: 'inline-block', animation: s.status === 'operational' ? 'pulse-glow 2s infinite' : 'none' }} />
+                        <span style={{ fontSize: 11, fontWeight: 700, color: s.status === 'operational' ? '#10b981' : 'var(--text-muted)', textTransform: 'capitalize' }}>{s.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            </div>
+          )})()}
+        </div>
       </div>
     </div>
   );
