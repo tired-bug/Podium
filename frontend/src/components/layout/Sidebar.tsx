@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Rocket,
   Github, ScrollText, BarChart2, Bot, AlertTriangle, Users, Settings,
-  ChevronLeft, ChevronRight, Zap, User, Sparkles, Plug, Globe2,
+  ChevronLeft, ChevronRight, Zap, User, Sparkles, Cloud, Plug,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
 
@@ -16,8 +16,9 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
   { section: 'Platform',
     items: [
       { to: '/deployments', icon: <Rocket size={15} />,   label: 'Deployments' },
+      { to: '/deploy',      icon: <Sparkles size={15} />, label: 'AI Deploy' },
+      { to: '/cloud',       icon: <Cloud size={15} />,    label: 'Cloud Deploy' },
       { to: '/providers',   icon: <Plug size={15} />,     label: 'Providers' },
-      { to: '/cloud',       icon: <Globe2 size={15} />,   label: 'Cloud Deploys' },
     ]},
   { section: 'Developer',
     items: [
@@ -28,9 +29,8 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
   { section: 'Intelligence',
     items: [
       ...(isDeveloper ? [
-        { to: '/ai',     icon: <Bot size={15} />,       label: 'AI Assistant' },
-        { to: '/deploy', icon: <Sparkles size={15} />,  label: 'AI Deploy' },
-        { to: '/ai/hub', icon: <Zap size={15} />,       label: 'AI Hub' },
+        { to: '/ai',     icon: <Bot size={15} />,  label: 'AI Assistant' },
+        { to: '/ai/hub', icon: <Zap size={15} />,  label: 'AI Hub' },
       ] : []),
       { to: '/ai/anomalies', icon: <AlertTriangle size={15} />, label: 'Anomalies' },
     ]},
