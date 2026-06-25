@@ -1,9 +1,15 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { getDb } from '../db/index';
 import { signToken, hashPassword, comparePassword, requireAuth, requireRole, AuthRequest } from '../auth';
+import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 
 const router = Router();
+
+function generateToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
@@ -21,11 +27,15 @@ router.post('/login', async (req, res) => {
   const valid = await comparePassword(password, user.password_hash);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
+  // Require email verification (skip for admin accounts created before verification was added)
+  if (user.email_verified === 0 && user.email_verification_token !== null) {
+    return res.status(403).json({ error: 'Email not verified. Please check your inbox.' });
+  }
+
   getDb()
     .prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?")
     .run(user.id);
 
-  // Role is always sourced from the database — never from the JWT payload alone
   const token = signToken({ sub: user.id, username: user.username, role: user.role });
   return res.json({
     token,
@@ -34,13 +44,6 @@ router.post('/login', async (req, res) => {
 });
 
 // ── Signup ─────────────────────────────────────────────────────────────────────
-// Role assignment rules:
-//   - 0 existing users  → admin  (first account, always)
-//   - 1+ existing users → developer  (subsequent accounts)
-//   - viewer is NEVER assigned automatically; only manually by an admin
-// Invite code is OPTIONAL:
-//   - omitted / blank → account created, no team attachment
-//   - provided        → validated, user attached to team referenced by invite
 router.post('/signup', async (req, res) => {
   const { username, email, password, inviteCode } = req.body;
 
@@ -53,11 +56,9 @@ router.post('/signup', async (req, res) => {
 
   const db = getDb();
 
-  // ── Role: determined by existing user count, not by invite ──────────────────
   const { userCount } = db.prepare('SELECT COUNT(*) AS userCount FROM users').get() as { userCount: number };
   const role: string = userCount === 0 ? 'admin' : 'developer';
 
-  // ── Invite code: optional — only process if non-empty ───────────────────────
   let inviteId: string | null = null;
   if (inviteCode && String(inviteCode).trim() !== '') {
     const trimmedCode = String(inviteCode).trim();
@@ -70,37 +71,48 @@ router.post('/signup', async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired invite code' });
     }
     inviteId = invite.id;
-    // Mark invite as pending until real user id is available
     db.prepare("UPDATE invites SET used_by = 'pending', used_at = datetime('now') WHERE id = ?")
       .run(inviteId);
   }
 
-  // ── Duplicate check ──────────────────────────────────────────────────────────
   const existing = db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(username, email);
   if (existing) {
-    // Roll back pending invite mark if we bail
     if (inviteId) {
       db.prepare("UPDATE invites SET used_by = NULL, used_at = NULL WHERE id = ?").run(inviteId);
     }
     return res.status(409).json({ error: 'Username or email already taken' });
   }
 
-  // ── Create user ──────────────────────────────────────────────────────────────
   const id = uuidv4();
   const hash = await hashPassword(password);
-  db.prepare('INSERT INTO users (id, username, email, password_hash, role) VALUES (?, ?, ?, ?, ?)')
-    .run(id, username, email, hash, role);
 
-  // ── Finalize invite (point to real user id) ──────────────────────────────────
+  // First user (admin) is auto-verified; subsequent users need email verification
+  const verificationToken = role === 'admin' ? null : generateToken();
+  const verificationExpires = role === 'admin' ? null : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const emailVerified = role === 'admin' ? 1 : 0;
+
+  db.prepare(`
+    INSERT INTO users (id, username, email, password_hash, role, email_verified, email_verification_token, email_verification_expires)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, username, email, hash, role, emailVerified, verificationToken, verificationExpires);
+
   if (inviteId) {
     db.prepare("UPDATE invites SET used_by = ? WHERE id = ?").run(id, inviteId);
   }
 
-  // ── Mark app as initialized after first admin is created ─────────────────────
   if (role === 'admin') {
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
   }
 
+  // Send verification email (non-blocking)
+  if (verificationToken) {
+    sendVerificationEmail(email, verificationToken).catch(err =>
+      console.error('[auth] Failed to send verification email:', err)
+    );
+    return res.status(201).json({ message: 'Account created. Please check your email to verify your account.' });
+  }
+
+  // Admin: auto-login
   const token = signToken({ sub: id, username, role });
   return res.status(201).json({
     token,
@@ -108,8 +120,106 @@ router.post('/signup', async (req, res) => {
   });
 });
 
+// ── Verify email ──────────────────────────────────────────────────────────────
+router.post('/verify-email', (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: 'Token required' });
+
+  const user = getDb().prepare(`
+    SELECT id FROM users
+    WHERE email_verification_token = ?
+      AND email_verified = 0
+      AND email_verification_expires > datetime('now')
+  `).get(token) as any;
+
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired verification token' });
+  }
+
+  getDb().prepare(`
+    UPDATE users SET email_verified = 1, email_verification_token = NULL, email_verification_expires = NULL
+    WHERE id = ?
+  `).run(user.id);
+
+  return res.json({ ok: true, message: 'Email verified successfully' });
+});
+
+// ── Resend verification email ─────────────────────────────────────────────────
+router.post('/resend-verification', async (req, res) => {
+  const { email } = req.body;
+  // Always return 200 to avoid revealing whether email exists
+  if (!email) return res.json({ ok: true });
+
+  const user = getDb().prepare('SELECT * FROM users WHERE email = ? AND email_verified = 0').get(email) as any;
+
+  if (user) {
+    const token = generateToken();
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    getDb().prepare(`
+      UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?
+    `).run(token, expires, user.id);
+
+    sendVerificationEmail(email, token).catch(err =>
+      console.error('[auth] Failed to resend verification email:', err)
+    );
+  }
+
+  return res.json({ ok: true });
+});
+
+// ── Forgot password ───────────────────────────────────────────────────────────
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  // Always return 200 — do not reveal whether email exists
+  if (!email) return res.json({ ok: true });
+
+  const user = getDb().prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+
+  if (user) {
+    const token = generateToken();
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+
+    getDb().prepare(`
+      UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?
+    `).run(token, expires, user.id);
+
+    sendPasswordResetEmail(email, token).catch(err =>
+      console.error('[auth] Failed to send password reset email:', err)
+    );
+  }
+
+  return res.json({ ok: true });
+});
+
+// ── Reset password ────────────────────────────────────────────────────────────
+router.post('/reset-password', async (req, res) => {
+  const { token, password } = req.body;
+  if (!token || !password) {
+    return res.status(400).json({ error: 'Token and new password required' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  }
+
+  const user = getDb().prepare(`
+    SELECT id FROM users
+    WHERE password_reset_token = ?
+      AND password_reset_expires > datetime('now')
+  `).get(token) as any;
+
+  if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired reset token' });
+  }
+
+  const hash = await hashPassword(password);
+  getDb().prepare(`
+    UPDATE users SET password_hash = ?, password_reset_token = NULL, password_reset_expires = NULL WHERE id = ?
+  `).run(hash, user.id);
+
+  return res.json({ ok: true, message: 'Password reset successfully' });
+});
+
 // ── Current user ─────────────────────────────────────────────────────────────
-// Role is always re-fetched from DB — JWT role is informational only
 router.get('/me', requireAuth, (req: AuthRequest, res: Response) => {
   const user = getDb()
     .prepare('SELECT id, username, email, role, last_login, created_at FROM users WHERE id = ?')

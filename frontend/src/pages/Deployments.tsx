@@ -598,7 +598,7 @@ export default function Deployments() {
             <Button icon={<RefreshCw size={14} />} onClick={refetch} size="sm">Refresh</Button>
             {can.createDeployment && (
               <>
-                <Button variant="ghost" icon={<Sparkles size={14} />} onClick={() => navigate('/deploy')} size="sm">AI Deploy</Button>
+                <Button variant="ghost" icon={<Sparkles size={14} />} onClick={() => navigate('/cloud')} size="sm">AI Deploy</Button>
                 <Button variant="primary" icon={<Plus size={14} />} onClick={() => setNewOpen(true)}>New Deployment</Button>
               </>
             )}
@@ -623,7 +623,7 @@ export default function Deployments() {
           description={search ? 'Try a different search term.' : 'Deploy your first app — paste a Docker image or point to a Git repo.'}
           action={!search ? (
             <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant="ghost" icon={<Sparkles size={14} />} onClick={() => navigate('/deploy')}>AI Deploy</Button>
+              <Button variant="ghost" icon={<Sparkles size={14} />} onClick={() => navigate('/cloud')}>AI Deploy</Button>
               <Button variant="primary" icon={<Plus size={14} />} onClick={() => setNewOpen(true)}>New Deployment</Button>
             </div>
           ) : undefined}

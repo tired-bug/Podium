@@ -87,6 +87,9 @@ export default function LoginPage() {
     if (!authLoading && user) navigate('/dashboard', { replace: true });
   }, [user, authLoading]);
 
+  const [verifyEmailSent, setVerifyEmailSent] = useState(false);
+  const [signupDone, setSignupDone] = useState(false);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
@@ -99,7 +102,14 @@ export default function LoginPage() {
       login(data.token, data.user);
       success(`Welcome back, ${data.user.username}`);
       navigate('/dashboard', { replace: true });
-    } catch (err) { showError(parseApiError(err)); }
+    } catch (err: any) {
+      const msg = parseApiError(err);
+      if (err?.response?.status === 403 && msg.toLowerCase().includes('verif')) {
+        setVerifyEmailSent(true);
+      } else {
+        showError(msg);
+      }
+    }
     finally { setLoading(false); }
   };
 
@@ -113,10 +123,8 @@ export default function LoginPage() {
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setLoading(true);
     try {
-      const { data } = await api.post('/api/auth/signup', { username: suUser, email: suEmail, password: suPw, inviteCode });
-      login(data.token, data.user);
-      success('Account created');
-      navigate('/dashboard', { replace: true });
+      await api.post('/api/auth/signup', { username: suUser, email: suEmail, password: suPw, inviteCode });
+      setSignupDone(true);
     } catch (err) { showError(parseApiError(err)); }
     finally { setLoading(false); }
   };
@@ -237,17 +245,26 @@ export default function LoginPage() {
         </div>
 
         {/* Login form */}
-        {mode === 'login' && (
+        {mode === 'login' && !signupDone && (
           <form onSubmit={handleLogin} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ marginBottom: 8 }}>
               <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#f5f5f7', letterSpacing: '-0.02em' }}>Welcome back</h2>
               <p style={{ fontSize: '13px', color: 'rgba(245,245,247,0.35)', marginTop: 4 }}>Sign in to your workspace</p>
             </div>
+            {verifyEmailSent && (
+              <div style={{ padding: '12px 14px', background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', borderRadius: 10, fontSize: '13px', color: '#fbbf24', lineHeight: 1.5 }}>
+                Please verify your email before logging in.{' '}
+                <span style={{ color: '#818cf8', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => navigate('/verify-email')}>Resend verification</span>.
+              </div>
+            )}
             <AuthInput label="Username or email" placeholder="your-username" value={username}
               onChange={e => setUsername(e.target.value)} error={errors.username} autoComplete="username" />
             <AuthInput label="Password" type={showPw ? 'text' : 'password'} placeholder="••••••••"
               value={password} onChange={e => setPassword(e.target.value)}
               error={errors.password} iconRight={eyeBtn} autoComplete="current-password" />
+            <div style={{ textAlign: 'right', marginTop: -6 }}>
+              <span onClick={() => navigate('/forgot-password')} style={{ fontSize: '12px', color: '#818cf8', cursor: 'pointer' }}>Forgot password?</span>
+            </div>
             <button type="submit" disabled={loading} style={{
               width: '100%', padding: '11px', borderRadius: 10, marginTop: 4,
               background: loading ? 'rgba(99,102,241,0.4)' : '#6366f1',
@@ -265,7 +282,7 @@ export default function LoginPage() {
         )}
 
         {/* Signup form */}
-        {mode === 'signup' && (
+        {mode === 'signup' && !signupDone && (
           <form onSubmit={handleSignup} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ marginBottom: 8 }}>
               <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#f5f5f7', letterSpacing: '-0.02em' }}>Create account</h2>
@@ -290,6 +307,26 @@ export default function LoginPage() {
               {loading ? 'Creating account...' : <><span>Create account</span><ArrowRight size={14} /></>}
             </button>
           </form>
+        )}
+
+        {/* Signup done — check email */}
+        {signupDone && (
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(99,102,241,0.12)', border: '2px solid rgba(99,102,241,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+              <ArrowRight size={22} color="#818cf8" />
+            </div>
+            <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#f5f5f7', margin: '0 0 10px' }}>Check your inbox!</h2>
+            <p style={{ fontSize: '14px', color: 'rgba(245,245,247,0.5)', lineHeight: 1.7, marginBottom: 28 }}>
+              We sent a verification link to <strong style={{ color: '#f5f5f7' }}>{suEmail}</strong>.<br />
+              Click the link to activate your account, then sign in.
+            </p>
+            <button onClick={() => { setSignupDone(false); }} style={{ width: '100%', padding: '11px', borderRadius: 10, background: '#6366f1', color: '#fff', border: 'none', fontWeight: 600, fontSize: '14px', cursor: 'pointer', fontFamily: 'inherit' }}>
+              Back to Login
+            </button>
+            <p style={{ marginTop: 14, fontSize: '12px', color: 'rgba(255,255,255,0.25)' }}>
+              <span style={{ color: '#818cf8', cursor: 'pointer' }} onClick={() => navigate('/verify-email')}>Resend verification email</span>
+            </p>
+          </div>
         )}
       </div>
     </div>

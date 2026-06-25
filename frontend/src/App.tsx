@@ -9,6 +9,9 @@ import { Spinner } from './components/ui/Badge';
 
 const Landing      = lazy(() => import('./pages/Landing'));
 const Login        = lazy(() => import('./pages/Login'));
+const VerifyEmail  = lazy(() => import('./pages/VerifyEmail'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
 const Dashboard    = lazy(() => import('./pages/Dashboard'));
 const GitHub       = lazy(() => import('./pages/GitHub'));
 const Logs         = lazy(() => import('./pages/Logs'));
@@ -58,6 +61,14 @@ export default function App() {
                   <Route path="/" element={<Landing />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Navigate to="/login" replace />} />
+                  {/* Legacy deployment routes — redirect to /cloud */}
+                  <Route path="/deployments" element={<Navigate to="/cloud" replace />} />
+                  <Route path="/deployments/:id" element={<Navigate to="/cloud" replace />} />
+                  <Route path="/deploy" element={<Navigate to="/cloud" replace />} />
+                  {/* Auth flows */}
+                  <Route path="/verify-email" element={<VerifyEmail />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
                   {/* Protected app routes */}
                   {PROTECTED_ROUTES.map(({ path, el }) => (
                     <Route key={path} path={path} element={

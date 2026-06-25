@@ -118,7 +118,7 @@ export default function Hosting() {
           <div style={{ display: 'flex', gap: 8 }}>
             <Button icon={<RefreshCw size={14} />} onClick={load} size="sm">Refresh</Button>
             {can.createDeployment && (
-              <Button variant="primary" icon={<Plus size={14} />} onClick={() => navigate('/deploy')}>Deploy app</Button>
+              <Button variant="primary" icon={<Plus size={14} />} onClick={() => navigate('/cloud')}>Deploy app</Button>
             )}
           </div>
         }
@@ -147,7 +147,7 @@ export default function Hosting() {
         </div>
       ) : deps.length === 0 ? (
         <EmptyState icon="🖥️" title="No apps hosted yet" description="Deploy your first app to get started."
-          action={can.createDeployment ? <Button variant="primary" icon={<Plus size={14} />} onClick={() => navigate('/deploy')}>Deploy app</Button> : undefined} />
+          action={can.createDeployment ? <Button variant="primary" icon={<Plus size={14} />} onClick={() => navigate('/cloud')}>Deploy app</Button> : undefined} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {deps.map(d => <DepRow key={d.id} dep={d} onAction={load} />)}

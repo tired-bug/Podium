@@ -16,16 +16,16 @@ async function sendInviteEmail(
   const getSetting = (key: string) =>
     (db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as any)?.value || '';
 
-  const host     = getSetting('smtp_host');
-  const port     = parseInt(getSetting('smtp_port') || '587');
-  const user     = getSetting('smtp_user');
-  const pass     = getSetting('smtp_pass');
+  const host     = process.env.SMTP_HOST || '';
+  const port     = parseInt(process.env.SMTP_PORT || '587');
+  const user     = process.env.SMTP_USER || '';
+  const pass     = process.env.SMTP_PASS || '';
   const fromName = getSetting('platform_name') || 'Podium';
-  const fromAddr = getSetting('smtp_from') || user;
-  const appUrl   = getSetting('app_url') || 'http://localhost:3000';
+  const fromAddr = process.env.EMAIL_FROM || user;
+  const appUrl   = process.env.FRONTEND_URL || 'http://localhost:5173';
 
   if (!host || !user || !pass) {
-    throw new Error('SMTP not configured. Add SMTP settings in Settings → Notifications.');
+    throw new Error('SMTP not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS environment variables.');
   }
 
   const nodemailer = require('nodemailer');

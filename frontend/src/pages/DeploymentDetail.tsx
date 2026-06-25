@@ -26,7 +26,7 @@ export function DeploymentDetail() {
 
   useEffect(() => {
     if (!id) return;
-    api.get(`/api/deployments/${id}`).then(r => setDep(r.data)).catch(() => navigate('/deployments')).finally(() => setLoading(false));
+    api.get(`/api/deployments/${id}`).then(r => setDep(r.data)).catch(() => navigate('/cloud')).finally(() => setLoading(false));
   }, [id]);
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export function DeploymentDetail() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Button variant="ghost" size="sm" icon={<ArrowLeft size={14} />} onClick={() => navigate('/deployments')}>Deployments</Button>
+        <Button variant="ghost" size="sm" icon={<ArrowLeft size={14} />} onClick={() => navigate('/cloud')}>Deployments</Button>
         <ChevronRight size={14} color="var(--text-muted)" />
         <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>{dep.name}</span>
         <Badge variant="status" value={dep.status}>{dep.status}</Badge>

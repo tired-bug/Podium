@@ -3,7 +3,7 @@ import {
   Settings as SettingsIcon, Bot, Shield, Info, Bell,
   Eye, EyeOff, Save, RefreshCw, CheckCircle,
   Cpu, Database, Clock, Server, Key, AlertTriangle, Users,
-  Globe, Zap, ChevronRight, Lock, Mail, Activity, BarChart2,
+  Globe, Zap, ChevronRight, Lock, Activity, BarChart2,
   ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { Card, SectionHeader, Skeleton, Badge } from '../components/ui/Badge';
@@ -80,13 +80,12 @@ function MaskedInput({ settingKey, label, placeholder, hint, local, update }: {
 
 // ── Sidebar nav ───────────────────────────────────────────────────────────
 
-type TabId = 'general' | 'ai' | 'security' | 'team' | 'about' | 'mail';
+type TabId = 'general' | 'ai' | 'security' | 'team' | 'about';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; description: string }[] = [
   { id: 'general',  label: 'General',   icon: <Globe size={15} />,       description: 'Platform basics' },
   { id: 'ai',       label: 'AI',        icon: <Bot size={15} />,         description: 'Anomaly detection' },
   { id: 'security', label: 'Security',  icon: <Lock size={15} />,        description: 'Auth & access control' },
-  { id: 'mail',     label: 'Email',     icon: <Mail size={15} />,        description: 'SMTP configuration' },
   { id: 'team',     label: 'Team',      icon: <Users size={15} />,       description: 'Members & invites' },
   { id: 'about',    label: 'System',    icon: <Server size={15} />,      description: 'Health & status' },
 ];
@@ -532,30 +531,6 @@ export function SettingsPage() {
                     accent="#6366f1"
                   />
                 </div>
-              </Section>
-            </div>
-          )}
-
-          {/* ── Email ────────────────────────────────────────────────── */}
-          {tab === 'mail' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <Section title="SMTP Email" description="Configure your mail server to send invite emails to teammates" accent="linear-gradient(90deg,#22d3ee,#6366f1)">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <Input label="SMTP Host" value={local.smtp_host || ''} onChange={e => update('smtp_host', e.target.value)} placeholder="smtp.gmail.com" />
-                  <Input label="SMTP Port" value={local.smtp_port || '587'} onChange={e => update('smtp_port', e.target.value)} placeholder="587" />
-                  <Input label="Username / Email" value={local.smtp_user || ''} onChange={e => update('smtp_user', e.target.value)} placeholder="you@gmail.com" />
-                  <MaskedInput settingKey="smtp_pass" label="Password / App Password" placeholder="your-app-password" local={local} update={update} />
-                  <Input label="From Address" value={local.smtp_from || ''} onChange={e => update('smtp_from', e.target.value)} placeholder="Podium <noreply@yourapp.com>" />
-                  <Input label="App URL" value={local.app_url || ''} onChange={e => update('app_url', e.target.value)} placeholder="https://yourapp.com" hint="Used in invite email links" />
-                </div>
-                <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(34,211,238,0.06)', borderRadius: 'var(--r-md)', border: '1px solid rgba(34,211,238,0.2)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                  <strong style={{ color: 'var(--accent-cyan)' }}>Gmail tip:</strong> Use <code style={{ fontFamily: 'var(--font-mono)' }}>smtp.gmail.com</code> port <code style={{ fontFamily: 'var(--font-mono)' }}>587</code>, and generate an{' '}
-                  <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-cyan)' }}>App Password</a> instead of your Google account password.
-                </div>
-                <Button variant="secondary" style={{ marginTop: 14 }}
-                  onClick={() => handleSave({ smtp_host: local.smtp_host, smtp_port: local.smtp_port, smtp_user: local.smtp_user, smtp_pass: local.smtp_pass, smtp_from: local.smtp_from, app_url: local.app_url })}>
-                  Save Email Settings
-                </Button>
               </Section>
             </div>
           )}

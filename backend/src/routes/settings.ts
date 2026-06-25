@@ -13,6 +13,8 @@ router.get('/', requireAuth, requireRole('admin'), (_req, res: Response) => {
   const settings: Record<string, string> = {};
   for (const r of rows) {
     if (r.key === 'groq_api_key' || r.key === 'groq_model') continue; // server-only, not exposed via this API
+    // SMTP settings are now environment-variable-only — skip from API response
+    if (['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'].includes(r.key)) continue;
     if (r.key.includes('key') || r.key.includes('secret') || r.key.includes('token') || r.key.includes('password')) {
       settings[r.key] = r.value ? '***masked***' : '';
     } else {
@@ -29,6 +31,8 @@ router.put('/', requireAuth, requireRole('admin'), (req: any, res: Response) => 
 
   for (const [key, value] of Object.entries(updates)) {
     if (key === 'groq_api_key' || key === 'groq_model') continue; // server-only secret, not settable via API
+    // SMTP settings now come from environment variables only
+    if (['smtp_host', 'smtp_port', 'smtp_user', 'smtp_pass', 'smtp_from'].includes(key)) continue;
     if (value === '***masked***') continue; 
     stmt.run(key, value);
   }

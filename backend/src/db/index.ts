@@ -423,6 +423,12 @@ function applyMigrations() {
     `ALTER TABLE cloud_deployments ADD COLUMN source_type TEXT`,
     `ALTER TABLE cloud_deployments ADD COLUMN repo_url TEXT`,
     `ALTER TABLE cloud_deployments ADD COLUMN docker_image TEXT`,
+    // Email verification & password reset
+    `ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE users ADD COLUMN email_verification_token TEXT`,
+    `ALTER TABLE users ADD COLUMN email_verification_expires TEXT`,
+    `ALTER TABLE users ADD COLUMN password_reset_token TEXT`,
+    `ALTER TABLE users ADD COLUMN password_reset_expires TEXT`,
   ];
   for (const sql of migrations) {
     try {
@@ -442,11 +448,7 @@ function applyDefaults() {
     ['cpu_threshold', '90'],
     ['memory_threshold_mb', '900'],
     ['app_url', 'http://localhost:3000'],
-    ['smtp_host', ''],
-    ['smtp_port', '587'],
-    ['smtp_user', ''],
-    ['smtp_pass', ''],
-    ['smtp_from', ''],
+    // SMTP settings removed — use environment variables SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM instead
     ['azure_resource_group', 'podium-rg'],
     ['azure_location', 'eastus'],
     ['aws_default_region', 'us-east-1'],

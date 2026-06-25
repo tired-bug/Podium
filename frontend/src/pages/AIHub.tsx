@@ -37,7 +37,7 @@ const AI_TOOLS = [
   { id: 'rootcause', icon: <Search size={18} />,    label: 'Root Cause',       desc: 'AI explains why deployments fail',     accent: '#f59e0b', gradient: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
   { id: 'optimize',  icon: <Cpu size={18} />,       label: 'Optimizer',        desc: 'Right-size resources automatically',   accent: '#14b8a6', gradient: 'linear-gradient(135deg,#14b8a6,#22d3ee)' },
   { id: 'security',  icon: <Shield size={18} />,    label: 'Security Scan',    desc: 'GDPR, SOC2 & hardening review',       accent: '#ef4444', gradient: 'linear-gradient(135deg,#ef4444,#ec4899)' },
-  { id: 'deploy',    icon: <Sparkles size={18} />,  label: 'AI Deploy',        desc: 'Natural language → live deployment',  accent: '#6366f1', gradient: 'linear-gradient(135deg,#6366f1,#22d3ee)', route: '/deploy' },
+  { id: 'deploy',    icon: <Sparkles size={18} />,  label: 'AI Deploy',        desc: 'Natural language → live deployment',  accent: '#6366f1', gradient: 'linear-gradient(135deg,#6366f1,#22d3ee)', route: '/cloud' },
   { id: 'incident',  icon: <FileText size={18} />,  label: 'Incident Report',  desc: 'Auto-generate professional docs',      accent: '#a855f7', gradient: 'linear-gradient(135deg,#a855f7,#ec4899)' },
   { id: 'cost',      icon: <DollarSign size={18} />,label: 'Cost Analysis',    desc: 'Estimated spend across providers',     accent: '#10b981', gradient: 'linear-gradient(135deg,#10b981,#14b8a6)' },
   { id: 'compare',   icon: <GitCompare size={18} />,label: 'Compare',          desc: 'A/B performance & config comparison', accent: '#22d3ee', gradient: 'linear-gradient(135deg,#22d3ee,#6366f1)' },
@@ -439,13 +439,13 @@ function DeployTool({ providers }: { providers: Provider[] }) {
         Describe your app in plain language — AI configures and deploys it to your connected provider automatically.
       </p>
       {['Node.js REST API with PostgreSQL on port 3000', 'Python FastAPI backend with Redis cache', 'Next.js app with SSR on port 3000'].map((ex, i) => (
-        <button key={i} onClick={() => navigate('/deploy')} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', fontSize: 11, padding: '7px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', cursor: 'pointer', color: 'var(--text-secondary)', textAlign: 'left', marginBottom: 5, fontFamily: 'var(--font-sans)', transition: 'all 120ms' }}
+        <button key={i} onClick={() => navigate('/cloud')} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', fontSize: 11, padding: '7px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', cursor: 'pointer', color: 'var(--text-secondary)', textAlign: 'left', marginBottom: 5, fontFamily: 'var(--font-sans)', transition: 'all 120ms' }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = tool.accent; e.currentTarget.style.color = 'var(--text-primary)'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
           <ChevronRight size={11} color={tool.accent} />{ex}
         </button>
       ))}
-      <button onClick={() => navigate('/deploy')} style={{ width: '100%', marginTop: 6, padding: '9px 14px', borderRadius: 'var(--r-md)', background: 'linear-gradient(135deg,#6366f1,#22d3ee)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: 'var(--font-sans)' }}>
+      <button onClick={() => navigate('/cloud')} style={{ width: '100%', marginTop: 6, padding: '9px 14px', borderRadius: 'var(--r-md)', background: 'linear-gradient(135deg,#6366f1,#22d3ee)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: 'var(--font-sans)' }}>
         <Sparkles size={13} /> Open AI Deploy
       </button>
     </ToolPanel>
@@ -594,7 +594,7 @@ export default function AIHub() {
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Button size="sm" variant="ghost" icon={<RefreshCw size={13} />} onClick={load}>Refresh</Button>
-          <button onClick={() => navigate('/deploy')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', background: 'linear-gradient(135deg,#6366f1,#a855f7)', borderRadius: 'var(--r-md)', color: '#fff', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', boxShadow: '0 0 14px rgba(99,102,241,0.3)', fontFamily: 'var(--font-sans)' }}>
+          <button onClick={() => navigate('/cloud')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', background: 'linear-gradient(135deg,#6366f1,#a855f7)', borderRadius: 'var(--r-md)', color: '#fff', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', boxShadow: '0 0 14px rgba(99,102,241,0.3)', fontFamily: 'var(--font-sans)' }}>
             <Sparkles size={12} /> AI Deploy
           </button>
         </div>
