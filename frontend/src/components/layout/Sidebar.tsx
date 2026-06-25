@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Rocket, Github, ScrollText, BarChart2,
+  LayoutDashboard, Github, ScrollText, BarChart2,
   Bot, AlertTriangle, Users, Settings, ChevronLeft, ChevronRight,
-  Zap, User, Sparkles, Cloud, Plug,
+  Zap, User, Cloud, Plug,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
 
@@ -15,8 +15,6 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
     items: [{ to: '/dashboard', icon: <LayoutDashboard size={14} />, label: 'Dashboard' }] },
   { section: 'Platform',
     items: [
-      { to: '/deployments', icon: <Rocket size={14} />,   label: 'Deployments' },
-      { to: '/deploy',      icon: <Sparkles size={14} />, label: 'AI Deploy' },
       { to: '/cloud',       icon: <Cloud size={14} />,    label: 'Cloud Deploy' },
       { to: '/providers',   icon: <Plug size={14} />,     label: 'Providers' },
     ]},

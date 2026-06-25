@@ -140,8 +140,8 @@ export default function Dashboard() {
   const failed   = deployments.filter(d => d.status === 'failed').length;
 
   const statCards = [
-    { label: 'Total Deployments', value: deployments.length, icon: <Rocket size={20} color="#fff" />,    gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', trend: 12,  onClick: () => navigate('/deployments') },
-    { label: 'Running Deployments', value: running,          icon: <Container size={20} color="#fff" />,  gradient: 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/deployments') },
+    { label: 'Total Deployments', value: deployments.length, icon: <Rocket size={20} color="#fff" />,    gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', trend: 12,  onClick: () => navigate('/cloud') },
+    { label: 'Running Deployments', value: running,          icon: <Container size={20} color="#fff" />,  gradient: 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/cloud') },
     { label: 'Active Anomalies',   value: anomalies.length,  icon: <AlertTriangle size={20} color="#fff" />, gradient: anomalies.length > 0 ? 'linear-gradient(135deg,#ef4444,#f59e0b)' : 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/ai/anomalies') },
     { label: 'Cloud Deployments',  value: cloudDeps.length,  icon: <Cloud size={20} color="#fff" />,      gradient: 'linear-gradient(135deg,#22d3ee,#6366f1)',  onClick: () => navigate('/cloud') },
   ];
@@ -226,7 +226,7 @@ export default function Dashboard() {
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{deployments.length} total</div>
             </div>
           </div>
-          <Button size="sm" variant="ghost" onClick={() => navigate('/deployments')}>View all →</Button>
+          <Button size="sm" variant="ghost" onClick={() => navigate('/cloud')}>View all →</Button>
         </div>
 
         {loading ? (
@@ -236,7 +236,7 @@ export default function Dashboard() {
         ) : deployments.length === 0 ? (
           <EmptyState icon="🚀" title="No deployments yet"
             description="Create your first deployment to start managing containers."
-            action={<Button variant="primary" size="sm" onClick={() => navigate('/deployments')}>New Deployment</Button>}
+            action={<Button variant="primary" size="sm" onClick={() => navigate('/cloud')}>New Deployment</Button>}
           />
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -252,7 +252,7 @@ export default function Dashboard() {
                 {deployments.slice(0, 8).map((d, i) => (
                   <tr
                     key={d.id}
-                    onClick={() => navigate(`/deployments/${d.id}`)}
+                    onClick={() => navigate('/cloud')}
                     style={{
                       borderTop: '1px solid var(--border-muted)',
                       cursor: 'pointer', transition: 'background 120ms',

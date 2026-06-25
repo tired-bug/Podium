@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, RefreshCw, Trash2, ExternalLink, Terminal, ChevronRight,
   Globe, GitBranch, Settings2, CheckCircle,
-  Eye, EyeOff, X, AlertTriangle, Play,
+  Eye, EyeOff, X, AlertTriangle, Play, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, SectionHeader, Skeleton, Spinner } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -26,8 +26,17 @@ interface ProviderMeta {
   regions?: string[];
 }
 
-// ── Provider logos (compact) ─────────────────────────────────────────────────
+// ── Provider logos ────────────────────────────────────────────────────────────
 const LOGOS: Record<string, React.ReactNode> = {
+  render: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#46E3B7"/><path d="M20 10 L28 20 L20 30 L12 20 Z" fill="#fff" fillOpacity=".9"/></svg>,
+  railway: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#0B0D0E"/><rect x="8" y="17" width="24" height="3" rx="1.5" fill="#fff"/><rect x="12" y="10" width="3" height="20" rx="1.5" fill="#fff"/><rect x="25" y="10" width="3" height="20" rx="1.5" fill="#fff"/></svg>,
+  vercel: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#000"/><path d="M20 10 L32 30 H8 Z" fill="#fff"/></svg>,
+  aws: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#232F3E"/><path d="M12 22c0 2.2 1.8 4 4 4h8c2.2 0 4-1.8 4-4s-1.8-4-4-4h-1a5 5 0 0 0-10 0c-1.1.4-2 1.5-2 2.8v1.2z" fill="#FF9900"/></svg>,
+  azure: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#0078D4"/><path d="M12 28 L20 12 L24 20 L18 20 L26 28 Z" fill="#fff" fillOpacity=".9"/></svg>,
+  gcp: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#fff"/><path d="M20 10a10 10 0 0 1 0 20 10 10 0 0 1 0-20z" fill="none" stroke="#4285F4" strokeWidth="3"/><path d="M20 10 A10 10 0 0 1 30 20" stroke="#EA4335" strokeWidth="3" fill="none"/><path d="M30 20 A10 10 0 0 1 20 30" stroke="#FBBC04" strokeWidth="3" fill="none"/></svg>,
+};
+
+const LOGOS_SM: Record<string, React.ReactNode> = {
   render: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#46E3B7"/><path d="M10 5 L14 10 L10 15 L6 10 Z" fill="#fff" fillOpacity=".9"/></svg>,
   railway: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#0B0D0E"/><rect x="4" y="9" width="12" height="2" rx="1" fill="#fff"/><rect x="6" y="5" width="2" height="10" rx="1" fill="#fff"/><rect x="12" y="5" width="2" height="10" rx="1" fill="#fff"/></svg>,
   vercel: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#000"/><path d="M10 5 L16 15 H4 Z" fill="#fff"/></svg>,
@@ -93,24 +102,20 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
   const config = (() => { try { return JSON.parse(dep.config || '{}'); } catch { return {}; } })();
 
   return (
-    <Card style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px' }}>
-        <div style={{ flexShrink: 0 }}>{LOGOS[dep.provider] || <Globe size={18} />}</div>
-
+    <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-            <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{dep.name}</span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>{dep.name}</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 'var(--r-pill)', background: `${statusColor}18`, border: `1px solid ${statusColor}40` }}>
               <div style={{ width: 5, height: 5, borderRadius: '50%', background: statusColor }} />
               <span style={{ fontSize: '10px', fontWeight: 600, color: statusColor, textTransform: 'capitalize' }}>{dep.status}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{dep.provider}</span>
             {dep.region && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{dep.region}</span>}
             {config.repoUrl && <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{config.repoUrl.replace('https://github.com/', '')}</span>}
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Updated {timeAgo(dep.updated_at)}</span>
-            {dep.provider_deployment_id && <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>ID: {dep.provider_deployment_id}</span>}
             {dep.provider_error && <span style={{ fontSize: '11px', color: 'var(--accent-red)', fontWeight: 600 }}>⚠ {dep.provider_error}</span>}
           </div>
         </div>
@@ -127,7 +132,6 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
         </div>
       </div>
 
-      {/* Log drawer */}
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-muted)', background: 'var(--bg-primary)', padding: '12px 16px', maxHeight: 200, overflowY: 'auto' }}>
           {loadingLogs ? (
@@ -149,7 +153,140 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
           )}
         </div>
       )}
-    </Card>
+    </div>
+  );
+}
+
+// ── Provider Card (clickable, expands to show deployments) ───────────────────
+
+function ProviderCard({
+  provider, deps, loading, onRefresh, onNewDeploy, onClearFailed, onClearAll,
+}: {
+  provider: ProviderMeta;
+  deps: CloudDep[];
+  loading: boolean;
+  onRefresh: () => void;
+  onNewDeploy: () => void;
+  onClearFailed: (providerId: string) => void;
+  onClearAll: (providerId: string) => void;
+}) {
+  const { can } = useRole();
+  const [open, setOpen] = useState(false);
+
+  const live = deps.filter(d => d.status === 'live').length;
+  const failed = deps.filter(d => d.status === 'failed').length;
+  const building = deps.filter(d => d.status === 'building' || d.status === 'deploying').length;
+
+  const statusDot = failed > 0 ? 'var(--accent-red)'
+    : building > 0 ? 'var(--accent-cyan)'
+    : live > 0 ? 'var(--accent-green)'
+    : 'var(--text-muted)';
+
+  return (
+    <div style={{
+      background: 'var(--bg-card)',
+      border: `1px solid ${open ? 'var(--accent-blue)' : provider.connected ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`,
+      borderRadius: 'var(--r-xl)',
+      overflow: 'hidden',
+      transition: 'border-color 200ms, box-shadow 200ms',
+      boxShadow: open ? '0 0 0 1px rgba(99,102,241,0.1) inset' : provider.connected ? '0 0 0 1px rgba(16,185,129,0.06) inset' : 'var(--shadow-card)',
+    }}>
+      {/* Card header — always visible, click to toggle */}
+      <button
+        onClick={() => provider.connected && setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 16,
+          padding: 20, background: 'none', border: 'none', cursor: provider.connected ? 'pointer' : 'default',
+          textAlign: 'left', fontFamily: 'var(--font-sans)',
+        }}
+      >
+        {/* Top green strip when connected */}
+        {provider.connected && (
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'var(--gradient-green)', pointerEvents: 'none' }} />
+        )}
+
+        <div style={{ flexShrink: 0 }}>{LOGOS[provider.id] || <Globe size={32} />}</div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>{provider.name}</div>
+
+          {provider.connected ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: statusDot }} />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  {deps.length} deployment{deps.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              {live > 0 && <span style={{ fontSize: '11px', color: 'var(--accent-green)', fontWeight: 600 }}>{live} live</span>}
+              {building > 0 && <span style={{ fontSize: '11px', color: 'var(--accent-cyan)', fontWeight: 600 }}>{building} building</span>}
+              {failed > 0 && <span style={{ fontSize: '11px', color: 'var(--accent-red)', fontWeight: 600 }}>{failed} failed</span>}
+            </div>
+          ) : provider.isDemo ? (
+            <span style={{ fontSize: '11px', color: 'var(--accent-orange)' }}>Demo only — Enterprise tier</span>
+          ) : (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Not connected — go to Providers to connect</span>
+          )}
+        </div>
+
+        {provider.connected && (
+          <div style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
+            {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </div>
+        )}
+      </button>
+
+      {/* Expanded deployments panel */}
+      {open && provider.connected && (
+        <div style={{ borderTop: '1px solid var(--border-muted)', padding: '16px 20px 20px' }}>
+          {/* Panel toolbar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {deps.length} synced deployment{deps.length !== 1 ? 's' : ''}
+            </span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {can.deleteDeployment && failed > 0 && (
+                <Button size="sm" variant="danger" icon={<Trash2 size={11} />}
+                  onClick={() => onClearFailed(provider.id)}>
+                  Clear Failed ({failed})
+                </Button>
+              )}
+              {can.deleteDeployment && deps.length > 0 && (
+                <Button size="sm" variant="ghost" icon={<Trash2 size={11} />}
+                  onClick={() => onClearAll(provider.id)}>
+                  Clear All
+                </Button>
+              )}
+              {can.createDeployment && (
+                <Button size="sm" variant="primary" icon={<Plus size={11} />}
+                  onClick={onNewDeploy}>
+                  Deploy
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {loading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[1, 2].map(i => <Skeleton key={i} height={56} />)}
+            </div>
+          ) : deps.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--text-muted)', fontSize: '13px' }}>
+              No deployments synced yet.{' '}
+              {can.createDeployment && (
+                <button onClick={onNewDeploy} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-blue)', fontSize: '13px', padding: 0 }}>
+                  Deploy now →
+                </button>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {deps.map(d => <DepRow key={d.id} dep={d} onRefresh={onRefresh} />)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -169,33 +306,29 @@ const VERCEL_FRAMEWORKS = ['nextjs', 'create-react-app', 'vite', 'vue', 'svelte'
 
 const EMPTY_FORM = {
   provider: '',
-  // Common
   name: '', repoUrl: '', branch: 'main',
   envVars: [{ key: '', value: '' }],
-  // Render
   renderOwnerId: '', renderRuntime: 'node', renderRegion: 'oregon', renderPlan: 'free',
   buildCommand: '', startCommand: '',
-  // Railway
   railwayProjectName: '', railwayTeamId: '',
-  // Vercel
   vercelFramework: '', vercelRootDirectory: '', vercelOutputDirectory: '', vercelBuildCommand: '',
 };
 
-function DeployWizard({ providers, onClose, onDeployed }: {
+function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
   providers: ProviderMeta[];
+  initialProvider?: string;
   onClose: () => void;
   onDeployed: () => void;
 }) {
   const { success, error: showError } = useToast();
   const navigate = useNavigate();
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [step, setStep] = useState(initialProvider ? 1 : 0);
+  const [form, setForm] = useState({ ...EMPTY_FORM, provider: initialProvider || '' });
   const [showVals, setShowVals] = useState<Record<number, boolean>>({});
   const [deploying, setDeploying] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [githubRepos, setGithubRepos] = useState<Array<{ fullName: string; defaultBranch: string }>>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
-  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
   const [renderOwners, setRenderOwners] = useState<Array<{ id: string; name: string }>>([]);
   const [railwayWorkspaces, setRailwayWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
   const [railwayAutoDetect, setRailwayAutoDetect] = useState(true);
@@ -204,11 +337,9 @@ function DeployWizard({ providers, onClose, onDeployed }: {
 
   const upd = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
   const stepId = STEPS[step].id;
-
   const connectedProviders = providers.filter(p => p.connected && !p.isDemo);
   const selectedProvider = providers.find(p => p.id === form.provider);
 
-  // Load repos/workspaces when provider is selected
   useEffect(() => {
     if (!form.provider) return;
     if (form.provider === 'vercel') {
@@ -223,10 +354,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
         .then(r => {
           const owners = r.data || [];
           setRenderOwners(owners);
-          // Auto-select first owner if none selected yet
-          if (owners.length > 0 && !form.renderOwnerId) {
-            upd('renderOwnerId', owners[0].id);
-          }
+          if (owners.length > 0 && !form.renderOwnerId) upd('renderOwnerId', owners[0].id);
         })
         .catch(() => {});
     }
@@ -237,25 +365,18 @@ function DeployWizard({ providers, onClose, onDeployed }: {
         .then(r => {
           const workspaces = r.data || [];
           setRailwayWorkspaces(workspaces);
-          // Auto-select when there's only one option, or default to the first when auto-detect is on.
-          if (workspaces.length >= 1 && railwayAutoDetect) {
-            upd('railwayTeamId', workspaces[0].id);
-          }
+          if (workspaces.length >= 1 && railwayAutoDetect) upd('railwayTeamId', workspaces[0].id);
         })
         .catch((e: any) => {
-          const msg = e?.response?.data?.error || e?.message || 'Failed to load workspaces';
-          setRailwayWorkspaceError(msg);
+          setRailwayWorkspaceError(e?.response?.data?.error || e?.message || 'Failed to load workspaces');
         })
         .finally(() => setLoadingWorkspaces(false));
     }
   }, [form.provider]);
 
-  // Re-apply automatic workspace selection whenever Auto Detect is toggled on
   useEffect(() => {
     if (form.provider !== 'railway') return;
-    if (railwayWorkspaces.length > 1 && railwayAutoDetect) {
-      upd('railwayTeamId', railwayWorkspaces[0].id);
-    }
+    if (railwayWorkspaces.length > 1 && railwayAutoDetect) upd('railwayTeamId', railwayWorkspaces[0].id);
   }, [railwayAutoDetect]);
 
   const addEnvVar = () => upd('envVars', [...form.envVars, { key: '', value: '' }]);
@@ -273,11 +394,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
       if (form.provider === 'render') {
         if (!form.name) e.name = 'Service name is required';
         if (!form.renderOwnerId) e.renderOwnerId = 'Owner ID is required';
-        if (!form.renderRuntime) e.renderRuntime = 'Runtime is required';
-        if (!form.renderRegion) e.renderRegion = 'Region is required';
-        if (!form.renderPlan) e.renderPlan = 'Plan is required';
         if (!form.repoUrl) e.repoUrl = 'Repository is required';
-        if (!form.branch) e.branch = 'Branch is required';
         if (form.renderRuntime !== 'docker') {
           if (!form.buildCommand.trim()) e.buildCommand = 'Build command is required';
           if (!form.startCommand.trim()) e.startCommand = 'Start command is required';
@@ -303,12 +420,8 @@ function DeployWizard({ providers, onClose, onDeployed }: {
       const cmdsOk = form.renderRuntime === 'docker' || (!!form.buildCommand.trim() && !!form.startCommand.trim());
       return !!(form.name && form.renderOwnerId && form.renderRuntime && form.renderRegion && form.renderPlan && form.repoUrl && form.branch && cmdsOk);
     }
-    if (form.provider === 'railway') {
-      return !!(form.railwayProjectName && form.repoUrl);
-    }
-    if (form.provider === 'vercel') {
-      return !!(form.name && form.repoUrl && form.vercelFramework);
-    }
+    if (form.provider === 'railway') return !!(form.railwayProjectName && form.repoUrl);
+    if (form.provider === 'vercel') return !!(form.name && form.repoUrl && form.vercelFramework);
     return false;
   };
 
@@ -318,39 +431,21 @@ function DeployWizard({ providers, onClose, onDeployed }: {
   const deploy = async () => {
     setDeploying(true);
     try {
-      const envVarsObj = Object.fromEntries(
-        form.envVars.filter(e => e.key).map(e => [e.key, e.value])
-      );
-
+      const envVarsObj = Object.fromEntries(form.envVars.filter(e => e.key).map(e => [e.key, e.value]));
       const payload: Record<string, any> = {
-        provider: form.provider,
-        repoUrl: form.repoUrl || undefined,
-        branch: form.branch || 'main',
-        envVars: envVarsObj,
+        provider: form.provider, repoUrl: form.repoUrl || undefined,
+        branch: form.branch || 'main', envVars: envVarsObj,
       };
-
       if (form.provider === 'render') {
-        payload.name = form.name;
-        payload.ownerId = form.renderOwnerId;
-        payload.runtime = form.renderRuntime;
-        payload.region = form.renderRegion;
-        payload.plan = form.renderPlan;
-        payload.buildCommand = form.buildCommand || undefined;
-        payload.startCommand = form.startCommand || undefined;
+        Object.assign(payload, { name: form.name, ownerId: form.renderOwnerId, runtime: form.renderRuntime, region: form.renderRegion, plan: form.renderPlan, buildCommand: form.buildCommand || undefined, startCommand: form.startCommand || undefined });
       } else if (form.provider === 'railway') {
-        payload.name = form.railwayProjectName;
-        payload.projectName = form.railwayProjectName;
+        payload.name = form.railwayProjectName; payload.projectName = form.railwayProjectName;
         if (form.railwayTeamId) payload.workspaceId = form.railwayTeamId;
       } else if (form.provider === 'vercel') {
-        payload.name = form.name;
-        payload.framework = form.vercelFramework;
-        payload.rootDirectory = form.vercelRootDirectory || undefined;
-        payload.outputDirectory = form.vercelOutputDirectory || undefined;
-        payload.buildCommand = form.vercelBuildCommand || undefined;
+        Object.assign(payload, { name: form.name, framework: form.vercelFramework, rootDirectory: form.vercelRootDirectory || undefined, outputDirectory: form.vercelOutputDirectory || undefined, buildCommand: form.vercelBuildCommand || undefined });
       } else {
         payload.name = form.name;
       }
-
       await api.post('/api/providers/deploy', payload);
       success(`Deployment "${payload.name}" queued on ${selectedProvider?.name}`);
       onDeployed();
@@ -366,7 +461,6 @@ function DeployWizard({ providers, onClose, onDeployed }: {
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', width: '100%', maxWidth: 580, boxShadow: 'var(--shadow-modal)', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
         <div style={{ padding: '20px 24px 0', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
             <div>
@@ -375,8 +469,6 @@ function DeployWizard({ providers, onClose, onDeployed }: {
             </div>
             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><X size={18} /></button>
           </div>
-
-          {/* Step bar */}
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
             {STEPS.map((s, i) => (
               <React.Fragment key={s.id}>
@@ -392,15 +484,10 @@ function DeployWizard({ providers, onClose, onDeployed }: {
           </div>
         </div>
 
-        {/* Body */}
         <div style={{ padding: '0 24px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Step 0: Provider selection */}
           {stepId === 'provider' && (
             <>
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Choose where to deploy. Only connected providers are available.
-              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Choose where to deploy. Only connected providers are available.</div>
               {connectedProviders.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '30px 0' }}>
                   <AlertTriangle size={32} color="var(--accent-orange)" style={{ marginBottom: 12 }} />
@@ -411,22 +498,12 @@ function DeployWizard({ providers, onClose, onDeployed }: {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {connectedProviders.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => { upd('provider', p.id); if (p.id === 'render') upd('renderRegion', p.regions?.[0] || 'oregon'); }}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', gap: 14,
-                        padding: '14px 16px', background: form.provider === p.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)',
-                        border: `1px solid ${form.provider === p.id ? 'var(--accent-blue)' : 'var(--border)'}`,
-                        borderRadius: 'var(--r-lg)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)', transition: 'all 150ms',
-                      }}
-                    >
-                      {LOGOS[p.id]}
+                    <button key={p.id} onClick={() => { upd('provider', p.id); if (p.id === 'render') upd('renderRegion', p.regions?.[0] || 'oregon'); }}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: form.provider === p.id ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${form.provider === p.id ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-lg)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)', transition: 'all 150ms' }}>
+                      {LOGOS_SM[p.id]}
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--accent-green)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <CheckCircle size={10} />Connected
-                        </div>
+                        <div style={{ fontSize: '11px', color: 'var(--accent-green)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle size={10} />Connected</div>
                       </div>
                       {form.provider === p.id && <CheckCircle size={16} color="var(--accent-blue)" />}
                     </button>
@@ -437,139 +514,66 @@ function DeployWizard({ providers, onClose, onDeployed }: {
             </>
           )}
 
-          {/* Step 1: Project */}
           {stepId === 'project' && (
             <>
               {form.provider === 'render' && (
                 <>
                   <Input label="Service Name" value={form.name} onChange={e => upd('name', e.target.value)} placeholder="my-api" error={errors.name} required />
-
                   {renderOwners.length > 0 ? (
-                    <Select
-                      label="Owner ID"
-                      value={form.renderOwnerId}
-                      onChange={e => upd('renderOwnerId', e.target.value)}
-                      options={renderOwners.map(o => ({ value: o.id, label: o.name }))}
-                      error={errors.renderOwnerId}
-                    />
+                    <Select label="Owner ID" value={form.renderOwnerId} onChange={e => upd('renderOwnerId', e.target.value)} options={renderOwners.map(o => ({ value: o.id, label: o.name }))} error={errors.renderOwnerId} />
                   ) : (
                     <Input label="Owner ID" value={form.renderOwnerId} onChange={e => upd('renderOwnerId', e.target.value)} placeholder="usr-xxxxxxxx or tea-xxxxxxxx" error={errors.renderOwnerId} required />
                   )}
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <Select
-                      label="Runtime"
-                      value={form.renderRuntime}
-                      onChange={e => upd('renderRuntime', e.target.value)}
-                      options={RENDER_RUNTIMES.map(r => ({ value: r, label: r }))}
-                      error={errors.renderRuntime}
-                    />
-                    <Select
-                      label="Region"
-                      value={form.renderRegion}
-                      onChange={e => upd('renderRegion', e.target.value)}
-                      options={(selectedProvider?.regions || ['oregon']).map(r => ({ value: r, label: r }))}
-                      error={errors.renderRegion}
-                    />
+                    <Select label="Runtime" value={form.renderRuntime} onChange={e => upd('renderRuntime', e.target.value)} options={RENDER_RUNTIMES.map(r => ({ value: r, label: r }))} error={errors.renderRuntime} />
+                    <Select label="Region" value={form.renderRegion} onChange={e => upd('renderRegion', e.target.value)} options={(selectedProvider?.regions || ['oregon']).map(r => ({ value: r, label: r }))} error={errors.renderRegion} />
                   </div>
-
-                  <Select
-                    label="Plan"
-                    value={form.renderPlan}
-                    onChange={e => upd('renderPlan', e.target.value)}
-                    options={RENDER_PLANS.map(p => ({ value: p, label: p }))}
-                    error={errors.renderPlan}
-                  />
-
+                  <Select label="Plan" value={form.renderPlan} onChange={e => upd('renderPlan', e.target.value)} options={RENDER_PLANS.map(p => ({ value: p, label: p }))} error={errors.renderPlan} />
                   <Input label="Repository" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} required />
                   <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" error={errors.branch} required />
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <Input label="Build Command" value={form.buildCommand} onChange={e => upd('buildCommand', e.target.value)} placeholder="npm run build" required={form.renderRuntime !== 'docker'} error={errors.buildCommand} />
                     <Input label="Start Command" value={form.startCommand} onChange={e => upd('startCommand', e.target.value)} placeholder="npm start" required={form.renderRuntime !== 'docker'} error={errors.startCommand} />
                   </div>
                 </>
               )}
-
               {form.provider === 'railway' && (
                 <>
                   <Input label="Project Name" value={form.railwayProjectName} onChange={e => upd('railwayProjectName', e.target.value)} placeholder="my-railway-project" error={errors.railwayProjectName} required />
-
                   <Input label="Repository" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} required />
-                  {form.repoUrl && (
-                    <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
-                  )}
-
-                  {/* Workspace selector — always shown for Railway */}
+                  {form.repoUrl && <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)' }}>
                     {loadingWorkspaces ? (
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Spinner size={11} color="var(--text-muted)" /> Loading workspaces…
-                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}><Spinner size={11} color="var(--text-muted)" /> Loading workspaces…</div>
                     ) : railwayWorkspaceError ? (
                       <>
-                        <p style={{ fontSize: '11px', color: 'var(--color-error, #e53)', margin: 0 }}>
-                          ⚠ {railwayWorkspaceError}
-                        </p>
-                        <Input
-                          label="Workspace ID (manual)"
-                          value={form.railwayTeamId}
-                          onChange={e => upd('railwayTeamId', e.target.value)}
-                          placeholder="Leave blank for personal account"
-                        />
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
-                          Enter your Railway workspace ID, or leave blank to deploy to your personal account.
-                        </p>
+                        <p style={{ fontSize: '11px', color: 'var(--color-error, #e53)', margin: 0 }}>⚠ {railwayWorkspaceError}</p>
+                        <Input label="Workspace ID (manual)" value={form.railwayTeamId} onChange={e => upd('railwayTeamId', e.target.value)} placeholder="Leave blank for personal account" />
                       </>
                     ) : railwayWorkspaces.length > 0 ? (
                       <>
                         {railwayWorkspaces.length > 1 && (
                           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={railwayAutoDetect}
-                              onChange={e => setRailwayAutoDetect(e.target.checked)}
-                            />
+                            <input type="checkbox" checked={railwayAutoDetect} onChange={e => setRailwayAutoDetect(e.target.checked)} />
                             Auto Detect Workspace
                           </label>
                         )}
-                        <Select
-                          label="Workspace"
-                          value={form.railwayTeamId}
-                          onChange={e => upd('railwayTeamId', e.target.value)}
-                          options={railwayWorkspaces.map(w => ({ value: w.id, label: w.name }))}
-                          disabled={railwayWorkspaces.length > 1 && railwayAutoDetect}
-                        />
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
-                          {railwayWorkspaces.length > 1 && railwayAutoDetect
-                            ? `Automatically using "${railwayWorkspaces.find(w => w.id === form.railwayTeamId)?.name || railwayWorkspaces[0].name}". Turn off to pick a different workspace.`
-                            : 'Choose the workspace to deploy into.'}
-                        </p>
+                        <Select label="Workspace" value={form.railwayTeamId} onChange={e => upd('railwayTeamId', e.target.value)} options={railwayWorkspaces.map(w => ({ value: w.id, label: w.name }))} disabled={railwayWorkspaces.length > 1 && railwayAutoDetect} />
                       </>
                     ) : (
-                      <Input
-                        label="Workspace ID (optional)"
-                        value={form.railwayTeamId}
-                        onChange={e => upd('railwayTeamId', e.target.value)}
-                        placeholder="Leave blank for personal account"
-                      />
+                      <Input label="Workspace ID (optional)" value={form.railwayTeamId} onChange={e => upd('railwayTeamId', e.target.value)} placeholder="Leave blank for personal account" />
                     )}
                   </div>
                 </>
               )}
-
               {form.provider === 'vercel' && (
                 <>
                   <Input label="Project Name" value={form.name} onChange={e => upd('name', e.target.value)} placeholder="my-frontend" error={errors.name} required />
-
                   <Input label="Repository" value={form.repoUrl} onChange={e => upd('repoUrl', e.target.value)} placeholder="https://github.com/org/repo" error={errors.repoUrl} icon={<GitBranch size={13} />} required />
-
                   {loadingRepos ? (
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Spinner size={11} color="var(--text-muted)" /> Loading connected repos...
-                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}><Spinner size={11} color="var(--text-muted)" /> Loading connected repos...</div>
                   ) : githubRepos.length > 0 ? (
-                    <div style={{ marginTop: -4, marginBottom: 4 }}>
+                    <div>
                       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600 }}>Or pick from connected GitHub repos:</div>
                       <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {githubRepos.map(r => (
@@ -582,21 +586,9 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                       </div>
                     </div>
                   ) : null}
-
-                  {form.repoUrl && (
-                    <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />
-                  )}
-
-                  <Select
-                    label="Framework"
-                    value={form.vercelFramework}
-                    onChange={e => upd('vercelFramework', e.target.value)}
-                    options={[{ value: '', label: 'Select a framework' }, ...VERCEL_FRAMEWORKS.map(f => ({ value: f, label: f }))]}
-                    error={errors.vercelFramework}
-                  />
-
+                  {form.repoUrl && <Input label="Branch" value={form.branch} onChange={e => upd('branch', e.target.value)} placeholder="main" />}
+                  <Select label="Framework" value={form.vercelFramework} onChange={e => upd('vercelFramework', e.target.value)} options={[{ value: '', label: 'Select a framework' }, ...VERCEL_FRAMEWORKS.map(f => ({ value: f, label: f }))]} error={errors.vercelFramework} />
                   <Input label="Root Directory" value={form.vercelRootDirectory} onChange={e => upd('vercelRootDirectory', e.target.value)} placeholder="./ (repo root)" />
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <Input label="Build Command" value={form.vercelBuildCommand} onChange={e => upd('vercelBuildCommand', e.target.value)} placeholder="npm run build" />
                     <Input label="Output Directory" value={form.vercelOutputDirectory} onChange={e => upd('vercelOutputDirectory', e.target.value)} placeholder="dist" />
@@ -606,32 +598,21 @@ function DeployWizard({ providers, onClose, onDeployed }: {
             </>
           )}
 
-          {/* Step 2: Environment */}
           {stepId === 'env' && (
             <>
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                Add environment variables for your deployment. Values are encrypted at rest.
-              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Add environment variables. Values are encrypted at rest.</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {form.envVars.map((ev, i) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'flex-start' }}>
                     <Input value={ev.key} onChange={e => setEnvVar(i, 'key', e.target.value)} placeholder="KEY" />
                     <div style={{ position: 'relative' }}>
-                      <input
-                        className="podium-input"
-                        type={showVals[i] ? 'text' : 'password'}
-                        value={ev.value}
-                        onChange={e => setEnvVar(i, 'value', e.target.value)}
-                        placeholder="value"
-                        style={{ width: '100%', padding: '7px 30px 7px 10px', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '13px', fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box' }}
-                      />
+                      <input className="podium-input" type={showVals[i] ? 'text' : 'password'} value={ev.value} onChange={e => setEnvVar(i, 'value', e.target.value)} placeholder="value"
+                        style={{ width: '100%', padding: '7px 30px 7px 10px', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '13px', fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box' }} />
                       <button onClick={() => setShowVals(s => ({ ...s, [i]: !s[i] }))} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
                         {showVals[i] ? <EyeOff size={12} /> : <Eye size={12} />}
                       </button>
                     </div>
-                    <button onClick={() => removeEnvVar(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', paddingTop: 8 }}>
-                      <X size={14} />
-                    </button>
+                    <button onClick={() => removeEnvVar(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', paddingTop: 8 }}><X size={14} /></button>
                   </div>
                 ))}
                 <Button variant="ghost" size="sm" icon={<Plus size={12} />} onClick={addEnvVar}>Add Variable</Button>
@@ -639,7 +620,6 @@ function DeployWizard({ providers, onClose, onDeployed }: {
             </>
           )}
 
-          {/* Step 3: Review */}
           {stepId === 'review' && (
             <>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -659,10 +639,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                   ...(form.provider === 'railway' ? [
                     { label: 'Project Name', value: form.railwayProjectName },
                     { label: 'Repository', value: form.repoUrl },
-                    ...(railwayWorkspaces.length > 0 ? [{
-                      label: 'Workspace',
-                      value: railwayWorkspaces.find(w => w.id === form.railwayTeamId)?.name || 'Personal Workspace',
-                    }] : []),
+                    ...(railwayWorkspaces.length > 0 ? [{ label: 'Workspace', value: railwayWorkspaces.find(w => w.id === form.railwayTeamId)?.name || 'Personal Workspace' }] : []),
                   ] : []),
                   ...(form.provider === 'vercel' ? [
                     { label: 'Project Name', value: form.name },
@@ -676,7 +653,7 @@ function DeployWizard({ providers, onClose, onDeployed }: {
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>{row.label}</span>
-                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600, fontFamily: ['Repository', 'Branch', 'Build Command', 'Start Command', 'Root Directory', 'Output Directory'].includes(row.label) ? 'var(--font-mono)' : undefined }}>{row.value}</span>
+                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>{row.value}</span>
                   </div>
                 ))}
               </div>
@@ -687,18 +664,13 @@ function DeployWizard({ providers, onClose, onDeployed }: {
           )}
         </div>
 
-        {/* Footer */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
           {step > 0 && <Button variant="ghost" onClick={back}>Back</Button>}
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           {step < STEPS.length - 1 ? (
-            <Button variant="primary" icon={<ChevronRight size={14} />} onClick={next} disabled={connectedProviders.length === 0}>
-              Next
-            </Button>
+            <Button variant="primary" icon={<ChevronRight size={14} />} onClick={next} disabled={connectedProviders.length === 0}>Next</Button>
           ) : (
-            <Button variant="primary" icon={<Play size={14} />} loading={deploying} disabled={!isValid()} onClick={deploy}>
-              Deploy Now
-            </Button>
+            <Button variant="primary" icon={<Play size={14} />} loading={deploying} disabled={!isValid()} onClick={deploy}>Deploy Now</Button>
           )}
         </div>
       </div>
@@ -708,77 +680,6 @@ function DeployWizard({ providers, onClose, onDeployed }: {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-interface InventoryItem {
-  id: string; name: string; status: string; url?: string; createdAt?: string;
-}
-
-function InventoryPanel({ providers }: { providers: ProviderMeta[] }) {
-  const [inventory, setInventory] = useState<Record<string, InventoryItem[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const { success, error: showError } = useToast();
-
-  const load = useCallback(async () => {
-    try {
-      const r = await api.get('/api/providers/inventory');
-      setInventory(r.data || {});
-    } catch {} finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const triggerSync = async () => {
-    setSyncing(true);
-    try {
-      await api.post('/api/providers/sync');
-      success('Sync triggered — refreshing...');
-      await load();
-    } catch (e) { showError(parseApiError(e)); }
-    finally { setSyncing(false); }
-  };
-
-  const connectedProviders = providers.filter(p => p.connected && !p.isDemo);
-  if (connectedProviders.length === 0) return null;
-
-  const totalResources = Object.values(inventory).reduce((s, arr) => s + arr.length, 0);
-
-  return (
-    <Card style={{ padding: '16px 18px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-        <div>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Provider Inventory</div>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>{totalResources} resources discovered across {connectedProviders.length} providers</div>
-        </div>
-        <Button size="sm" variant="ghost" icon={<RefreshCw size={12} className={syncing ? 'spin' : ''} />} onClick={triggerSync} disabled={syncing}>
-          {syncing ? 'Syncing...' : 'Sync Now'}
-        </Button>
-      </div>
-      {loading ? (
-        <Skeleton height={60} />
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-          {connectedProviders.map(p => {
-            const items = inventory[p.id] || [];
-            const live = items.filter(i => i.status === 'live').length;
-            return (
-              <div key={p.id} style={{ padding: '10px 12px', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  {LOGOS[p.id]}
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</span>
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{items.length}</span> resources &nbsp;·&nbsp;
-                  <span style={{ color: 'var(--accent-green)' }}>{live} live</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Card>
-  );
-}
-
 export default function CloudDeployments() {
   const { can } = useRole();
   const navigate = useNavigate();
@@ -786,6 +687,7 @@ export default function CloudDeployments() {
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardProvider, setWizardProvider] = useState<string | undefined>();
   const [syncing, setSyncing] = useState(false);
   const { success, error: showError } = useToast();
 
@@ -812,13 +714,44 @@ export default function CloudDeployments() {
     finally { setSyncing(false); }
   };
 
-  const connectedCount = providers.filter(p => p.connected && !p.isDemo).length;
+  const clearFailed = async (providerId: string) => {
+    try {
+      await api.delete(`/api/providers/deployments/failed?provider=${providerId}`);
+      success('Failed deployments cleared');
+      await load();
+    } catch {
+      // fallback: try global endpoint
+      try {
+        await api.delete('/api/providers/deployments/failed');
+        await load();
+      } catch (e) { showError(parseApiError(e)); }
+    }
+  };
+
+  const clearAll = async (providerId: string) => {
+    const providerDeps = deps.filter(d => d.provider === providerId);
+    try {
+      await Promise.all(providerDeps.map(d => api.delete(`/api/providers/deployments/${d.id}`)));
+      success(`Cleared all ${providerDeps.length} deployments`);
+      await load();
+    } catch (e) { showError(parseApiError(e)); }
+  };
+
+  const openWizard = (providerId?: string) => {
+    setWizardProvider(providerId);
+    setWizardOpen(true);
+  };
+
+  const connectedProviders = providers.filter(p => p.connected && !p.isDemo);
+  const totalLive = deps.filter(d => d.status === 'live').length;
+  const totalFailed = deps.filter(d => d.status === 'failed').length;
+  const totalBuilding = deps.filter(d => d.status === 'building' || d.status === 'deploying').length;
 
   const statGroups = [
-    { label: 'Deployments', value: deps.length, color: 'var(--accent-blue)' },
-    { label: 'Live', value: deps.filter(d => d.status === 'live').length, color: 'var(--accent-green)' },
-    { label: 'Building', value: deps.filter(d => d.status === 'building' || d.status === 'deploying').length, color: 'var(--accent-cyan)' },
-    { label: 'Failed', value: deps.filter(d => d.status === 'failed').length, color: 'var(--accent-red)' },
+    { label: 'Total', value: deps.length, color: 'var(--accent-blue)' },
+    { label: 'Live', value: totalLive, color: 'var(--accent-green)' },
+    { label: 'Building', value: totalBuilding, color: 'var(--accent-cyan)' },
+    { label: 'Failed', value: totalFailed, color: 'var(--accent-red)' },
   ];
 
   return (
@@ -826,26 +759,18 @@ export default function CloudDeployments() {
       <ViewerBanner page="Cloud Deployments" />
       <SectionHeader
         title="Cloud Deployments"
-        subtitle="Manage deployments across Render, Railway, and Vercel"
+        subtitle="Manage deployments across your connected providers"
         action={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Button size="sm" variant="ghost" icon={<Globe size={13} />} onClick={() => navigate('/providers')}>
-              {connectedCount} provider{connectedCount !== 1 ? 's' : ''} connected
+              {connectedProviders.length} provider{connectedProviders.length !== 1 ? 's' : ''} connected
             </Button>
             <Button size="sm" variant="ghost" icon={<RefreshCw size={13} className={syncing ? 'spin' : ''} />} onClick={triggerSync} disabled={syncing}>
               {syncing ? 'Syncing...' : 'Sync'}
             </Button>
             <Button size="sm" icon={<RefreshCw size={13} />} onClick={load}>Refresh</Button>
-            {can.deleteDeployment && deps.some(d => d.status === 'failed') && (
-              <Button size="sm" variant="danger" icon={<Trash2 size={13} />} onClick={async () => {
-                try {
-                  await api.delete('/api/providers/deployments/failed');
-                  await load();
-                } catch {}
-              }}>Clear Failed</Button>
-            )}
             {can.createDeployment && (
-              <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => setWizardOpen(true)}>
+              <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => openWizard()}>
                 New Deployment
               </Button>
             )}
@@ -866,34 +791,65 @@ export default function CloudDeployments() {
         ))}
       </div>
 
-      {/* Provider inventory */}
-      <InventoryPanel providers={providers} />
-
+      {/* Provider cards */}
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {[1,2,3].map(i => <Card key={i}><Skeleton height={56} /></Card>)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', height: 88 }} />
+          ))}
         </div>
-      ) : deps.length === 0 ? (
+      ) : providers.length === 0 ? (
         <EmptyState
-          icon="🚀"
-          title="No cloud deployments yet"
-          description={connectedCount === 0 ? "Connect a cloud provider first, then deploy your projects." : "Deploy your first project to a connected provider."}
-          action={
-            connectedCount === 0
-              ? <Button variant="primary" icon={<Globe size={14} />} onClick={() => navigate('/providers')}>Connect Provider</Button>
-              : can.createDeployment ? <Button variant="primary" icon={<Plus size={14} />} onClick={() => setWizardOpen(true)}>New Deployment</Button> : undefined
-          }
+          icon="🔌"
+          title="No providers found"
+          description="Connect a cloud provider to start managing deployments."
+          action={<Button variant="primary" icon={<Globe size={14} />} onClick={() => navigate('/providers')}>Connect Provider</Button>}
         />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {deps.map(d => <DepRow key={d.id} dep={d} onRefresh={load} />)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
+          {/* Free tier providers first */}
+          {providers.filter(p => !p.isDemo).map(p => (
+            <ProviderCard
+              key={p.id}
+              provider={p}
+              deps={deps.filter(d => d.provider === p.id)}
+              loading={false}
+              onRefresh={load}
+              onNewDeploy={() => openWizard(p.id)}
+              onClearFailed={clearFailed}
+              onClearAll={clearAll}
+            />
+          ))}
+          {/* Demo / enterprise providers */}
+          {providers.filter(p => p.isDemo).length > 0 && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em' }}>Enterprise Demo</span>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              </div>
+              {providers.filter(p => p.isDemo).map(p => (
+                <ProviderCard
+                  key={p.id}
+                  provider={p}
+                  deps={[]}
+                  loading={false}
+                  onRefresh={load}
+                  onNewDeploy={() => openWizard()}
+                  onClearFailed={clearFailed}
+                  onClearAll={clearAll}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
 
       {wizardOpen && (
         <DeployWizard
           providers={providers}
-          onClose={() => setWizardOpen(false)}
+          initialProvider={wizardProvider}
+          onClose={() => { setWizardOpen(false); setWizardProvider(undefined); }}
           onDeployed={load}
         />
       )}
