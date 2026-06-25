@@ -27,11 +27,23 @@ async function createTransporter() {
   const { host, port, user, pass } = getSmtpConfig();
   console.log(`[email] Creating transporter — host:${host} port:${port} user:${user}`);
   const nodemailer = require('nodemailer');
+  const dns = require('dns');
+
   const transporter = nodemailer.createTransport({
     host, port,
     secure: port === 465,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
+    // Render's outbound networking does not reliably route IPv6 (AAAA records),
+    // which causes ENETUNREACH against hosts like smtp.gmail.com that publish
+    // both A and AAAA records. Force IPv4-only resolution for the SMTP socket.
+    lookup: (hostname: string, options: any, callback: any) => {
+      dns.lookup(hostname, { ...options, family: 4 }, callback);
+    },
+    // Fail fast instead of hanging indefinitely if the network/host is unreachable.
+    connectionTimeout: 15000, // time to establish the TCP connection
+    greetingTimeout: 15000,   // time to receive the SMTP greeting after connecting
+    socketTimeout: 20000,     // time to wait for any response before giving up
   });
 
   // Note: transporter.verify() is intentionally omitted — Office365 SMTP
