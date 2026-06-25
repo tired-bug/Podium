@@ -139,6 +139,8 @@ export async function initDb(): Promise<void> {
 
       // Apply schema to Turso first so tables exist before we sync
       await applySchemaToTurso();
+      // Apply ALTER TABLE migrations so new columns exist in Turso
+      await applyMigrationsToTurso();
       await syncFromTurso();
       console.log('[turso] ✓ Synced from Turso');
     } catch (err) {
@@ -183,6 +185,35 @@ async function applySchemaToTurso() {
     } catch (e: any) {
       if (!String(e).includes('already exists') && !String(e).includes('duplicate column')) {
         console.warn(`[turso] Schema stmt warning: ${e.message}`);
+      }
+    }
+  }
+}
+
+async function applyMigrationsToTurso() {
+  if (!_turso) return;
+
+  const migrations = [
+    `ALTER TABLE cloud_deployments ADD COLUMN provider_deployment_id TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN provider_error TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN source_type TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN repo_url TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN docker_image TEXT`,
+    // Email verification & password reset
+    `ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE users ADD COLUMN email_verification_token TEXT`,
+    `ALTER TABLE users ADD COLUMN email_verification_expires TEXT`,
+    `ALTER TABLE users ADD COLUMN password_reset_token TEXT`,
+    `ALTER TABLE users ADD COLUMN password_reset_expires TEXT`,
+  ];
+
+  for (const sql of migrations) {
+    try {
+      await _turso.execute(sql);
+    } catch (e: any) {
+      const msg = String(e);
+      if (!msg.includes('duplicate column') && !msg.includes('already exists')) {
+        console.warn(`[turso] Migration warning: ${e.message}`);
       }
     }
   }
