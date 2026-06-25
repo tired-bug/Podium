@@ -16,11 +16,16 @@ function getSmtpConfig() {
 
 function isSmtpConfigured(): boolean {
   const { host, user, pass } = getSmtpConfig();
-  return !!(host && user && pass);
+  const ok = !!(host && user && pass);
+  if (!ok) {
+    console.warn('[email] SMTP not configured — host:', host || '(missing)', '| user:', user || '(missing)', '| pass:', pass ? '(set)' : '(missing)');
+  }
+  return ok;
 }
 
 async function createTransporter() {
   const { host, port, user, pass } = getSmtpConfig();
+  console.log(`[email] Creating transporter — host:${host} port:${port} user:${user}`);
   const nodemailer = require('nodemailer');
   const transporter = nodemailer.createTransport({
     host, port,
@@ -28,6 +33,14 @@ async function createTransporter() {
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
   });
+
+  try {
+    await transporter.verify();
+    console.log('[email] ✓ SMTP connection verified');
+  } catch (err: any) {
+    console.error('[email] ✗ SMTP verify failed:', err.message || err);
+    throw err;
+  }
   return transporter;
 }
 
@@ -44,19 +57,17 @@ const EMAIL_STYLES = `
 `;
 
 export async function sendVerificationEmail(toEmail: string, token: string): Promise<void> {
-  if (!isSmtpConfigured()) {
-    console.warn('[email] SMTP not configured — skipping verification email for', toEmail);
-    return;
-  }
+  console.log('[email] sendVerificationEmail called for', toEmail);
+  if (!isSmtpConfigured()) return;
   const { frontendUrl, from } = getSmtpConfig();
   const link = `${frontendUrl}/verify-email?token=${token}`;
-  const transporter = await createTransporter();
-
-  await transporter.sendMail({
-    from,
-    to: toEmail,
-    subject: 'Verify your Podium account',
-    html: `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${EMAIL_STYLES}</style></head>
+  try {
+    const transporter = await createTransporter();
+    await transporter.sendMail({
+      from,
+      to: toEmail,
+      subject: 'Verify your Podium account',
+      html: `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${EMAIL_STYLES}</style></head>
 <body><div class="card">
   <div class="banner"></div>
   <div class="body">
@@ -68,23 +79,26 @@ export async function sendVerificationEmail(toEmail: string, token: string): Pro
     <div class="footer">If you didn't create a Podium account, you can safely ignore this email.</div>
   </div>
 </div></body></html>`,
-  });
+    });
+    console.log('[email] ✓ Verification email sent to', toEmail);
+  } catch (err: any) {
+    console.error('[email] ✗ Failed to send verification email to', toEmail, ':', err.message || err);
+    throw err;
+  }
 }
 
 export async function sendPasswordResetEmail(toEmail: string, token: string): Promise<void> {
-  if (!isSmtpConfigured()) {
-    console.warn('[email] SMTP not configured — skipping password reset email for', toEmail);
-    return;
-  }
+  console.log('[email] sendPasswordResetEmail called for', toEmail);
+  if (!isSmtpConfigured()) return;
   const { frontendUrl, from } = getSmtpConfig();
   const link = `${frontendUrl}/reset-password?token=${token}`;
-  const transporter = await createTransporter();
-
-  await transporter.sendMail({
-    from,
-    to: toEmail,
-    subject: 'Reset your Podium password',
-    html: `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${EMAIL_STYLES}</style></head>
+  try {
+    const transporter = await createTransporter();
+    await transporter.sendMail({
+      from,
+      to: toEmail,
+      subject: 'Reset your Podium password',
+      html: `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${EMAIL_STYLES}</style></head>
 <body><div class="card">
   <div class="banner"></div>
   <div class="body">
@@ -96,5 +110,10 @@ export async function sendPasswordResetEmail(toEmail: string, token: string): Pr
     <div class="footer">If you didn't request a password reset, you can safely ignore this email — your password won't change.</div>
   </div>
 </div></body></html>`,
-  });
+    });
+    console.log('[email] ✓ Password reset email sent to', toEmail);
+  } catch (err: any) {
+    console.error('[email] ✗ Failed to send password reset email to', toEmail, ':', err.message || err);
+    throw err;
+  }
 }
