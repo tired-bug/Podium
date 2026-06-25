@@ -106,9 +106,12 @@ router.post('/signup', async (req, res) => {
 
   // Send verification email (non-blocking)
   if (verificationToken) {
-    sendVerificationEmail(email, verificationToken).catch(err =>
-      console.error('[auth] Failed to send verification email:', err)
-    );
+    try {
+      await sendVerificationEmail(email, verificationToken);
+      console.log('[auth] Verification email dispatched to', email);
+    } catch (err: any) {
+      console.error('[auth] Failed to send verification email:', err?.message || err);
+    }
     return res.status(201).json({ message: 'Account created. Please check your email to verify your account.' });
   }
 
@@ -159,9 +162,12 @@ router.post('/resend-verification', async (req, res) => {
       UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?
     `).run(token, expires, user.id);
 
-    sendVerificationEmail(email, token).catch(err =>
-      console.error('[auth] Failed to resend verification email:', err)
-    );
+    try {
+      await sendVerificationEmail(email, token);
+      console.log('[auth] Resend verification email dispatched to', email);
+    } catch (err: any) {
+      console.error('[auth] Failed to resend verification email:', err?.message || err);
+    }
   }
 
   return res.json({ ok: true });
@@ -183,9 +189,12 @@ router.post('/forgot-password', async (req, res) => {
       UPDATE users SET password_reset_token = ?, password_reset_expires = ? WHERE id = ?
     `).run(token, expires, user.id);
 
-    sendPasswordResetEmail(email, token).catch(err =>
-      console.error('[auth] Failed to send password reset email:', err)
-    );
+    try {
+      await sendPasswordResetEmail(email, token);
+      console.log('[auth] Password reset email dispatched to', email);
+    } catch (err: any) {
+      console.error('[auth] Failed to send password reset email:', err?.message || err);
+    }
   }
 
   return res.json({ ok: true });
