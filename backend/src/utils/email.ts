@@ -23,28 +23,55 @@ function isSmtpConfigured(): boolean {
   return ok;
 }
 
+async function resolveIPv4(hostname: string): Promise<string | null> {
+  const dns = require('dns');
+  return new Promise((resolve) => {
+    // If it's already a literal IP, nothing to resolve.
+    if (require('net').isIP(hostname)) {
+      return resolve(hostname);
+    }
+    dns.resolve4(hostname, (err: any, addresses: string[]) => {
+      if (err || !addresses || !addresses.length) {
+        console.warn('[email] Could not resolve IPv4 address for', hostname, '— falling back to default resolution:', err?.message || 'no A records');
+        return resolve(null);
+      }
+      resolve(addresses[0]);
+    });
+  });
+}
+
 async function createTransporter() {
   const { host, port, user, pass } = getSmtpConfig();
   console.log(`[email] Creating transporter — host:${host} port:${port} user:${user}`);
   const nodemailer = require('nodemailer');
-  const dns = require('dns');
+
+  // Render's outbound networking does not reliably route IPv6 (AAAA records).
+  // Nodemailer's own DNS resolver considers IPv6 "supported" based on local
+  // network interfaces (which report an IPv6 interface even when it's not
+  // actually routable), so it can pick an unreachable IPv6 address and fail
+  // with ENETUNREACH. We work around this by resolving the IPv4 address
+  // ourselves and connecting to that literal IP, while keeping the real
+  // hostname as the TLS servername so certificate validation still matches.
+  const ipv4Host = await resolveIPv4(host);
 
   const transporter = nodemailer.createTransport({
-    host, port,
+    host: ipv4Host || host,
+    port,
     secure: port === 465,
     auth: { user, pass },
-    tls: { rejectUnauthorized: false },
-    // Render's outbound networking does not reliably route IPv6 (AAAA records),
-    // which causes ENETUNREACH against hosts like smtp.gmail.com that publish
-    // both A and AAAA records. Force IPv4-only resolution for the SMTP socket.
-    lookup: (hostname: string, options: any, callback: any) => {
-      dns.lookup(hostname, { ...options, family: 4 }, callback);
+    tls: {
+      rejectUnauthorized: false,
+      servername: host, // ensure SNI/cert check uses the real hostname even though we connect by IP
     },
     // Fail fast instead of hanging indefinitely if the network/host is unreachable.
     connectionTimeout: 15000, // time to establish the TCP connection
     greetingTimeout: 15000,   // time to receive the SMTP greeting after connecting
     socketTimeout: 20000,     // time to wait for any response before giving up
   });
+
+  if (ipv4Host) {
+    console.log(`[email] Resolved ${host} -> ${ipv4Host} (IPv4)`);
+  }
 
   // Note: transporter.verify() is intentionally omitted — Office365 SMTP
   // does not reliably support it and causes the connection to hang.
