@@ -34,13 +34,9 @@ async function createTransporter() {
     tls: { rejectUnauthorized: false },
   });
 
-  try {
-    await transporter.verify();
-    console.log('[email] ✓ SMTP connection verified');
-  } catch (err: any) {
-    console.error('[email] ✗ SMTP verify failed:', err.message || err);
-    throw err;
-  }
+  // Note: transporter.verify() is intentionally omitted — Office365 SMTP
+  // does not reliably support it and causes the connection to hang.
+  console.log('[email] ✓ Transporter created');
   return transporter;
 }
 
