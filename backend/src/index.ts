@@ -20,6 +20,7 @@ import settingsRouter, { healthHandler } from './routes/settings';
 import profileRouter from './routes/profile';
 import notificationsRouter from './routes/notifications';
 import providersRouter from './routes/providers';
+import finopsRouter from './routes/finops';
 import { startSyncService } from './services/SyncService';
 import { startAnomalyDetection } from './services/AnomalyDetectionService';
 
@@ -49,6 +50,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/profile', profileRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/providers', providersRouter);
+app.use('/api/finops', finopsRouter);
 
 const resourcesPath = (process as any).resourcesPath as string | undefined;
 const staticPaths = [

@@ -24,6 +24,7 @@ const SettingsPage = lazy(() => import('./pages/Settings').then(m => ({ default:
 const Profile      = lazy(() => import('./pages/Profile'));
 const Providers    = lazy(() => import('./pages/Providers'));
 const CloudDeploys = lazy(() => import('./pages/CloudDeployments'));
+const FinOps       = lazy(() => import('./pages/FinOps'));
 
 function PageLoader() {
   return (
@@ -46,6 +47,7 @@ const PROTECTED_ROUTES = [
   { path: '/profile',         el: <Profile /> },
   { path: '/providers',       el: <Providers /> },
   { path: '/cloud',           el: <CloudDeploys /> },
+  { path: '/finops',          el: <FinOps /> },
 ];
 
 export default function App() {
