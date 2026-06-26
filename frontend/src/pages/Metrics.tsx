@@ -1,119 +1,308 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Cloud, CheckCircle, XCircle, Clock, TrendingUp, Activity, Zap } from 'lucide-react';
 import { Card, SectionHeader, Skeleton, Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { MetricChart } from '../components/charts/MetricChart';
-import { useDeployments } from '../hooks/useDeployments';
+import { MetricChart, MiniSparkline } from '../components/charts/MetricChart';
 import api from '../lib/api';
 
-const TIME_RANGES = [
-  { label: '5m',  ms: 5 * 60 * 1000 },
-  { label: '15m', ms: 15 * 60 * 1000 },
-  { label: '1h',  ms: 60 * 60 * 1000 },
-  { label: '6h',  ms: 6 * 60 * 60 * 1000 },
-  { label: '24h', ms: 24 * 60 * 60 * 1000 },
-];
+const PROVIDER_COLORS: Record<string, string> = {
+  railway:  'var(--accent-purple)',
+  render:   'var(--accent-green)',
+  vercel:   'var(--accent-blue)',
+};
 
-const CHART_COLORS = ['var(--accent-blue)', 'var(--accent-green)', 'var(--accent-purple)', 'var(--accent-orange)'];
+const PROVIDER_LABELS: Record<string, string> = {
+  railway: 'Railway',
+  render:  'Render',
+  vercel:  'Vercel',
+};
 
-interface MetricPoint {
-  timestamp: number;
-  cpu: number;
-  memory: number;
-  network_in: number;
-  network_out: number;
-  deployment_id: string;
+interface TrendPoint {
+  date: string;
+  deployments: number;
+  successful: number;
+}
+
+interface DeploymentMetrics {
+  id: string;
+  name: string;
+  status: string;
+  url: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  buildDuration: number | null;
+  region: string | null;
+}
+
+interface ProviderMetrics {
+  provider: string;
+  total: number;
+  successful: number;
+  failed: number;
+  successRate: number;
+  avgBuildDuration: number | null;
+  deployFrequency: number;
+  uptime: number;
+  trend: TrendPoint[];
+  deployments: DeploymentMetrics[];
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return '—';
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function StatCard({
+  label, value, icon, color, sub,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+  color?: string;
+  sub?: string;
+}) {
+  return (
+    <div style={{
+      background: 'var(--bg-secondary)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-lg)',
+      padding: '14px 16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 4,
+      minWidth: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <span style={{ color: color || 'var(--text-muted)' }}>{icon}</span>
+        {label}
+      </div>
+      <div style={{ fontSize: '24px', fontWeight: 700, color: color || 'var(--text-primary)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{sub}</div>}
+    </div>
+  );
+}
+
+function ProviderSection({ metrics, expanded, onToggle }: {
+  metrics: ProviderMetrics;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const color = PROVIDER_COLORS[metrics.provider] || 'var(--accent-blue)';
+  const label = PROVIDER_LABELS[metrics.provider] || metrics.provider;
+
+  // Build chart data from trend
+  const trendData = metrics.trend.map(t => ({
+    timestamp: new Date(t.date).getTime(),
+    total: t.deployments,
+    successful: t.successful,
+    failed: t.deployments - t.successful,
+  }));
+
+  const sparkData = metrics.trend.map(t => t.deployments);
+
+  return (
+    <Card style={{ overflow: 'hidden', padding: 0 }}>
+      {/* Provider header */}
+      <div
+        onClick={onToggle}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 20px',
+          background: 'var(--bg-secondary)',
+          borderBottom: expanded ? '1px solid var(--border)' : 'none',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{
+          width: 10, height: 10, borderRadius: '50%',
+          background: color,
+          boxShadow: `0 0 6px ${color}88`,
+          flexShrink: 0,
+        }} />
+        <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)', flex: 1 }}>
+          {label}
+        </div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            {metrics.total} deployment{metrics.total !== 1 ? 's' : ''}
+          </div>
+          <Badge variant="status" value={metrics.successRate >= 80 ? 'live' : metrics.successRate >= 50 ? 'building' : 'failed'}>
+            {metrics.successRate}% success
+          </Badge>
+          <div style={{ width: 80, height: 28 }}>
+            <MiniSparkline data={sparkData} color={color} height={28} />
+          </div>
+          <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{expanded ? '▲' : '▼'}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* KPI row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            <StatCard
+              label="Uptime"
+              value={`${metrics.uptime}%`}
+              icon={<Activity size={12} />}
+              color={metrics.uptime >= 90 ? 'var(--accent-green)' : metrics.uptime >= 70 ? 'var(--accent-orange)' : 'var(--accent-red)'}
+              sub="Live / total"
+            />
+            <StatCard
+              label="Avg Build"
+              value={formatDuration(metrics.avgBuildDuration)}
+              icon={<Clock size={12} />}
+              color="var(--accent-blue)"
+              sub="Successful deploys"
+            />
+            <StatCard
+              label="Frequency"
+              value={metrics.deployFrequency === 0 ? '—' : `${metrics.deployFrequency}/day`}
+              icon={<Zap size={12} />}
+              color="var(--accent-purple)"
+              sub="30-day average"
+            />
+            <StatCard
+              label="Failed"
+              value={metrics.failed}
+              icon={<XCircle size={12} />}
+              color={metrics.failed > 0 ? 'var(--accent-red)' : 'var(--text-muted)'}
+              sub={`${metrics.successful} successful`}
+            />
+          </div>
+
+          {/* Trend chart */}
+          {trendData.length > 0 && trendData.some(d => d.total > 0) && (
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 10, fontWeight: 600 }}>
+                Deployment Trend (14 days)
+              </div>
+              <MetricChart
+                data={trendData}
+                lines={[
+                  { key: 'total', label: 'Total', color },
+                  { key: 'successful', label: 'Successful', color: 'var(--accent-green)' },
+                  { key: 'failed', label: 'Failed', color: 'var(--accent-red)' },
+                ]}
+                type="area"
+                unit=""
+                height={160}
+                yDomain={[0, 'auto']}
+              />
+            </div>
+          )}
+
+          {/* Per-deployment table */}
+          {metrics.deployments.length > 0 && (
+            <div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 8, fontWeight: 600 }}>
+                Deployments
+              </div>
+              <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--bg-tertiary)' }}>
+                      {['Name', 'Status', 'Build Time', 'Region', 'Last Updated'].map(h => (
+                        <th key={h} style={{ padding: '8px 14px', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: 'left', fontWeight: 600 }}>
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.deployments.map((dep, i) => (
+                      <tr key={dep.id} style={{ borderTop: i > 0 ? '1px solid var(--border-muted)' : 'none' }}>
+                        <td style={{ padding: '9px 14px', fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', maxWidth: 200 }}>
+                          {dep.url ? (
+                            <a href={dep.url} target="_blank" rel="noopener noreferrer"
+                              style={{ color: color, textDecoration: 'none', fontWeight: 600 }}
+                              title={dep.url}
+                            >
+                              {dep.name}
+                            </a>
+                          ) : dep.name}
+                        </td>
+                        <td style={{ padding: '9px 14px' }}>
+                          <Badge variant="status" value={dep.status}>{dep.status}</Badge>
+                        </td>
+                        <td style={{ padding: '9px 14px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {formatDuration(dep.buildDuration)}
+                        </td>
+                        <td style={{ padding: '9px 14px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          {dep.region || '—'}
+                        </td>
+                        <td style={{ padding: '9px 14px', fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                          {dep.updatedAt ? new Date(dep.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 export default function Metrics() {
-  const { deployments } = useDeployments();
-  const runningDeps = deployments.filter(d => d.status === 'running');
-
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [timeRange, setTimeRange] = useState(TIME_RANGES[2]);
-  const [metricsMap, setMetricsMap] = useState<Record<string, MetricPoint[]>>({});
-  const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-
-  
-  useEffect(() => {
-    if (selectedIds.length === 0 && runningDeps.length > 0) {
-      setSelectedIds(runningDeps.slice(0, 2).map(d => d.id));
-    }
-  }, [runningDeps]);
+  const [data, setData] = useState<ProviderMetrics[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [autoRefresh, setAutoRefresh] = useState(false);
 
   const fetchMetrics = useCallback(async () => {
-    if (selectedIds.length === 0) return;
     setLoading(true);
+    setError(null);
     try {
-      const from = Date.now() - timeRange.ms;
-      const resolution = timeRange.ms > 60 * 60 * 1000 ? '5m' : timeRange.ms > 15 * 60 * 1000 ? '1m' : 'raw';
-      const results = await Promise.all(
-        selectedIds.map(id =>
-          api.get(`/api/metrics/${id}?from=${from}&resolution=${resolution}`)
-            .then(r => ({ id, metrics: r.data.metrics || [], latest: r.data.latest }))
-            .catch(() => ({ id, metrics: [], latest: null }))
-        )
-      );
-      const map: Record<string, MetricPoint[]> = {};
-      for (const r of results) map[r.id] = r.metrics;
-      setMetricsMap(map);
+      const { data: result } = await api.get('/api/metrics');
+      setData(result);
+      // Auto-expand the first provider
+      if (result.length > 0) {
+        setExpanded(prev => {
+          const next = { ...prev };
+          if (!Object.values(next).some(Boolean)) {
+            next[result[0].provider] = true;
+          }
+          return next;
+        });
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err.message || 'Failed to load metrics');
     } finally {
       setLoading(false);
     }
-  }, [selectedIds, timeRange]);
+  }, []);
 
-  useEffect(() => {
-    fetchMetrics();
-  }, [fetchMetrics]);
+  useEffect(() => { fetchMetrics(); }, [fetchMetrics]);
 
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(fetchMetrics, 10000);
-    return () => clearInterval(interval);
-  }, [fetchMetrics, autoRefresh]);
+    const id = setInterval(fetchMetrics, 30_000);
+    return () => clearInterval(id);
+  }, [autoRefresh, fetchMetrics]);
 
-  const toggleDep = (id: string) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
-  };
-
-  
-  const buildChartData = (key: string): any[] => {
-    const allTimestamps = new Set<number>();
-    for (const id of selectedIds) {
-      for (const m of metricsMap[id] || []) allTimestamps.add(m.timestamp);
-    }
-
-    return Array.from(allTimestamps).sort().map(ts => {
-      const point: Record<string, number | string> = { timestamp: ts, cpu: 0, memory: 0, network_in: 0, network_out: 0, deployment_id: '' };
-      for (const id of selectedIds) {
-        const metric = (metricsMap[id] || []).find(m => m.timestamp === ts);
-        const dep = deployments.find(d => d.id === id);
-        const label = dep?.name || id.slice(0, 8);
-        (point as any)[label] = metric ? (metric as any)[key] ?? 0 : 0;
-      }
-      return point;
-    });
-  };
-
-  const lineConfigs = selectedIds.map((id, i) => {
-    const dep = deployments.find(d => d.id === id);
-    return { key: dep?.name || id.slice(0, 8), label: dep?.name || id.slice(0, 8), color: CHART_COLORS[i % CHART_COLORS.length] };
-  });
-
-  
-  const getLatest = (id: string) => {
-    const pts = metricsMap[id] || [];
-    return pts[pts.length - 1] || null;
-  };
+  // Aggregate totals across all providers
+  const totalDeps    = data.reduce((s, p) => s + p.total, 0);
+  const totalSuccess = data.reduce((s, p) => s + p.successful, 0);
+  const totalFailed  = data.reduce((s, p) => s + p.failed, 0);
+  const avgSuccess   = totalDeps > 0 ? Math.round((totalSuccess / totalDeps) * 100) : 0;
+  const avgBuild     = (() => {
+    const durations = data.filter(p => p.avgBuildDuration !== null).map(p => p.avgBuildDuration as number);
+    return durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
+  })();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <SectionHeader
         title="Metrics"
-        subtitle="Real-time resource monitoring"
+        subtitle="Cloud deployment analytics across providers"
         action={
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
@@ -125,109 +314,49 @@ export default function Metrics() {
         }
       />
 
-      {}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        {}
-        <div>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Time Range</div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {TIME_RANGES.map(r => (
-              <button key={r.label} onClick={() => setTimeRange(r)}
-                style={{
-                  padding: '4px 12px', borderRadius: 'var(--radius-md)',
-                  background: timeRange.label === r.label ? 'var(--accent-blue)' : 'var(--bg-tertiary)',
-                  color: timeRange.label === r.label ? '#fff' : 'var(--text-secondary)',
-                  border: `1px solid ${timeRange.label === r.label ? 'var(--accent-blue)' : 'var(--border)'}`,
-                  fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 100ms',
-                  fontFamily: 'var(--font-sans)',
-                }}>
-                {r.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {}
-        <div>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Deployments</div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {deployments.map((d, i) => {
-              const selected = selectedIds.includes(d.id);
-              const color = CHART_COLORS[selectedIds.indexOf(d.id) % CHART_COLORS.length];
-              return (
-                <button key={d.id} onClick={() => toggleDep(d.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '4px 12px', borderRadius: 'var(--radius-pill)',
-                    background: selected ? color + '22' : 'var(--bg-tertiary)',
-                    color: selected ? color : 'var(--text-secondary)',
-                    border: `1px solid ${selected ? color : 'var(--border)'}`,
-                    fontSize: '12px', cursor: 'pointer', fontFamily: 'var(--font-sans)',
-                    fontWeight: selected ? 600 : 400,
-                  }}>
-                  {selected && <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />}
-                  {d.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {}
-      {loading && Object.keys(metricsMap).length === 0 ? (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {[1, 2, 3, 4].map(i => <Card key={i}><Skeleton height={200} /></Card>)}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <Card>
-            <MetricChart data={buildChartData('cpu')} lines={lineConfigs} type="line" unit="%" height={200} title="CPU Usage (%)" yDomain={[0, 100]} />
-          </Card>
-          <Card>
-            <MetricChart data={buildChartData('memory')} lines={lineConfigs} type="line" unit=" MB" height={200} title="Memory Usage (MB)" />
-          </Card>
-          <Card>
-            <MetricChart data={buildChartData('network_in')} lines={lineConfigs} type="area" unit=" KB/s" height={200} title="Network In (KB/s)" />
-          </Card>
-          <Card>
-            <MetricChart data={buildChartData('network_out')} lines={lineConfigs} type="area" unit=" KB/s" height={200} title="Network Out (KB/s)" />
-          </Card>
+      {/* Global summary row */}
+      {!loading && data.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          <StatCard label="Total Deployments" value={totalDeps} icon={<Cloud size={12} />} color="var(--accent-blue)" sub={`${data.length} provider${data.length !== 1 ? 's' : ''}`} />
+          <StatCard label="Successful" value={totalSuccess} icon={<CheckCircle size={12} />} color="var(--accent-green)" sub="Across all providers" />
+          <StatCard label="Failed" value={totalFailed} icon={<XCircle size={12} />} color={totalFailed > 0 ? 'var(--accent-red)' : 'var(--text-muted)'} sub="Across all providers" />
+          <StatCard label="Success Rate" value={`${avgSuccess}%`} icon={<TrendingUp size={12} />} color={avgSuccess >= 80 ? 'var(--accent-green)' : avgSuccess >= 50 ? 'var(--accent-orange)' : 'var(--accent-red)'} sub={avgBuild !== null ? `Avg build: ${formatDuration(avgBuild)}` : 'No build data yet'} />
         </div>
       )}
 
-      {}
-      {selectedIds.length > 0 && (
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', fontSize: '13px', fontWeight: 600 }}>
-            Current Stats
+      {loading && data.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[1, 2, 3].map(i => (
+            <Card key={i}><Skeleton height={64} /></Card>
+          ))}
+        </div>
+      ) : error ? (
+        <Card>
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--accent-red)', fontSize: '14px' }}>
+            {error}
           </div>
-          <table style={{ width: '100%' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-secondary)' }}>
-                {['Deployment', 'Status', 'CPU', 'Memory', 'Net In', 'Net Out'].map(h => (
-                  <th key={h} style={{ padding: '8px 16px', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {selectedIds.map(id => {
-                const dep = deployments.find(d => d.id === id);
-                const latest = getLatest(id);
-                return (
-                  <tr key={id} style={{ borderTop: '1px solid var(--border-muted)' }}>
-                    <td style={{ padding: '10px 16px', fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)' }}>{dep?.name || id.slice(0, 8)}</td>
-                    <td style={{ padding: '10px 16px' }}><Badge variant="status" value={dep?.status || 'unknown'}>{dep?.status || 'unknown'}</Badge></td>
-                    <td style={{ padding: '10px 16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: (latest?.cpu || 0) > 80 ? 'var(--accent-red)' : 'var(--text-primary)' }}>{latest ? `${latest.cpu.toFixed(1)}%` : '—'}</td>
-                    <td style={{ padding: '10px 16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: (latest?.memory || 0) > 800 ? 'var(--accent-orange)' : 'var(--text-primary)' }}>{latest ? `${latest.memory.toFixed(0)} MB` : '—'}</td>
-                    <td style={{ padding: '10px 16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)' }}>{latest ? `${latest.network_in.toFixed(1)} KB/s` : '—'}</td>
-                    <td style={{ padding: '10px 16px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text-secondary)' }}>{latest ? `${latest.network_out.toFixed(1)} KB/s` : '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </Card>
+      ) : data.length === 0 ? (
+        <Card>
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <Cloud size={36} style={{ color: 'var(--text-muted)', marginBottom: 12 }} />
+            <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>No deployment data yet</div>
+            <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+              Connect a provider and deploy something to see metrics here.
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {data.map(metrics => (
+            <ProviderSection
+              key={metrics.provider}
+              metrics={metrics}
+              expanded={!!expanded[metrics.provider]}
+              onToggle={() => setExpanded(prev => ({ ...prev, [metrics.provider]: !prev[metrics.provider] }))}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

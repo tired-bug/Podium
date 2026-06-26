@@ -24,23 +24,24 @@ interface MetricChartProps {
   yDomain?: [number | 'auto', number | 'auto'];
 }
 
-const CustomTooltip = ({ active, payload, label, unit }: any) => {
+const CustomTooltip = ({ active, payload, label, unit, isDate }: any) => {
   if (!active || !payload?.length) return null;
+  const displayLabel = isDate
+    ? new Date(label).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : formatDate(label, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)',
       borderRadius: 'var(--radius-md)', padding: '8px 12px',
       boxShadow: 'var(--shadow-dropdown)', fontSize: '12px',
     }}>
-      <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>
-        {formatDate(label, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-      </div>
+      <div style={{ color: 'var(--text-muted)', marginBottom: 4 }}>{displayLabel}</div>
       {payload.map((p: any) => (
         <div key={p.dataKey} style={{ color: p.color, display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
           <span style={{ color: 'var(--text-secondary)' }}>{p.name}:</span>
           <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-            {typeof p.value === 'number' ? p.value.toFixed(1) : p.value}{unit}
+            {typeof p.value === 'number' ? p.value.toFixed(p.value % 1 === 0 ? 0 : 1) : p.value}{unit}
           </span>
         </div>
       ))}
@@ -52,11 +53,18 @@ export function MetricChart({
   data, lines, type = 'line', unit = '', height = 200, title, yDomain,
 }: MetricChartProps) {
   const ChartComponent = type === 'area' ? AreaChart : LineChart;
-  const DataComponent = type === 'area' ? Area : Line;
+
+  // Detect if these are date-only timestamps (midnight boundaries) vs. intra-day timestamps
+  const isDateLevel = data.length > 1 && data.every(d => {
+    const date = new Date(d.timestamp);
+    return date.getHours() === 0 && date.getMinutes() === 0;
+  });
 
   const formattedData = data.map(d => ({
     ...d,
-    _time: new Date(d.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    _label: isDateLevel
+      ? new Date(d.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : new Date(d.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
   }));
 
   return (
@@ -70,10 +78,11 @@ export function MetricChart({
         <ChartComponent data={formattedData}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border-muted)" vertical={false} />
           <XAxis
-            dataKey="_time"
+            dataKey="_label"
             tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
             tickLine={false}
             axisLine={{ stroke: 'var(--border)' }}
+            interval="preserveStartEnd"
           />
           <YAxis
             tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
@@ -81,8 +90,9 @@ export function MetricChart({
             axisLine={false}
             domain={yDomain || ['auto', 'auto']}
             tickFormatter={v => `${v}${unit}`}
+            allowDecimals={false}
           />
-          <Tooltip content={<CustomTooltip unit={unit} />} />
+          <Tooltip content={<CustomTooltip unit={unit} isDate={isDateLevel} />} />
           {lines.length > 1 && (
             <Legend
               formatter={(value) => (
@@ -127,10 +137,7 @@ export function MetricChart({
 export function MiniSparkline({ data, color = 'var(--accent-blue)', height = 40 }: {
   data: number[]; color?: string; height?: number;
 }) {
-  const points = data.map((v, i) => ({
-    v,
-    i,
-  }));
+  const points = data.map((v, i) => ({ v, i }));
   const max = Math.max(...data, 1);
   return (
     <ResponsiveContainer width="100%" height={height}>
