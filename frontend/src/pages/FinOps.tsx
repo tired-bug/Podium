@@ -283,7 +283,7 @@ export default function FinOps() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [tab, setTab]         = useState<'overview' | 'recommendations' | 'providers'>('overview');
-  const { addToast } = useToast();
+  const { toast } = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -294,11 +294,11 @@ export default function FinOps() {
     } catch (e) {
       const msg = parseApiError(e);
       setError(msg);
-      addToast(msg, 'error');
+      toast(msg, "error");
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -393,8 +393,11 @@ export default function FinOps() {
               </div>
 
               {/* Build timeline */}
-              <Card title="Deploy Activity (30 days)"
-                icon={<BarChart2 size={14} color="var(--accent)" />}>
+              <Card>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <BarChart2 size={14} color="var(--accent)" />
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Deploy Activity (30 days)</span>
+                </div>
                 {data.buildTimeline.length > 0 ? (
                   <div>
                     <MiniBarChart data={data.buildTimeline} />
@@ -414,8 +417,11 @@ export default function FinOps() {
 
               {/* Top recommendations preview */}
               {data.recommendations.length > 0 && (
-                <Card title="Top Recommendations"
-                  icon={<Zap size={14} color="var(--accent-orange)" />}>
+                <Card>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <Zap size={14} color="var(--accent-orange)" />
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Top Recommendations</span>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                     {data.recommendations.slice(0, 3).map((r, i) => (
                       <RecommendationCard key={i} r={r} index={i} />
@@ -437,7 +443,7 @@ export default function FinOps() {
               )}
 
               {data.recommendations.length === 0 && (
-                <Card title="Recommendations">
+                <Card>
                   <EmptyState
                     icon={<CheckCircle size={28} color="var(--accent-green)" />}
                     title="All clear"

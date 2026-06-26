@@ -48,6 +48,7 @@ const PROTECTED_ROUTES = [
   { path: '/providers',       el: <Providers /> },
   { path: '/cloud',           el: <CloudDeploys /> },
   { path: '/finops',          el: <FinOps /> },
+  { path: '/finops',          el: <FinOps /> },
 ];
 
 export default function App() {
