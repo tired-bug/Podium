@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, RefreshCw, Trash2, ExternalLink, Terminal, ChevronRight,
-  Globe, GitBranch, Settings2, CheckCircle,
+  Globe, GitBranch, Settings2, CheckCircle, Github,
   Eye, EyeOff, X, AlertTriangle, Play, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, SectionHeader, Skeleton, Spinner } from '../components/ui/Badge';
@@ -290,8 +290,9 @@ function ProviderCard({
 
 // ── Deploy Wizard ─────────────────────────────────────────────────────────────
 
-type Step = 'provider' | 'project' | 'env' | 'review';
+type Step = 'github' | 'provider' | 'project' | 'env' | 'review';
 const STEPS: { id: Step; label: string; icon: React.ReactNode }[] = [
+  { id: 'github',   label: 'Repository', icon: <Github size={13} /> },
   { id: 'provider', label: 'Provider', icon: <Globe size={13} /> },
   { id: 'project',  label: 'Project',  icon: <GitBranch size={13} /> },
   { id: 'env',      label: 'Environment', icon: <Settings2 size={13} /> },
@@ -304,6 +305,7 @@ const VERCEL_FRAMEWORKS = ['nextjs', 'create-react-app', 'vite', 'vue', 'svelte'
 
 const EMPTY_FORM = {
   provider: '',
+  selectedRepoFullName: '',
   name: '', repoUrl: '', branch: 'main',
   envVars: [{ key: '', value: '' }],
   renderOwnerId: '', renderRuntime: 'node', renderRegion: 'oregon', renderPlan: 'free',
@@ -320,11 +322,15 @@ function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
 }) {
   const { success, error: showError } = useToast();
   const navigate = useNavigate();
-  const [step, setStep] = useState(initialProvider ? 1 : 0);
+  const [step, setStep] = useState(0);
   const [form, setForm] = useState({ ...EMPTY_FORM, provider: initialProvider || '' });
   const [showVals, setShowVals] = useState<Record<number, boolean>>({});
   const [deploying, setDeploying] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [ghAccount, setGhAccount] = useState<{ connected: boolean; github_login?: string; avatar_url?: string } | null>(null);
+  const [ghRepos, setGhRepos] = useState<Array<{ id: number; full_name: string; name: string; default_branch: string; private: boolean; language: string; description: string }>>([]);
+  const [ghRepoSearch, setGhRepoSearch] = useState('');
+  const [loadingGhRepos, setLoadingGhRepos] = useState(false);
   const [githubRepos, setGithubRepos] = useState<Array<{ fullName: string; defaultBranch: string }>>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [renderOwners, setRenderOwners] = useState<Array<{ id: string; name: string }>>([]);
@@ -337,6 +343,22 @@ function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
   const stepId = STEPS[step].id;
   const connectedProviders = providers.filter(p => p.connected);
   const selectedProvider = providers.find(p => p.id === form.provider);
+
+  useEffect(() => {
+    // Load GitHub account info when wizard opens
+    api.get('/api/github/account').then(r => {
+      setGhAccount(r.data);
+      if (r.data?.connected) {
+        setLoadingGhRepos(true);
+        api.get('/api/github/user-repos')
+          .then(rv => setGhRepos(rv.data || []))
+          .catch(() => {})
+          .finally(() => setLoadingGhRepos(false));
+      }
+    }).catch(() => {});
+    // Pre-fill provider if initialProvider given, skip to step 1
+    if (initialProvider) setStep(1);
+  }, []);
 
   useEffect(() => {
     if (!form.provider) return;
@@ -387,8 +409,9 @@ function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
-    if (step === 0 && !form.provider) e.provider = 'Select a provider';
-    if (step === 1) {
+    // step 0 = github (repo selection optional — user can proceed without)
+    if (step === 1 && !form.provider) e.provider = 'Select a provider';
+    if (step === 2) {
       if (form.provider === 'render') {
         if (!form.name) e.name = 'Service name is required';
         if (!form.renderOwnerId) e.renderOwnerId = 'Owner ID is required';
@@ -483,6 +506,85 @@ function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
         </div>
 
         <div style={{ padding: '0 24px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {stepId === 'github' && (
+            <>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                Select a GitHub repository to deploy, or skip to enter a URL manually.
+              </div>
+              {!ghAccount?.connected ? (
+                <div style={{ padding: '20px', textAlign: 'center', background: 'var(--bg-tertiary)', borderRadius: 'var(--r-lg)', border: '1px solid var(--border)' }}>
+                  <Github size={28} color="var(--text-muted)" style={{ marginBottom: 10 }} />
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>No GitHub account connected</div>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 14 }}>
+                    Connect a GitHub Personal Access Token on the GitHub page to browse your repos here.
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                    <Button size="sm" variant="secondary" onClick={() => { onClose(); window.location.href = '/github'; }}>Go to GitHub Settings</Button>
+                    <Button size="sm" variant="ghost" onClick={next}>Skip — enter URL manually</Button>
+                  </div>
+                </div>
+              ) : loadingGhRepos ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[1,2,3].map(i => <div key={i} style={{ height: 56, background: 'var(--bg-tertiary)', borderRadius: 'var(--r-md)', animation: 'pulse 1.5s infinite' }} />)}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    {ghAccount.avatar_url && <img src={ghAccount.avatar_url} alt="" style={{ width: 20, height: 20, borderRadius: '50%' }} />}
+                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>@{ghAccount.github_login} · {ghRepos.length} repos</span>
+                    <input
+                      value={ghRepoSearch}
+                      onChange={e => setGhRepoSearch(e.target.value)}
+                      placeholder="Filter…"
+                      style={{ marginLeft: 'auto', padding: '5px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', outline: 'none', width: 160 }}
+                    />
+                  </div>
+                  <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {ghRepos
+                      .filter(r => !ghRepoSearch || r.full_name.toLowerCase().includes(ghRepoSearch.toLowerCase()))
+                      .slice(0, 50)
+                      .map(r => {
+                        const selected = form.selectedRepoFullName === r.full_name;
+                        return (
+                          <button key={r.id}
+                            onClick={() => {
+                              upd('selectedRepoFullName', r.full_name);
+                              upd('repoUrl', `https://github.com/${r.full_name}`);
+                              upd('branch', r.default_branch);
+                              if (!form.name) upd('name', r.name);
+                              if (form.provider === 'railway' && !form.railwayProjectName) upd('railwayProjectName', r.name);
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: selected ? 'var(--accent-blue-dim)' : 'var(--bg-tertiary)', border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--border)'}`, borderRadius: 'var(--r-md)', cursor: 'pointer', textAlign: 'left', fontFamily: 'var(--font-sans)', transition: 'all 100ms' }}
+                          >
+                            {r.private
+                              ? <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--accent-orange)"><path d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1zm2-2a2 2 0 1 1 4 0v2H6V5z"/></svg>
+                              : <svg width="12" height="12" viewBox="0 0 16 16" fill="var(--text-muted)"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8V1.5Z"/></svg>
+                            }
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.full_name}</div>
+                              {r.description && <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</div>}
+                            </div>
+                            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{r.default_branch}</span>
+                            {selected && <CheckCircle size={13} color="var(--accent-blue)" style={{ flexShrink: 0 }} />}
+                          </button>
+                        );
+                      })
+                    }
+                  </div>
+                  {form.selectedRepoFullName && (
+                    <div style={{ padding: '8px 12px', background: 'var(--accent-blue-dim)', border: '1px solid var(--accent-blue)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--accent-blue-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <CheckCircle size={12} />
+                      Selected: <strong>{form.selectedRepoFullName}</strong> ({form.branch})
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    Or skip and enter the repository URL manually on the next step.
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
           {stepId === 'provider' && (
             <>
               <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Choose where to deploy. Only connected providers are available.</div>

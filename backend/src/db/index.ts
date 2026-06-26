@@ -202,6 +202,8 @@ async function applyMigrationsToTurso() {
     `ALTER TABLE users ADD COLUMN email_verification_expires TEXT`,
     `ALTER TABLE users ADD COLUMN password_reset_token TEXT`,
     `ALTER TABLE users ADD COLUMN password_reset_expires TEXT`,
+    // GitHub account PAT table
+    `CREATE TABLE IF NOT EXISTS github_accounts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, token TEXT NOT NULL, github_login TEXT NOT NULL, github_name TEXT, avatar_url TEXT, scopes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`,
   ];
 
   for (const sql of migrations) {
@@ -369,6 +371,17 @@ function getSchemaSQL(): string {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS github_accounts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE,
+      token TEXT NOT NULL,
+      github_login TEXT NOT NULL,
+      github_name TEXT,
+      avatar_url TEXT,
+      scopes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS github_repos (
       id TEXT PRIMARY KEY,
       repo_url TEXT NOT NULL UNIQUE,
@@ -441,6 +454,8 @@ function applyMigrations() {
     `ALTER TABLE users ADD COLUMN email_verification_expires TEXT`,
     `ALTER TABLE users ADD COLUMN password_reset_token TEXT`,
     `ALTER TABLE users ADD COLUMN password_reset_expires TEXT`,
+    // GitHub account PAT table (idempotent CREATE)
+    `CREATE TABLE IF NOT EXISTS github_accounts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, token TEXT NOT NULL, github_login TEXT NOT NULL, github_name TEXT, avatar_url TEXT, scopes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`,
   ];
   for (const sql of migrations) {
     try {
