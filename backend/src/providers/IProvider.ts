@@ -53,7 +53,6 @@ export interface ProviderLog {
 export interface IProvider {
   readonly id: string;        // e.g. 'render'
   readonly name: string;      // e.g. 'Render'
-  readonly isDemo: boolean;
 
   /** Validate credentials and establish connectivity */
   connect(credentials: Record<string, string>): Promise<{ ok: boolean; error?: string }>;

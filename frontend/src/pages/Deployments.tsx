@@ -486,9 +486,6 @@ function DeploymentCard({ dep, onAction }: { dep: Deployment; onAction: () => vo
               onClick={() => navigate(`/deployments/${dep.id}`)}
             >{dep.name}</span>
             <Badge variant="status" value={dep.status}>{dep.status}</Badge>
-            {!dep.container_id && dep.status !== 'pending' && (
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '1px 6px', borderRadius: 'var(--r-pill)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>demo</span>
-            )}
           </div>
           {dep.repo_url && <div style={{ fontSize: '12px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dep.repo_url}</div>}
           <div style={{ display: 'flex', gap: 12, marginTop: 6, flexWrap: 'wrap' }}>

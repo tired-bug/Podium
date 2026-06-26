@@ -358,14 +358,14 @@ export default function AIAssistant() {
             <div style={{ textAlign: 'center' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>Podium AI</h2>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', maxWidth: 360, lineHeight: 1.6 }}>
-                Your AI DevOps assistant. Ask about deployments, analyze logs, troubleshoot containers, or get optimization tips.
+                Your AI DevOps assistant. Ask about deployments, analyze logs, troubleshoot issues, or get optimization tips.
               </p>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, maxWidth: 500, width: '100%' }}>
               {[
-                'Why is my container failing to start?',
-                'How do I optimize Docker image size?',
-                'Explain Kubernetes vs Docker Swarm',
+                'Why is my Railway deployment failing?',
+                'How do I set environment variables on Render?',
+                'Explain blue-green vs canary deployments',
                 'Best practices for CI/CD pipelines',
               ].map(prompt => (
                 <button key={prompt} onClick={() => { createConversation().then(() => { setInput(prompt); }); }}

@@ -164,9 +164,6 @@ export async function initDb(): Promise<void> {
   // Print startup diagnostics
   await printDiagnostics();
 
-  // Seed demo data only in development and only if no real data exists
-  if (process.env.NODE_ENV === 'development') seedDemoData();
-
   console.log(`[db] ✓ Ready — ${_useTurso ? 'Turso' : 'local SQLite'} @ ${dbPath}`);
 }
 
@@ -224,7 +221,7 @@ async function syncFromTurso() {
   const TABLES = [
     'users', 'invites', 'deployments', 'cloud_deployments',
     'metrics', 'build_logs', 'ai_conversations', 'anomalies',
-    'settings', 'selfhosted_deployments', 'github_repos',
+    'settings', 'github_repos',
     'user_profiles', 'notifications', 'domain_bindings',
   ];
 
@@ -372,22 +369,6 @@ function getSchemaSQL(): string {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS selfhosted_deployments (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      source_type TEXT NOT NULL DEFAULT 'docker',
-      docker_image TEXT,
-      repo_url TEXT,
-      branch TEXT DEFAULT 'main',
-      port INTEGER,
-      container_port INTEGER DEFAULT 80,
-      env_json TEXT NOT NULL DEFAULT '{}',
-      status TEXT NOT NULL DEFAULT 'queued',
-      url TEXT,
-      logs TEXT NOT NULL DEFAULT '[]',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
     CREATE TABLE IF NOT EXISTS github_repos (
       id TEXT PRIMARY KEY,
       repo_url TEXT NOT NULL UNIQUE,
@@ -483,10 +464,6 @@ function applyDefaults() {
     ['azure_resource_group', 'podium-rg'],
     ['azure_location', 'eastus'],
     ['aws_default_region', 'us-east-1'],
-    ['selfhosted_domain', 'localhost'],
-    ['cloudflare_tunnel_id', ''],
-    ['cloudflare_tunnel_token', ''],
-    ['cloudflare_tunnel_domain', ''],
     // app_initialized is NOT set here — it is only set after first admin creation
   ];
   for (const [k, v] of defaults) stmt.run(k, v);
@@ -508,38 +485,4 @@ export function ensureExtendedSchema(): void {
   // no-op kept for compatibility
 }
 
-function seedDemoData(): void {
-  // Only seed if no users exist (truly first run) AND app is not initialized
-  const userCount = (_local.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c;
-  if (userCount > 0) return;
 
-  const row = _local.prepare('SELECT COUNT(*) as c FROM deployments').get() as { c: number };
-  if (row.c > 0) return;
-
-  const { v4: uuid } = require('uuid');
-  const demos = [
-    { id: uuid(), name: 'api-gateway',    status: 'running', repo_url: 'https://github.com/example/api-gateway',    branch: 'main', image: '' },
-    { id: uuid(), name: 'frontend-app',   status: 'running', repo_url: 'https://github.com/example/frontend-app',   branch: 'main', image: '' },
-    { id: uuid(), name: 'auth-service',   status: 'stopped', repo_url: 'https://github.com/example/auth-service',   branch: 'main', image: '' },
-    { id: uuid(), name: 'worker-service', status: 'failed',  repo_url: 'https://github.com/example/worker-service', branch: 'main', image: '' },
-  ];
-
-  const ins = _local.prepare('INSERT OR IGNORE INTO deployments (id, name, status, repo_url, branch, image) VALUES (?, ?, ?, ?, ?, ?)');
-  for (const d of demos) ins.run(d.id, d.name, d.status, d.repo_url, d.branch, d.image);
-
-  const mIns = _local.prepare('INSERT INTO metrics (deployment_id, timestamp, cpu, memory, network_in, network_out) VALUES (?, ?, ?, ?, ?, ?)');
-  const now = Date.now();
-  for (const d of demos.filter(x => x.status === 'running')) {
-    for (let i = 60; i >= 0; i--) {
-      mIns.run(d.id, now - i * 60_000,
-        +(Math.random() * 40 + 10).toFixed(2),
-        +(Math.random() * 300 + 80).toFixed(2),
-        +(Math.random() * 20).toFixed(2),
-        +(Math.random() * 10).toFixed(2),
-      );
-    }
-  }
-
-  const lIns = _local.prepare('INSERT INTO build_logs (deployment_id, level, message) VALUES (?, ?, ?)');
-  for (const d of demos) lIns.run(d.id, 'info', `Deployment "${d.name}" created (demo mode)`);
-}

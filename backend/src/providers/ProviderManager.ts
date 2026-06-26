@@ -2,14 +2,11 @@ import { IProvider, DeployOptions, DeployResult, ProviderStatus, ProviderLog } f
 import { RenderProvider } from './render/RenderProvider';
 import { RailwayProvider } from './railway/RailwayProvider';
 import { VercelProvider } from './vercel/VercelProvider';
-import { AwsProvider, AzureProvider, GcpProvider } from './demo/DemoProviders';
 
 export interface ProviderMeta {
   id: string;
   name: string;
   description: string;
-  isDemo: boolean;
-  tier: 'free' | 'enterprise_demo';
   capabilities: string[];
   credentialKeys: Array<{ key: string; label: string; placeholder: string; required: boolean; masked?: boolean; hint?: string }>;
   regions?: string[];
@@ -17,7 +14,7 @@ export interface ProviderMeta {
 
 export const PROVIDER_META: Record<string, ProviderMeta> = {
   render: {
-    id: 'render', name: 'Render', tier: 'free', isDemo: false,
+    id: 'render', name: 'Render',
     description: 'Deploy web services, static sites, and databases with zero DevOps on Render\'s global infrastructure.',
     capabilities: ['Web Services', 'Static Sites', 'Databases', 'Cron Jobs', 'Private Services'],
     credentialKeys: [
@@ -28,7 +25,7 @@ export const PROVIDER_META: Record<string, ProviderMeta> = {
     regions: ['oregon', 'ohio', 'virginia', 'frankfurt', 'singapore'],
   },
   railway: {
-    id: 'railway', name: 'Railway', tier: 'free', isDemo: false,
+    id: 'railway', name: 'Railway',
     description: 'Ship code instantly. Railway handles your infrastructure so you can focus on your product.',
     capabilities: ['Auto-deploy from Git', 'Databases', 'Private Networking', 'Cron Jobs', 'Volume Storage'],
     credentialKeys: [
@@ -39,7 +36,7 @@ export const PROVIDER_META: Record<string, ProviderMeta> = {
     regions: ['us-west1', 'us-east4', 'europe-west4', 'asia-southeast1'],
   },
   vercel: {
-    id: 'vercel', name: 'Vercel', tier: 'free', isDemo: false,
+    id: 'vercel', name: 'Vercel',
     description: 'Deploy frontends and serverless functions instantly with the best DX and global edge network.',
     capabilities: ['Edge Network', 'Serverless Functions', 'Preview Deployments', 'Analytics', 'DX Platform'],
     credentialKeys: [
@@ -47,36 +44,6 @@ export const PROVIDER_META: Record<string, ProviderMeta> = {
       { key: 'vercel_team_id', label: 'Team ID (optional)', placeholder: 'team_xxxxxxxxxxxx', required: false, hint: 'Required for team deployments. Leave empty for personal account. Found in Team Settings → General.' },
     ],
     regions: ['iad1', 'sfo1', 'fra1', 'sin1', 'hnd1'],
-  },
-  aws: {
-    id: 'aws', name: 'AWS', tier: 'enterprise_demo', isDemo: true,
-    description: 'Amazon Web Services — full-featured enterprise cloud with 200+ services. Demo mode shows architecture planning and cost estimation.',
-    capabilities: ['Architecture Planning', 'Cost Estimation', 'EC2', 'ECS/Fargate', 'Lambda', 'RDS', 'S3'],
-    credentialKeys: [
-      { key: 'aws_access_key_id', label: 'Access Key ID', placeholder: 'AKIAIOSFODNN7EXAMPLE', required: true, masked: false },
-      { key: 'aws_secret_access_key', label: 'Secret Access Key', placeholder: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', required: true, masked: true },
-      { key: 'aws_region', label: 'Region', placeholder: 'us-east-1', required: false },
-    ],
-  },
-  azure: {
-    id: 'azure', name: 'Azure', tier: 'enterprise_demo', isDemo: true,
-    description: 'Microsoft Azure — enterprise cloud platform. Demo mode shows architecture planning and cost estimation.',
-    capabilities: ['Architecture Planning', 'Cost Estimation', 'Container Instances', 'AKS', 'App Service', 'Functions'],
-    credentialKeys: [
-      { key: 'azure_subscription_id', label: 'Subscription ID', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', required: true },
-      { key: 'azure_client_id', label: 'Client ID', placeholder: 'App registration client ID', required: true },
-      { key: 'azure_client_secret', label: 'Client Secret', placeholder: 'App registration secret', required: true, masked: true },
-      { key: 'azure_tenant_id', label: 'Tenant ID', placeholder: 'Azure AD tenant ID', required: true },
-    ],
-  },
-  gcp: {
-    id: 'gcp', name: 'Google Cloud', tier: 'enterprise_demo', isDemo: true,
-    description: 'Google Cloud Platform — data and AI-first enterprise cloud. Demo mode shows architecture planning and cost estimation.',
-    capabilities: ['Architecture Planning', 'Cost Estimation', 'Cloud Run', 'GKE', 'Cloud Functions', 'BigQuery'],
-    credentialKeys: [
-      { key: 'gcp_project_id', label: 'Project ID', placeholder: 'my-gcp-project', required: true },
-      { key: 'gcp_service_account_key', label: 'Service Account Key (JSON)', placeholder: '{"type": "service_account", ...}', required: true, masked: true },
-    ],
   },
 };
 
@@ -87,9 +54,6 @@ class ProviderManager {
     this.register(new RenderProvider());
     this.register(new RailwayProvider());
     this.register(new VercelProvider());
-    this.register(new AwsProvider());
-    this.register(new AzureProvider());
-    this.register(new GcpProvider());
   }
 
   register(provider: IProvider): void {

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   Globe, Plus, Trash2, ExternalLink, RefreshCw, Copy, CheckCircle,
-  AlertCircle, Clock, Rocket, Wifi, WifiOff, ChevronRight, Activity,
-  Server, Cloud, Package,
+  Clock, Rocket, Wifi, WifiOff, ChevronRight,
+  Server, Cloud,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, SectionHeader, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -16,12 +16,6 @@ import api from '../lib/api';
 
 /* ── Provider logos as inline SVGs ─────────────────────────────────────── */
 const LOGOS: Record<string, React.ReactNode> = {
-  docker: (
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
-      <path d="M13.5 11H15v1.5h-1.5V11zm-3 0H12v1.5h-1.5V11zm-3 0H9v1.5H7.5V11zM12 8H13.5v1.5H12V8zm-3 0H10.5v1.5H9V8zm3-3H13.5v1.5H12V5zm-3 0H10.5v1.5H9V5z" fill="#2496ED"/>
-      <path d="M22.7 11.3c-.4-.3-1.3-.4-2-.3-.1-.7-.5-1.3-1.1-1.7l-.4-.2-.2.4c-.3.5-.4 1.3-.3 1.9.1.3.2.6.4.9-.3.2-.9.4-1.7.4H2c-.1.6-.1 1.3.1 1.9.2.7.6 1.3 1.1 1.7 1.1.7 3 1 5.3.9.9 0 1.9-.1 2.8-.3.4-.1 1.1-.3 1.5-.6.6.4 1.3.6 2 .6h.3l.2-.3c.3-.5.4-1.3.3-2l-.1-.5c.4.1.9.1 1.3 0 .5-.1.9-.4 1.1-.7l.2-.4-.4-.2z" fill="#2496ED"/>
-    </svg>
-  ),
   aws: (
     <svg viewBox="0 0 24 24" width="22" height="22">
       <path d="M6.76 10.55c0 .22.02.4.07.53.05.13.12.27.22.42.04.05.05.1.05.15 0 .07-.04.14-.13.21l-.42.28c-.06.04-.12.06-.17.06-.07 0-.14-.03-.2-.1a2.1 2.1 0 01-.25-.33 5.4 5.4 0 01-.21-.42c-.53.63-1.2.94-2 .94-.57 0-1.03-.16-1.36-.49-.33-.33-.5-.76-.5-1.3 0-.57.2-1.03.6-1.38.4-.35.94-.53 1.61-.53.22 0 .45.02.69.06.24.04.49.1.75.18V8.9c0-.5-.1-.85-.32-1.07-.21-.21-.57-.31-1.08-.31-.23 0-.47.03-.72.09a5.3 5.3 0 00-.72.24 1.9 1.9 0 01-.23.09.4.4 0 01-.1.01c-.09 0-.13-.06-.13-.19v-.3c0-.1.01-.18.04-.22.03-.04.09-.09.18-.13.23-.12.5-.22.83-.3.33-.09.68-.13 1.05-.13.8 0 1.38.18 1.75.54.36.36.55.91.55 1.65v2.18zm-2.76.82c.21 0 .43-.04.66-.12.23-.08.43-.23.6-.43.1-.12.18-.25.22-.4.04-.15.06-.33.06-.54v-.26a5.4 5.4 0 00-.6-.11 4.8 4.8 0 00-.61-.04c-.44 0-.76.09-.97.27-.21.18-.32.43-.32.77 0 .32.08.55.25.71.16.16.39.24.7.24l.01-.09zm5.2.69c-.1 0-.17-.02-.22-.06-.05-.04-.09-.12-.13-.24L7.03 7.34a1.1 1.1 0 01-.05-.25c0-.1.05-.15.15-.15h.6c.11 0 .18.02.22.06.05.04.08.12.12.24l1.3 5.1 1.2-5.1c.03-.12.07-.2.12-.24.05-.04.13-.06.23-.06h.49c.11 0 .18.02.23.06.05.04.09.12.12.24l1.22 5.17 1.34-5.17c.04-.12.08-.2.12-.24.05-.04.12-.06.22-.06h.57c.1 0 .15.05.15.15 0 .03-.01.06-.01.1-.01.03-.02.08-.05.15l-1.87 5.42c-.04.12-.08.2-.13.24-.05.04-.12.06-.22.06h-.52c-.11 0-.18-.02-.23-.07-.05-.04-.09-.12-.12-.25l-1.2-5-1.2 5c-.03.13-.07.21-.12.25-.05.05-.13.07-.23.07h-.52zm9.97.14c-.31 0-.63-.04-.93-.11a2.78 2.78 0 01-.7-.27c-.1-.06-.17-.12-.2-.19a.48.48 0 01-.04-.18v-.31c0-.13.05-.19.14-.19.04 0 .07 0 .11.02.04.01.09.03.15.06.2.09.42.16.65.21.24.05.47.07.71.07.38 0 .67-.07.87-.2.2-.13.31-.32.31-.57 0-.17-.05-.31-.16-.43-.11-.12-.32-.22-.62-.32l-.88-.27c-.45-.14-.78-.35-.99-.62a1.5 1.5 0 01-.31-.93c0-.27.06-.51.17-.72.12-.21.27-.39.47-.54.2-.15.43-.26.69-.33.26-.07.54-.11.83-.11.15 0 .3.01.45.03.16.02.3.05.44.08.14.04.27.08.39.12.12.05.21.09.28.14.09.06.16.12.19.19.04.07.05.15.05.26v.29c0 .13-.05.2-.14.2a.62.62 0 01-.22-.07 2.68 2.68 0 00-1.14-.24c-.34 0-.6.06-.78.17-.18.12-.27.29-.27.53 0 .17.06.32.18.43.12.12.34.23.67.33l.86.27c.44.14.76.34.96.6.2.26.3.56.3.9 0 .28-.06.53-.17.75-.12.22-.27.41-.48.57-.21.16-.45.28-.74.36-.3.09-.62.13-.96.13z" fill="#FF9900"/>
@@ -58,24 +52,10 @@ const LOGOS: Record<string, React.ReactNode> = {
       <path d="M6.8 12l2.6 4.8h5.2l2.6-4.8" fill="#34A853" opacity=".5"/>
     </svg>
   ),
-  selfhosted: (
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none">
-      <rect x="3" y="4" width="18" height="8" rx="2" stroke="#22c55e" strokeWidth="1.5"/>
-      <rect x="3" y="14" width="18" height="6" rx="2" stroke="#22c55e" strokeWidth="1.5"/>
-      <circle cx="7" cy="8" r="1" fill="#22c55e"/>
-      <circle cx="7" cy="17" r="1" fill="#22c55e"/>
-    </svg>
-  ),
 };
 
 /* ── Cloud providers list ───────────────────────────────────────────────── */
 const PROVIDERS = [
-  {
-    id: 'docker',    label: 'Docker Desktop', color: '#2496ED', statusKey: 'docker',
-    description: 'Run containers locally via Docker Desktop socket',
-    docsUrl: 'https://docs.docker.com/desktop/',
-    hint: 'Requires Docker Desktop to be running on this machine',
-  },
   {
     id: 'aws',       label: 'Amazon Web Services', color: '#FF9900', statusKey: 'aws',
     description: 'Deploy to AWS App Runner via ECS',
@@ -96,13 +76,13 @@ const PROVIDERS = [
   },
   {
     id: 'render',    label: 'Render', color: '#46E3B7', statusKey: 'render',
-    description: 'Deploy Docker containers — free tier available',
+    description: 'Deploy web services — free tier available',
     docsUrl: 'https://render.com/docs',
     hint: 'Needs API Key + Owner ID in Settings → Cloud',
   },
   {
     id: 'railway',   label: 'Railway', color: '#B39DDB', statusKey: 'railway',
-    description: 'Deploy from GitHub or Docker in seconds',
+    description: 'Deploy from GitHub in seconds',
     docsUrl: 'https://docs.railway.com',
     hint: 'Connect in Settings → Cloud',
   },
@@ -111,12 +91,6 @@ const PROVIDERS = [
     description: 'Deploy via Cloud Run or GKE',
     docsUrl: 'https://cloud.google.com/run',
     hint: 'Needs service account credentials in Settings → Cloud',
-  },
-  {
-    id: 'selfhosted', label: 'Podium Self-Hosted', color: '#22c55e', statusKey: 'podium',
-    description: 'Deploy directly to this machine with public tunnel',
-    docsUrl: 'https://github.com/podium',
-    hint: 'Optionally configure Cloudflare Tunnel in Settings → Cloud',
   },
 ];
 
@@ -157,12 +131,11 @@ function StatusDot({ status }: { status: string }) {
 }
 
 /* ── ProviderGrid ───────────────────────────────────────────────────────── */
-function ProviderGrid({ statuses, dockerStatus }: { statuses: ProviderStatus[]; dockerStatus: { available: boolean; version?: string } | null }) {
+function ProviderGrid({ statuses }: { statuses: ProviderStatus[] }) {
   const navigate = useNavigate();
 
   const getStatus = (pid: string): boolean => {
-    if (pid === 'docker') return dockerStatus?.available ?? false;
-    const s = statuses.find(s => s.id === pid || (pid === 'selfhosted' && s.id === 'podium'));
+    const s = statuses.find(s => s.id === pid);
     return s?.configured ?? false;
   };
 
@@ -196,7 +169,7 @@ function ProviderGrid({ statuses, dockerStatus }: { statuses: ProviderStatus[]; 
                 display: 'flex', alignItems: 'center', gap: 4,
               }}>
                 {connected ? <Wifi size={9} /> : <WifiOff size={9} />}
-                {connected ? (p.id === 'docker' && dockerStatus?.version ? `v${dockerStatus.version}` : 'Connected') : 'Not set up'}
+                {connected ? 'Connected' : 'Not set up'}
               </span>
             </div>
 
@@ -229,39 +202,6 @@ function ProviderGrid({ statuses, dockerStatus }: { statuses: ProviderStatus[]; 
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/* ── DockerStatusBanner ─────────────────────────────────────────────────── */
-function DockerStatusBanner({ status, onRetry }: { status: { available: boolean; version?: string } | null; onRetry: () => void }) {
-  if (!status) return null;
-
-  if (status.available) {
-    return (
-      <div style={{ padding: '12px 16px', background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 8px var(--accent-green)', flexShrink: 0 }} />
-        <div style={{ flex: 1, fontSize: '12px', color: 'var(--text-secondary)' }}>
-          <strong style={{ color: 'var(--accent-green)' }}>Docker Desktop is running</strong>
-          {status.version && <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>v{status.version}</span>}
-          {' — containers are available on this machine.'}
-        </div>
-        <Button size="sm" variant="ghost" onClick={onRetry} icon={<RefreshCw size={11} />}>Refresh</Button>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: '14px 16px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <AlertCircle size={16} color="var(--accent-orange)" style={{ flexShrink: 0, marginTop: 1 }} />
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-orange)', marginBottom: 3 }}>Docker Desktop not detected</div>
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-          Open <strong>Docker Desktop</strong> on this machine and wait for it to show "Running" before deploying containers locally.
-          The Containers page and local deployments require it.
-        </div>
-      </div>
-      <Button size="sm" variant="ghost" onClick={onRetry} icon={<RefreshCw size={11} />}>Retry</Button>
     </div>
   );
 }
@@ -410,18 +350,8 @@ export default function Domains() {
   const [bindings, setBindings] = useState<DomainBinding[]>([]);
   const [deployments, setDeployments] = useState<Array<{ id: string; name: string; ports: any[] }>>([]);
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([]);
-  const [dockerStatus, setDockerStatus] = useState<{ available: boolean; version?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
-
-  const loadDockerStatus = async () => {
-    try {
-      const { data } = await api.get('/api/selfhosted/status');
-      setDockerStatus({ available: data.docker, version: data.dockerVersion });
-    } catch {
-      setDockerStatus({ available: false });
-    }
-  };
 
   const load = async () => {
     try {
@@ -436,16 +366,12 @@ export default function Domains() {
     } catch {} finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    load();
-    loadDockerStatus();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const running = bindings.filter(b => b.deployment_status === 'running').length;
-  const connectedCount = PROVIDERS.filter(p => {
-    if (p.id === 'docker') return dockerStatus?.available;
-    return providerStatuses.find(s => s.id === p.id || (p.id === 'selfhosted' && s.id === 'podium'))?.configured;
-  }).length;
+  const connectedCount = PROVIDERS.filter(p =>
+    providerStatuses.find(s => s.id === p.id)?.configured
+  ).length;
 
   const TAB_ITEMS: { id: PageTab; label: string; icon: React.ReactNode }[] = [
     { id: 'providers', label: 'Providers', icon: <Cloud size={13} /> },
@@ -461,7 +387,7 @@ export default function Domains() {
         subtitle={`${connectedCount} provider${connectedCount !== 1 ? 's' : ''} connected · ${bindings.length} binding${bindings.length !== 1 ? 's' : ''} · ${running} active`}
         action={
           <div style={{ display: 'flex', gap: 8 }}>
-            <Button icon={<RefreshCw size={14} />} onClick={() => { load(); loadDockerStatus(); }} size="sm">Refresh</Button>
+            <Button icon={<RefreshCw size={14} />} onClick={() => load()} size="sm">Refresh</Button>
             {tab === 'bindings' && can.createDeployment && (
               <Button variant="primary" icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>Add Binding</Button>
             )}
@@ -487,18 +413,17 @@ export default function Domains() {
 
       {tab === 'providers' && (
         <>
-          <DockerStatusBanner status={dockerStatus} onRetry={loadDockerStatus} />
           {loading ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
-              {Array.from({ length: 8 }).map((_, i) => <Card key={i}><Skeleton height={160} /></Card>)}
+              {Array.from({ length: 6 }).map((_, i) => <Card key={i}><Skeleton height={160} /></Card>)}
             </div>
           ) : (
-            <ProviderGrid statuses={providerStatuses} dockerStatus={dockerStatus} />
+            <ProviderGrid statuses={providerStatuses} />
           )}
           <div style={{ padding: '14px 16px', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.12)', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', gap: 12 }}>
             <Server size={15} color="var(--accent-blue)" style={{ flexShrink: 0 }} />
             <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-              Credentials and API keys are configured in <strong style={{ color: 'var(--text-secondary)' }}>Settings → Cloud</strong>. Docker Desktop is detected automatically from the local socket.
+              Credentials and API keys are configured in <strong style={{ color: 'var(--text-secondary)' }}>Settings → Cloud</strong>.
             </div>
             <Button size="sm" variant="ghost" icon={<ChevronRight size={12} />} onClick={() => (window.location.href = '/settings?tab=cloud')}>Settings</Button>
           </div>

@@ -22,7 +22,7 @@ interface CloudDep {
 }
 
 interface ProviderMeta {
-  id: string; name: string; connected: boolean; isDemo: boolean;
+  id: string; name: string; connected: boolean;
   regions?: string[];
 }
 
@@ -222,8 +222,6 @@ function ProviderCard({
               {building > 0 && <span style={{ fontSize: '11px', color: 'var(--accent-cyan)', fontWeight: 600 }}>{building} building</span>}
               {failed > 0 && <span style={{ fontSize: '11px', color: 'var(--accent-red)', fontWeight: 600 }}>{failed} failed</span>}
             </div>
-          ) : provider.isDemo ? (
-            <span style={{ fontSize: '11px', color: 'var(--accent-orange)' }}>Demo only — Enterprise tier</span>
           ) : (
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Not connected — go to Providers to connect</span>
           )}
@@ -337,7 +335,7 @@ function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
 
   const upd = (k: string, v: any) => setForm(f => ({ ...f, [k]: v }));
   const stepId = STEPS[step].id;
-  const connectedProviders = providers.filter(p => p.connected && !p.isDemo);
+  const connectedProviders = providers.filter(p => p.connected);
   const selectedProvider = providers.find(p => p.id === form.provider);
 
   useEffect(() => {
@@ -742,7 +740,7 @@ export default function CloudDeployments() {
     setWizardOpen(true);
   };
 
-  const connectedProviders = providers.filter(p => p.connected && !p.isDemo);
+  const connectedProviders = providers.filter(p => p.connected);
   const totalLive = deps.filter(d => d.status === 'live').length;
   const totalFailed = deps.filter(d => d.status === 'failed').length;
   const totalBuilding = deps.filter(d => d.status === 'building' || d.status === 'deploying').length;
@@ -807,8 +805,7 @@ export default function CloudDeployments() {
         />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, position: 'relative' }}>
-          {/* Free tier providers first */}
-          {providers.filter(p => !p.isDemo).map(p => (
+          {providers.map(p => (
             <ProviderCard
               key={p.id}
               provider={p}
@@ -820,28 +817,6 @@ export default function CloudDeployments() {
               onClearAll={clearAll}
             />
           ))}
-          {/* Demo / enterprise providers */}
-          {providers.filter(p => p.isDemo).length > 0 && (
-            <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0' }}>
-                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em' }}>Enterprise Demo</span>
-                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-              </div>
-              {providers.filter(p => p.isDemo).map(p => (
-                <ProviderCard
-                  key={p.id}
-                  provider={p}
-                  deps={[]}
-                  loading={false}
-                  onRefresh={load}
-                  onNewDeploy={() => openWizard()}
-                  onClearFailed={clearFailed}
-                  onClearAll={clearAll}
-                />
-              ))}
-            </>
-          )}
         </div>
       )}
 

@@ -12,7 +12,6 @@ import { broadcastNotification } from './routes/notifications';
 
 import authRouter from './routes/auth';
 import invitesRouter from './routes/invites';
-import deploymentsRouter from './routes/deployments';
 import metricsRouter from './routes/metrics';
 import logsRouter from './routes/logs';
 import githubRouter from './routes/github';
@@ -21,7 +20,6 @@ import aiRouter from './routes/ai';
 import settingsRouter, { healthHandler } from './routes/settings';
 import profileRouter from './routes/profile';
 import notificationsRouter from './routes/notifications';
-import selfhostedRouter from './routes/selfhosted';
 import providersRouter from './routes/providers';
 import { startSyncService } from './services/SyncService';
 
@@ -42,7 +40,6 @@ if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 app.get('/api/health', healthHandler);
 app.use('/api/auth', authRouter);
 app.use('/api/invites', invitesRouter);
-app.use('/api/deployments', deploymentsRouter);
 app.use('/api/metrics', metricsRouter);
 app.use('/api/logs', logsRouter);
 app.use('/api/github', githubRouter);
@@ -51,7 +48,6 @@ app.use('/api/ai', aiRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/profile', profileRouter);
 app.use('/api/notifications', notificationsRouter);
-app.use('/api/selfhosted', selfhostedRouter);
 app.use('/api/providers', providersRouter);
 
 const resourcesPath = (process as any).resourcesPath as string | undefined;
@@ -67,25 +63,6 @@ if (staticPath) {
   app.get('*', (_req, res) => res.sendFile(path.join(staticPath!, 'index.html')));
 } else {
   app.get('/', (_req, res) => res.json({ status: 'Podium API running', health: '/api/health' }));
-}
-
-function generateSimulatedMetrics() {
-  const db = getDb();
-  const running = db.prepare("SELECT id, name FROM deployments WHERE status='running'").all() as any[];
-  for (const dep of running) {
-    const recent = db.prepare(
-      'SELECT id FROM metrics WHERE deployment_id = ? AND timestamp > ? LIMIT 1'
-    ).get(dep.id, Date.now() - 12000);
-    if (!recent) {
-      const cpu = +(Math.random() * 45 + 8).toFixed(2);
-      const memory = +(Math.random() * 250 + 80).toFixed(2);
-      db.prepare(
-        'INSERT INTO metrics (deployment_id, timestamp, cpu, memory, network_in, network_out) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(dep.id, Date.now(), cpu, memory,
-        +(Math.random() * 15).toFixed(2), +(Math.random() * 8).toFixed(2));
-      detectAnomalies(dep.id, dep.name, cpu, memory);
-    }
-  }
 }
 
 function detectAnomalies(depId: string, depName: string, cpu: number, memory: number) {
@@ -131,7 +108,6 @@ function pruneOldData() {
   ).run();
 }
 
-setInterval(generateSimulatedMetrics, 12_000);
 setInterval(pruneOldData, 3_600_000);
 
 async function bootstrap() {

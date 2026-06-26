@@ -476,49 +476,20 @@ async function deployRender(id: string, name: string, image: string, region: str
   }
 }
 
-function simulateDeploy(id: string, provider: string, name: string) {
-  const steps = [
-    { d: 800,   msg: `[Demo] Initializing ${provider.toUpperCase()} environment...` },
-    { d: 2500,  msg: '[Demo] Building container image...' },
-    { d: 4500,  msg: '[Demo] Pushing to registry...' },
-    { d: 6500,  msg: `[Demo] Deploying to ${provider.toUpperCase()}...` },
-    { d: 8500,  msg: '[Demo] Configuring networking...' },
-    { d: 10500, msg: '[Demo] Health checks passing -' },
-  ];
-  for (const s of steps) setTimeout(() => appendLog(id, s.msg), s.d);
-  setTimeout(() => {
-    setStatus(id, 'running', `https://${name}.example.com`);
-    appendLog(id, '[Demo] Deployment live! Add real credentials in Settings - Cloud to deploy for real.');
-  }, 12000);
-}
-
 async function dispatch(id: string, provider: string, name: string, image: string, region: string, envVars: Record<string,string>, ports: number[], githubRepo?: string, branch?: string) {
-  if (provider === 'podium') {
-    
-    try {
-      const existing = getDb().prepare('SELECT config FROM cloud_deployments WHERE id=?').get(id) as any;
-      const cfg = (() => { try { return JSON.parse(existing?.config || '{}'); } catch { return {}; } })();
-      cfg.container_port = ports[0] || 80;
-      cfg.branch = branch || 'main';
-      cfg.env = envVars;
-      getDb().prepare("UPDATE cloud_deployments SET config=? WHERE id=?").run(JSON.stringify(cfg), id);
-      await axios.post(
-        `http://localhost:${process.env.PORT || 4000}/api/selfhosted/run/${id}`,
-        {},
-        { headers: { 'x-internal': 'podium-selfhosted' } }
-      );
-    } catch (err: any) {
-      setStatus(id, 'failed');
-      appendLog(id, `Self-hosted dispatch error: ${err.message}`);
-    }
+  if (!ready(provider)) {
+    setStatus(id, 'failed');
+    appendLog(id, `Provider "${provider}" is not configured. Add credentials in Settings → Cloud.`);
     return;
   }
-  if (!ready(provider)) { simulateDeploy(id, provider, name); return; }
   if (provider === 'azure')       await deployAzure(id, name, image, region, envVars, ports);
   else if (provider === 'aws')    await deployAWS(id, name, image, region, envVars, ports);
   else if (provider === 'vercel') await deployVercel(id, name, image, region, envVars, githubRepo, branch);
   else if (provider === 'render') await deployRender(id, name, image, region, envVars, ports);
-  else simulateDeploy(id, provider, name);
+  else {
+    setStatus(id, 'failed');
+    appendLog(id, `Unknown provider "${provider}". Supported: azure, aws, vercel, render, railway.`);
+  }
 }
 
 router.get('/', requireAuth, (_req, res) => {
@@ -539,10 +510,7 @@ router.get('/providers', requireAuth, (_req, res) => {
       hint: 'Deploy containers and static sites — free tier available' },
     { id: 'render', label: 'Render',              icon: '🟣', configured: ready('render'),
       regions: ['oregon','ohio','virginia','frankfurt','singapore'],
-      hint: 'Deploy Docker containers — free tier available, no credit card needed' },
-    { id: 'podium', label: 'Podium (Self-Hosted)', icon: '🏠', configured: !!(get('selfhosted_domain') || get('cloudflare_tunnel_domain')),
-      regions: ['local'],
-      hint: 'Deploy directly to this machine — get a public URL via Cloudflare Tunnel' },
+      hint: 'Deploy web services and containers — free tier available, no credit card needed' },
   ]);
 });
 

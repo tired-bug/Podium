@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle, XCircle, Zap, Eye, EyeOff, Copy, Check,
-  ChevronRight, AlertTriangle, RefreshCw, Trash2, Globe,
-  Shield, Cpu, Database, Cloud, Server, ArrowRight, X,
+  ChevronRight, RefreshCw, Trash2, Globe,
+  Cpu, Database, Cloud, Server, ArrowRight, X,
 } from 'lucide-react';
 import { Card, SectionHeader, Badge, Spinner } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -65,8 +65,6 @@ interface ProviderMeta {
   id: string;
   name: string;
   description: string;
-  isDemo: boolean;
-  tier: 'free' | 'enterprise_demo';
   capabilities: string[];
   connected: boolean;
   credentialsMasked: Record<string, string>;
@@ -403,18 +401,6 @@ function ProviderCard({
       boxShadow: provider.connected ? '0 0 0 1px rgba(16,185,129,0.1) inset' : 'var(--shadow-card)',
       position: 'relative', overflow: 'hidden',
     }}>
-      {/* Demo badge */}
-      {provider.isDemo && (
-        <div style={{
-          position: 'absolute', top: 12, right: 12,
-          background: 'var(--accent-orange-dim)', border: '1px solid rgba(245,158,11,0.3)',
-          borderRadius: 'var(--r-pill)', padding: '2px 10px',
-          fontSize: '10px', fontWeight: 700, color: 'var(--accent-orange)',
-          letterSpacing: '.06em', textTransform: 'uppercase',
-        }}>
-          Demo Mode
-        </div>
-      )}
 
       {/* Connected glow strip */}
       {provider.connected && (
@@ -429,7 +415,7 @@ function ProviderCard({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
             <div style={{ width: 6, height: 6, borderRadius: '50%', background: provider.connected ? 'var(--accent-green)' : 'var(--text-muted)', flexShrink: 0 }} />
             <span style={{ fontSize: '11px', color: provider.connected ? 'var(--accent-green)' : 'var(--text-muted)' }}>
-              {provider.connected ? 'Connected' : provider.isDemo ? 'Demo only' : 'Not connected'}
+              {provider.connected ? 'Connected' : 'Not connected'}
             </span>
           </div>
         </div>
@@ -467,15 +453,6 @@ function ProviderCard({
               </Button>
             )}
           </>
-        ) : provider.isDemo ? (
-          <div style={{
-            flex: 1, padding: '8px 12px', borderRadius: 'var(--r-md)',
-            background: 'var(--accent-orange-dim)', border: '1px solid rgba(245,158,11,0.2)',
-            fontSize: '11px', color: 'var(--accent-orange)', textAlign: 'center', lineHeight: 1.4,
-          }}>
-            <AlertTriangle size={12} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-            Available in Enterprise tier — architecture & cost planning active
-          </div>
         ) : (
           <Button variant="primary" size="sm" icon={<Zap size={12} />} onClick={onConnect} fullWidth disabled={!can.startStopRestart}>
             Connect
@@ -502,8 +479,6 @@ export default function Providers() {
 
   useEffect(() => { load(); }, [load]);
 
-  const free = providers.filter(p => p.tier === 'free');
-  const enterprise = providers.filter(p => p.tier === 'enterprise_demo');
   const connected = providers.filter(p => p.connected).length;
 
   return (
@@ -528,49 +503,16 @@ export default function Providers() {
           ))}
         </div>
       ) : (
-        <>
-          {/* Free Tier */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <div style={{ width: 24, height: 24, borderRadius: 'var(--r-md)', background: 'var(--accent-green-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircle size={13} color="var(--accent-green)" />
-              </div>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Free Tier — Fully Functional</span>
-              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16 }}>
-              {free.map(p => (
-                <ProviderCard
-                  key={p.id}
-                  provider={p}
-                  onConnect={() => setWizard(p)}
-                  onDisconnect={load}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Enterprise Demo */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <div style={{ width: 24, height: 24, borderRadius: 'var(--r-md)', background: 'var(--accent-orange-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Shield size={13} color="var(--accent-orange)" />
-              </div>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>Enterprise Demo</span>
-              <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16 }}>
-              {enterprise.map(p => (
-                <ProviderCard
-                  key={p.id}
-                  provider={p}
-                  onConnect={() => setWizard(p)}
-                  onDisconnect={load}
-                />
-              ))}
-            </div>
-          </div>
-        </>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16 }}>
+          {providers.map(p => (
+            <ProviderCard
+              key={p.id}
+              provider={p}
+              onConnect={() => setWizard(p)}
+              onDisconnect={load}
+            />
+          ))}
+        </div>
       )}
 
       {/* Connection wizard modal */}

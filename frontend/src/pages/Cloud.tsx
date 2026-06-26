@@ -51,9 +51,6 @@ function DepRow({ dep, onAction }: { dep: Dep; onAction: () => void }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
           <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)', cursor: 'pointer' }} onClick={() => navigate(`/deployments/${dep.id}`)}>{dep.name}</span>
           <Badge variant="status" value={dep.status}>{dep.status}</Badge>
-          {!dep.container_id && dep.status !== 'pending' && (
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '1px 6px', borderRadius: 'var(--r-pill)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>demo</span>
-          )}
         </div>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
           {dep.image && <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{dep.image}</span>}

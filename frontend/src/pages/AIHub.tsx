@@ -18,7 +18,7 @@ interface CloudDep {
   url?: string; created_at: string; updated_at: string;
   provider_deployment_id?: string; provider_error?: string; config?: any;
 }
-interface Provider { id: string; name: string; connected: boolean; isDemo: boolean; }
+interface Provider { id: string; name: string; connected: boolean; }
 
 const PROVIDER_LOGOS: Record<string, React.ReactNode> = {
   render:  <svg viewBox="0 0 20 20" width="14" height="14"><rect width="20" height="20" rx="5" fill="#46E3B7"/><path d="M10 5 L14 10 L10 15 L6 10 Z" fill="#fff" fillOpacity=".9"/></svg>,
@@ -177,7 +177,7 @@ function ToolNavCards({ activeToolId, onSelect }: { activeToolId: string | null;
 
 function OverviewPanel({ providers, cloudDeps }: { providers: Provider[]; cloudDeps: CloudDep[] }) {
   const navigate = useNavigate();
-  const connected = providers.filter(p => p.connected && !p.isDemo);
+  const connected = providers.filter(p => p.connected);
   const totalLive = cloudDeps.filter(d => d.status === 'live').length;
   const totalBuilding = cloudDeps.filter(d => ['building', 'deploying', 'queued'].includes(d.status)).length;
   const totalFailed = cloudDeps.filter(d => d.status === 'failed').length;
@@ -419,7 +419,7 @@ function SecurityTool({ deployments }: { deployments: Deployment[] }) {
 function DeployTool({ providers }: { providers: Provider[] }) {
   const navigate = useNavigate();
   const tool = AI_TOOLS.find(t => t.id === 'deploy')!;
-  const connected = providers.filter(p => p.connected && !p.isDemo);
+  const connected = providers.filter(p => p.connected);
   return (
     <ToolPanel tool={tool}>
       {connected.length === 0 ? (
@@ -475,7 +475,7 @@ function CostTool({ cloudDeps, providers }: { cloudDeps: CloudDep[]; providers: 
   const [data, setData] = useState<any>(null); const [loading, setLoading] = useState(false);
   const tool = AI_TOOLS.find(t => t.id === 'cost')!;
   const load = async () => { setLoading(true); try { const { data: d } = await api.get('/api/ai/cost-analysis'); setData(d); } catch {} setLoading(false); };
-  const breakdown = providers.filter(p => p.connected && !p.isDemo).map(p => ({ name: p.name, id: p.id, count: cloudDeps.filter(d => d.provider === p.id).length, live: cloudDeps.filter(d => d.provider === p.id && d.status === 'live').length }));
+  const breakdown = providers.filter(p => p.connected).map(p => ({ name: p.name, id: p.id, count: cloudDeps.filter(d => d.provider === p.id).length, live: cloudDeps.filter(d => d.provider === p.id && d.status === 'live').length }));
   return (
     <ToolPanel tool={tool}>
       {breakdown.length > 0 && (

@@ -63,10 +63,6 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
 
   try {
     const meta = providerManager.getMeta(provider);
-    if (meta.isDemo) {
-      return res.status(400).json({ error: `${meta.name} is in demo mode. Connect real credentials first.` });
-    }
-
     const creds = getCredentials(provider);
     const missingCreds = meta.credentialKeys
       .filter(k => k.required && !creds[k.key])

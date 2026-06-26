@@ -4,7 +4,6 @@ import { IProvider, DeployOptions, DeployResult, ProviderStatus, ProviderLog } f
 export class RailwayProvider implements IProvider {
   readonly id = 'railway';
   readonly name = 'Railway';
-  readonly isDemo = false;
 
   private async gql(token: string, query: string, variables?: Record<string, any>) {
     const r = await axios.post(

@@ -235,7 +235,7 @@ export default function Dashboard() {
           </div>
         ) : deployments.length === 0 ? (
           <EmptyState icon="🚀" title="No deployments yet"
-            description="Create your first deployment to start managing containers."
+            description="Deploy your first project to get started."
             action={<Button variant="primary" size="sm" onClick={() => navigate('/cloud')}>New Deployment</Button>}
           />
         ) : (

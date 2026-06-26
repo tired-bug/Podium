@@ -4,7 +4,6 @@ import { IProvider, DeployOptions, DeployResult, ProviderStatus, ProviderLog } f
 export class VercelProvider implements IProvider {
   readonly id = 'vercel';
   readonly name = 'Vercel';
-  readonly isDemo = false;
 
   private client(token: string): AxiosInstance {
     return axios.create({

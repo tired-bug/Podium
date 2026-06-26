@@ -21,7 +21,7 @@ function getCredentials(providerId: string): Record<string, string> {
 
 async function syncProvider(providerId: string): Promise<void> {
   const meta = PROVIDER_META[providerId];
-  if (!meta || meta.isDemo) return;
+  if (!meta) return;
 
   const creds = getCredentials(providerId);
   const requiredKeys = meta.credentialKeys.filter(k => k.required);

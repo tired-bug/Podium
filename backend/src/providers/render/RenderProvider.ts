@@ -4,7 +4,6 @@ import { IProvider, DeployOptions, DeployResult, ProviderStatus, ProviderLog } f
 export class RenderProvider implements IProvider {
   readonly id = 'render';
   readonly name = 'Render';
-  readonly isDemo = false;
 
   private client(apiKey: string): AxiosInstance {
     return axios.create({
