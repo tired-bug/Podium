@@ -7,8 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { initDb, getDb, ensureExtendedSchema } from './db/index';
 import { ensureDeploymentUserIdColumn } from './routes/providers';
-import { v4 as uuidv4 } from 'uuid';
-import { broadcastNotification } from './routes/notifications';
+
 
 import authRouter from './routes/auth';
 import invitesRouter from './routes/invites';
@@ -22,6 +21,7 @@ import profileRouter from './routes/profile';
 import notificationsRouter from './routes/notifications';
 import providersRouter from './routes/providers';
 import { startSyncService } from './services/SyncService';
+import { startAnomalyDetection } from './services/AnomalyDetectionService';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000');
@@ -65,40 +65,7 @@ if (staticPath) {
   app.get('/', (_req, res) => res.json({ status: 'Podium API running', health: '/api/health' }));
 }
 
-function detectAnomalies(depId: string, depName: string, cpu: number, memory: number) {
-  const db = getDb();
-  const cpuThr = parseFloat((db.prepare("SELECT value FROM settings WHERE key='cpu_threshold'").get() as any)?.value || '90');
-  const memThr = parseFloat((db.prepare("SELECT value FROM settings WHERE key='memory_threshold_mb'").get() as any)?.value || '900');
-  const enabled = (db.prepare("SELECT value FROM settings WHERE key='anomaly_detection'").get() as any)?.value === 'true';
-  if (!enabled) return;
 
-  const tenMin = new Date(Date.now() - 600_000).toISOString();
-
-  if (cpu > cpuThr) {
-    const exists = db.prepare(
-      "SELECT id FROM anomalies WHERE deployment_id=? AND type='high_cpu' AND resolved=0 AND created_at>?"
-    ).get(depId, tenMin);
-    if (!exists) {
-      const id = uuidv4();
-      db.prepare('INSERT INTO anomalies (id, deployment_id, type, severity, message) VALUES (?, ?, ?, ?, ?)')
-        .run(id, depId, 'high_cpu', 'critical', `CPU at ${cpu.toFixed(1)}% (threshold ${cpuThr}%)`);
-      broadcastNotification('anomaly', `High CPU: ${depName}`,
-        `CPU usage at ${cpu.toFixed(1)}% — exceeds ${cpuThr}% threshold`, '/ai/anomalies');
-    }
-  }
-  if (memory > memThr) {
-    const exists = db.prepare(
-      "SELECT id FROM anomalies WHERE deployment_id=? AND type='high_memory' AND resolved=0 AND created_at>?"
-    ).get(depId, tenMin);
-    if (!exists) {
-      const id = uuidv4();
-      db.prepare('INSERT INTO anomalies (id, deployment_id, type, severity, message) VALUES (?, ?, ?, ?, ?)')
-        .run(id, depId, 'high_memory', 'warning', `Memory at ${memory.toFixed(0)}MB (threshold ${memThr}MB)`);
-      broadcastNotification('anomaly', `High Memory: ${depName}`,
-        `Memory at ${memory.toFixed(0)}MB — exceeds ${memThr}MB threshold`, '/ai/anomalies');
-    }
-  }
-}
 
 function pruneOldData() {
   const cutoff = Date.now() - 24 * 3600 * 1000;
@@ -116,6 +83,7 @@ async function bootstrap() {
   ensureDeploymentUserIdColumn();
 
   startSyncService();
+  startAnomalyDetection();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[podium] Backend on http://0.0.0.0:${PORT}`);
   });

@@ -210,13 +210,23 @@ export function AIAnomalies() {
               <div style={{ display: 'flex', gap: 12 }}>
                 <AlertTriangle size={18} color={a.severity === 'critical' ? 'var(--accent-red)' : 'var(--accent-orange)'} style={{ flexShrink: 0, marginTop: 2 }} />
                 <div>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '14px', fontWeight: 700 }}>{a.deployment_name}</span>
                     <Badge variant="severity" value={a.severity}>{a.severity}</Badge>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{a.type}</span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{a.type?.replace(/_/g, ' ')}</span>
+                    {a.provider && (
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '1px 6px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)' }}>
+                        {a.provider}
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{a.message}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>Detected {timeAgo(a.created_at)}</div>
+                  {a.recommendation && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 6, padding: '6px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-sm)', borderLeft: '2px solid var(--accent-blue)' }}>
+                      <strong style={{ color: 'var(--accent-blue)' }}>Recommendation: </strong>{a.recommendation}
+                    </div>
+                  )}
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>Detected {timeAgo(a.created_at)}</div>
                 </div>
               </div>
               <Button size="sm" variant="success" icon={<CheckCircle size={12} />}
@@ -484,18 +494,20 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              <Section title="Anomaly Detection" description="Automatically detect infrastructure issues and create alerts" accent="linear-gradient(90deg,#f59e0b,#ef4444)">
+              <Section title="Anomaly Detection" description="Automatically detect cloud deployment issues and create alerts" accent="linear-gradient(90deg,#f59e0b,#ef4444)">
                 <div>
                   <ToggleRow
                     label="Enable anomaly detection"
-                    description="Monitor CPU and memory thresholds across all running deployments"
+                    description="Monitor cloud deployments for failures, build spikes, outages, and unusual activity"
                     checked={local.anomaly_detection === 'true'}
                     onChange={v => update('anomaly_detection', v ? 'true' : 'false')}
                     accent="#f59e0b"
                   />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 16 }}>
-                    <Input label="CPU Alert Threshold (%)" type="number" value={local.cpu_threshold || '90'} onChange={e => update('cpu_threshold', e.target.value)} hint="Alert when CPU exceeds this %" />
-                    <Input label="Memory Alert Threshold (MB)" type="number" value={local.memory_threshold_mb || '900'} onChange={e => update('memory_threshold_mb', e.target.value)} hint="Alert when memory exceeds this MB" />
+                  <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                      <strong style={{ color: 'var(--text-primary)' }}>Detected patterns:</strong>{' '}
+                      repeated build failures · stuck builds (&gt;30 min) · deployment outages · build duration spikes · unusual deploy frequency · provider health degradation
+                    </div>
                   </div>
                 </div>
               </Section>

@@ -85,9 +85,15 @@ function AnomalyRow({ anomaly, onResolve, resolving }: {
       transition: 'all 200ms',
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
           <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{anomaly.deployment_name}</span>
           <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r-pill)', background: color + '20', color }}>{anomaly.severity}</span>
+          {anomaly.provider && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 'var(--r-pill)' }}>{anomaly.provider}</span>
+          )}
+          {anomaly.type && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{anomaly.type.replace(/_/g, ' ')}</span>
+          )}
         </div>
         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{anomaly.message}</div>
         <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 3 }}>{timeAgo(anomaly.created_at)}</div>

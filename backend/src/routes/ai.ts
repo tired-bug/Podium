@@ -288,10 +288,7 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
 });
 
 router.get('/anomalies', requireAuth, (_req, res: Response) => {
-  
-  
-  
-  const anomalies = getDb().prepare(`
+  const rows = getDb().prepare(`
     SELECT a.*,
       COALESCE(d.name, cd.name) AS deployment_name,
       CASE WHEN cd.id IS NOT NULL THEN cd.provider ELSE NULL END AS cloud_provider
@@ -301,7 +298,25 @@ router.get('/anomalies', requireAuth, (_req, res: Response) => {
     WHERE a.resolved = 0
       AND (d.id IS NOT NULL OR cd.id IS NOT NULL)
     ORDER BY a.created_at DESC
-  `).all();
+  `).all() as any[];
+
+  // Parse JSON payload stored in message field (new format) while staying
+  // backward-compatible with legacy plain-string messages.
+  const anomalies = rows.map(row => {
+    let message = row.message;
+    let recommendation: string | null = null;
+    let provider: string | null = row.cloud_provider || null;
+    try {
+      const parsed = JSON.parse(row.message);
+      if (parsed && typeof parsed === 'object' && parsed.message) {
+        message        = parsed.message;
+        recommendation = parsed.recommendation || null;
+        provider       = parsed.provider || provider;
+      }
+    } catch { /* legacy plain string — keep as-is */ }
+    return { ...row, message, recommendation, provider };
+  });
+
   res.json(anomalies);
 });
 
