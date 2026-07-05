@@ -196,6 +196,7 @@ async function applyMigrationsToTurso() {
     `ALTER TABLE cloud_deployments ADD COLUMN source_type TEXT`,
     `ALTER TABLE cloud_deployments ADD COLUMN repo_url TEXT`,
     `ALTER TABLE cloud_deployments ADD COLUMN docker_image TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN branch TEXT`,
     // Email verification & password reset
     `ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE users ADD COLUMN email_verification_token TEXT`,
@@ -448,6 +449,7 @@ function applyMigrations() {
     `ALTER TABLE cloud_deployments ADD COLUMN source_type TEXT`,
     `ALTER TABLE cloud_deployments ADD COLUMN repo_url TEXT`,
     `ALTER TABLE cloud_deployments ADD COLUMN docker_image TEXT`,
+    `ALTER TABLE cloud_deployments ADD COLUMN branch TEXT`,
     // Email verification & password reset
     `ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE users ADD COLUMN email_verification_token TEXT`,

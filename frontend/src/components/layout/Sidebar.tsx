@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Github, ScrollText, BarChart2,
   Bot, AlertTriangle, Users, Settings, ChevronLeft, ChevronRight,
-  Zap, User, Cloud, Plug, DollarSign,
+  Zap, User, Cloud, Plug, DollarSign, Cpu,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
 
@@ -16,6 +16,7 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
   { section: 'Platform',
     items: [
       { to: '/cloud',       icon: <Cloud size={14} />,        label: 'Cloud Deploy' },
+      { to: '/ai/deploy',   icon: <Cpu size={14} />,          label: 'AI Deploy' },
       { to: '/providers',   icon: <Plug size={14} />,         label: 'Providers' },
       { to: '/finops',      icon: <DollarSign size={14} />,   label: 'FinOps' },
     ]},

@@ -21,6 +21,7 @@ import profileRouter from './routes/profile';
 import notificationsRouter from './routes/notifications';
 import providersRouter from './routes/providers';
 import finopsRouter from './routes/finops';
+import aiDeployRouter from './routes/ai-deploy';
 import { startSyncService } from './services/SyncService';
 import { startAnomalyDetection } from './services/AnomalyDetectionService';
 
@@ -51,6 +52,7 @@ app.use('/api/profile', profileRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/providers', providersRouter);
 app.use('/api/finops', finopsRouter);
+app.use('/api/ai-deploy', aiDeployRouter);
 
 const resourcesPath = (process as any).resourcesPath as string | undefined;
 const staticPaths = [
