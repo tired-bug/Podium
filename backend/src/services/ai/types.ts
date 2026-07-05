@@ -58,6 +58,7 @@ export interface DetectionResult {
   confidence: number; // 0–1
   reasoning: string;
   detectionPath: string; // which signal resolved it
+  aiInferred?: boolean;
 }
 
 export interface MonorepoService {
@@ -82,6 +83,8 @@ export interface DeploymentPlan {
   outputDirectory: string;
   rootDirectory: string;
   envVarNames: string[];
+  /** Actual key/value pairs supplied by the user at confirmation time. */
+  envVars?: Record<string, string>;
   exposedPort: number;
   deploymentType: DeploymentType;
   isMonorepo: boolean;
@@ -91,6 +94,8 @@ export interface DeploymentPlan {
   detectionPath: string;
   // provider-specific fields computed from detection
   providerConfig: ProviderDeployConfig;
+  // set true when priority 1-5 signals were insufficient and AI inference resolved the framework
+  aiInferred?: boolean;
 }
 
 export interface ProviderDeployConfig {

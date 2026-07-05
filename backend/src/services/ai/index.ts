@@ -29,7 +29,7 @@ export class AIDeploymentEngine {
     selectedServicePath?: string,
   ): Promise<{ plan: DeploymentPlan; detection: DetectionResult }> {
     const ctx = await this.inspector.inspect(repoUrl, branch);
-    const detection = this.detector.detect(ctx);
+    const detection = await this.detector.detect(ctx);
 
     // If monorepo and no service selected, use first service's detection
     let effectiveDetection = detection;
@@ -48,7 +48,7 @@ export class AIDeploymentEngine {
               .map(([k, v]) => [k.slice(selectedServicePath.length + 1), v])
           ),
         };
-        effectiveDetection = this.detector.detect(subCtx);
+        effectiveDetection = await this.detector.detect(subCtx);
       }
     }
 

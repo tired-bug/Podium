@@ -2,6 +2,11 @@ import {
   Framework, Runtime, PackageManager, DetectionResult, DeploymentType,
   MonorepoService, RepoContext,
 } from './types';
+import { AIInference } from './AIInference';
+
+/** Below this confidence, or when framework is unresolved, the AI inference fallback (priority 6) is consulted. */
+const AI_INFERENCE_THRESHOLD = 0.6;
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -721,7 +726,20 @@ function runDetectors(ctx: RepoContext): DetectionResult {
 // ─── Exported class ───────────────────────────────────────────────────────────
 
 export class FrameworkDetector {
-  detect(ctx: RepoContext): DetectionResult {
+  private ai = new AIInference();
+
+  /** Synchronous deterministic detection only (priorities 1-5). Used internally for monorepo sub-services to avoid recursive AI calls. */
+  detectSync(ctx: RepoContext): DetectionResult {
     return runDetectors(ctx);
   }
+
+  /** Full detection pipeline including AI inference fallback (priority 6) when deterministic confidence is too low. */
+  async detect(ctx: RepoContext): Promise<DetectionResult> {
+    const result = runDetectors(ctx);
+    if (this.ai.available && (result.confidence < AI_INFERENCE_THRESHOLD || result.framework === 'unknown')) {
+      return this.ai.infer(ctx, result);
+    }
+    return result;
+  }
 }
+

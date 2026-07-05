@@ -79,9 +79,10 @@ export class DeploymentExecutor {
 
     const name = slugify(repoName(plan.repoUrl));
 
-    // Build env vars map from plan (values empty — user fills them in)
-    // We don't set values for security — they come from the UI
-    const envVars: Record<string, string> = {};
+    // Env var values are supplied by the user at confirmation time (plan.envVars).
+    // Only keys the user actually filled in are forwarded to the provider.
+    const envVars: Record<string, string> = { ...(plan.envVars || {}) };
+
 
     const opts: DeployOptions = {
       name,
@@ -118,6 +119,8 @@ export class DeploymentExecutor {
       packageManager: plan.packageManager,
       deploymentType: plan.deploymentType,
       confidence: plan.confidence,
+      // Persisted so a later redeploy can reuse the same env vars without the user re-entering them.
+      envVars,
     });
 
     getDb().prepare(`
@@ -239,6 +242,8 @@ export class DeploymentExecutor {
       branch: dep.branch,
       buildCommand: config.buildCommand,
       startCommand: config.startCommand,
+      envVars: config.envVars || {},
+      ports: config.port ? [config.port] : [],
       githubToken,
     };
 
