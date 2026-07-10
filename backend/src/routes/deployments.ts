@@ -95,6 +95,14 @@ router.put('/:id', requireAuth, requireRole('admin', 'developer'), (req, res: Re
   return res.json({ ...updated, ports: JSON.parse(updated.ports), env_vars: JSON.parse(updated.env_vars) });
 });
 
+// DELETE /api/deployments/failed — purge all failed deployment records
+// NOTE: This MUST be registered before DELETE /:id so Express does not match
+// the literal segment "failed" as an :id parameter.
+router.delete('/failed', requireAuth, requireRole('admin'), (_req, res: Response) => {
+  const result = getDb().prepare("DELETE FROM deployments WHERE status='failed'").run();
+  return res.json({ deleted: result.changes });
+});
+
 router.delete('/:id', requireAuth, requireRole('admin'), async (req, res: Response) => {
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(req.params.id) as any;
   if (!dep) return res.status(404).json({ error: 'Not found' });

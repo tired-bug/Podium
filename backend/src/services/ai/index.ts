@@ -27,6 +27,7 @@ export class AIDeploymentEngine {
     branch: string,
     provider: Provider,
     selectedServicePath?: string,
+    forceStatic?: boolean,
   ): Promise<{ plan: DeploymentPlan; detection: DetectionResult }> {
     const ctx = await this.inspector.inspect(repoUrl, branch);
     const detection = await this.detector.detect(ctx);
@@ -50,6 +51,24 @@ export class AIDeploymentEngine {
         };
         effectiveDetection = await this.detector.detect(subCtx);
       }
+    }
+
+    // "Quick Static Site" mode explicitly tells us this is a plain static bundle —
+    // skip trusting framework detection and force the static deployment path.
+    if (forceStatic) {
+      effectiveDetection = {
+        ...effectiveDetection,
+        framework: 'static',
+        runtime: 'static',
+        deploymentType: 'static',
+        buildCommand: '',
+        installCommand: '',
+        startCommand: '',
+        outputDirectory: '.',
+        confidence: 1,
+        reasoning: 'Explicitly deployed as a static site via Quick Static Site mode',
+        detectionPath: 'forceStatic',
+      };
     }
 
     const plan = this.planner.build(repoUrl, branch, provider, effectiveDetection, selectedServicePath);

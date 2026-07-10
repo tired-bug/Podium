@@ -1,9 +1,16 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import multer from 'multer';
 import { getDb } from '../db/index';
 import { requireAuth, requireRole, AuthRequest } from '../auth';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB cap
+
+function getUserGithubToken(userId: string): string | undefined {
+  const account = getDb().prepare('SELECT token FROM github_accounts WHERE user_id = ?').get(userId) as any;
+  return account?.token;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -257,6 +264,152 @@ router.post('/repos/:id/build', requireAuth, (req, res: Response) => {
   const repo = getDb().prepare('SELECT * FROM github_repos WHERE id = ?').get(req.params.id) as any;
   if (!repo) return res.status(404).json({ error: 'Repo not found' });
   res.json({ ok: true, message: 'Build triggered', jobId: uuidv4() });
+});
+
+// ─── Upload ZIP → create GitHub repo → return repo URL for AI Deploy ─────────
+// Used by the "Upload ZIP" input mode in the AI Deployment Engine. Extracts the
+// uploaded archive, creates a new repo on the user's GitHub account, and pushes
+// the contents as a single initial commit using the Git Data API (no local git
+// binary or filesystem clone required — works in a stateless server).
+
+const SKIP_PATTERNS = /(^|\/)(node_modules|\.git|dist|\.next|build|\.cache|__pycache__|\.venv|venv)(\/|$)/;
+const MAX_ZIP_FILES = 1500;
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB per file (GitHub blob API limit is ~100MB, keep well under)
+
+router.post('/upload-zip', requireAuth, requireRole('admin', 'developer'), upload.single('file'), async (req: AuthRequest, res: Response) => {
+  const axios = require('axios');
+  const AdmZip = require('adm-zip');
+
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded (field name must be "file")' });
+
+  const rawName = String(req.body?.repoName || '').trim();
+  const isPrivate = req.body?.private === 'true' || req.body?.private === true;
+
+  const userId = req.user!.sub;
+  const token = getUserGithubToken(userId);
+  if (!token) return res.status(400).json({ error: 'Connect your GitHub account first (Settings → GitHub) before uploading a project.' });
+
+  const headers = {
+    Authorization: `token ${token}`,
+    'User-Agent': 'Podium/4.0',
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+
+  // 1. Extract zip in memory
+  let zip: any;
+  try {
+    zip = new AdmZip(req.file.buffer);
+  } catch (e: any) {
+    return res.status(400).json({ error: 'Could not read the uploaded file as a zip archive.' });
+  }
+
+  const entries = zip.getEntries().filter((e: any) => !e.isDirectory);
+  if (entries.length === 0) return res.status(400).json({ error: 'The zip archive is empty.' });
+
+  // Detect and strip a single common top-level folder (e.g. "my-project-main/")
+  const allPaths: string[] = entries.map((e: any) => e.entryName.replace(/\\/g, '/'));
+  const firstSegments = new Set(allPaths.map(p => p.split('/')[0]));
+  const commonPrefix = firstSegments.size === 1 && !firstSegments.has('') ? `${[...firstSegments][0]}/` : '';
+
+  type FileEntry = { path: string; buf: Buffer };
+  const files: FileEntry[] = [];
+  for (const entry of entries) {
+    let relPath = entry.entryName.replace(/\\/g, '/');
+    if (commonPrefix && relPath.startsWith(commonPrefix)) relPath = relPath.slice(commonPrefix.length);
+    if (!relPath || SKIP_PATTERNS.test(relPath)) continue;
+    const buf: Buffer = entry.getData();
+    if (buf.length > MAX_FILE_BYTES) continue; // silently skip oversized assets
+    files.push({ path: relPath, buf });
+    if (files.length >= MAX_ZIP_FILES) break;
+  }
+  if (files.length === 0) {
+    return res.status(400).json({ error: 'No usable files found after filtering (node_modules, .git, build output, etc. are excluded).' });
+  }
+
+  // 2. Resolve authenticated user + repo name
+  let ghUser: any;
+  try {
+    const me = await axios.get('https://api.github.com/user', { headers });
+    ghUser = me.data;
+  } catch {
+    return res.status(401).json({ error: 'GitHub token is invalid or expired. Reconnect it in Settings → GitHub.' });
+  }
+
+  const slug = (rawName || `podium-upload-${Date.now()}`)
+    .toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90) || `podium-upload-${Date.now()}`;
+
+  let repoFullName = `${ghUser.login}/${slug}`;
+  let createdRepo: any;
+  try {
+    const createResp = await axios.post('https://api.github.com/user/repos', {
+      name: slug,
+      private: !!isPrivate,
+      auto_init: true, // creates an initial commit + default branch so we have a base tree to build on
+      description: 'Uploaded to Podium via AI Deployment Engine',
+    }, { headers });
+    createdRepo = createResp.data;
+  } catch (e: any) {
+    if (e.response?.status === 422) {
+      return res.status(409).json({ error: `A repository named "${slug}" already exists on your GitHub account. Choose a different name.` });
+    }
+    return res.status(500).json({ error: `Failed to create GitHub repo: ${e.response?.data?.message || e.message}` });
+  }
+
+  const defaultBranch: string = createdRepo.default_branch || 'main';
+
+  try {
+    // 3. Get the base commit/tree created by auto_init
+    const refResp = await axios.get(`https://api.github.com/repos/${repoFullName}/git/ref/heads/${defaultBranch}`, { headers });
+    const baseCommitSha = refResp.data.object.sha;
+    const baseCommitResp = await axios.get(`https://api.github.com/repos/${repoFullName}/git/commits/${baseCommitSha}`, { headers });
+    const baseTreeSha = baseCommitResp.data.tree.sha;
+
+    // 4. Create a blob for every file (chunked to avoid API rate spikes)
+    const treeItems: Array<{ path: string; mode: string; type: string; sha: string }> = [];
+    const chunkSize = 15;
+    for (let i = 0; i < files.length; i += chunkSize) {
+      const chunk = files.slice(i, i + chunkSize);
+      const blobs = await Promise.all(chunk.map(async f => {
+        const isBinary = f.buf.some(b => b === 0);
+        const blobResp = await axios.post(`https://api.github.com/repos/${repoFullName}/git/blobs`, {
+          content: isBinary ? f.buf.toString('base64') : f.buf.toString('utf-8'),
+          encoding: isBinary ? 'base64' : 'utf-8',
+        }, { headers });
+        return { path: f.path, sha: blobResp.data.sha };
+      }));
+      for (const b of blobs) {
+        treeItems.push({ path: b.path, mode: '100644', type: 'blob', sha: b.sha });
+      }
+    }
+
+    // 5. Create tree, commit, and move the branch ref forward
+    const treeResp = await axios.post(`https://api.github.com/repos/${repoFullName}/git/trees`, {
+      base_tree: baseTreeSha,
+      tree: treeItems,
+    }, { headers });
+
+    const commitResp = await axios.post(`https://api.github.com/repos/${repoFullName}/git/commits`, {
+      message: `Initial upload via Podium (${files.length} files)`,
+      tree: treeResp.data.sha,
+      parents: [baseCommitSha],
+    }, { headers });
+
+    await axios.patch(`https://api.github.com/repos/${repoFullName}/git/refs/heads/${defaultBranch}`, {
+      sha: commitResp.data.sha,
+    }, { headers });
+
+    return res.status(201).json({
+      repoUrl: createdRepo.html_url,
+      fullName: repoFullName,
+      branch: defaultBranch,
+      fileCount: files.length,
+    });
+  } catch (e: any) {
+    // Best-effort cleanup: delete the repo we just created if the push failed midway
+    try { await axios.delete(`https://api.github.com/repos/${repoFullName}`, { headers }); } catch {}
+    return res.status(500).json({ error: `Failed to push files to GitHub: ${e.response?.data?.message || e.message}` });
+  }
 });
 
 router.post('/webhook', (req, res: Response) => {

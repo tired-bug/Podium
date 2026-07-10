@@ -569,9 +569,28 @@ export default function Deployments() {
   const { can } = useRole();
   const navigate = useNavigate();
   const { deployments, loading, refetch } = useDeployments(10000);
+  const { success, error: toastError } = useToast();
   const [filter, setFilter] = useState('all');
   const [search, setSearch]   = useState('');
   const [newOpen, setNewOpen] = useState(false);
+  const [clearFailedOpen, setClearFailedOpen] = useState(false);
+  const [clearingFailed, setClearingFailed] = useState(false);
+
+  const failedCount = deployments.filter(d => d.status === 'failed').length;
+
+  const handleClearFailed = async () => {
+    setClearingFailed(true);
+    try {
+      const res = await api.delete('/api/deployments/failed');
+      success(`Cleared ${res.data.deleted} failed deployment${res.data.deleted === 1 ? '' : 's'}`);
+      refetch();
+    } catch (e) {
+      toastError(parseApiError(e));
+    } finally {
+      setClearingFailed(false);
+      setClearFailedOpen(false);
+    }
+  };
 
   const filtered = deployments.filter(d => {
     const matchFilter = filter === 'all' || d.status === filter;
@@ -593,6 +612,11 @@ export default function Deployments() {
         action={
           <div style={{ display: 'flex', gap: 8 }}>
             <Button icon={<RefreshCw size={14} />} onClick={refetch} size="sm">Refresh</Button>
+            {can.deleteDeployment && failedCount > 0 && (
+              <Button variant="danger" icon={<Trash2 size={14} />} size="sm" onClick={() => setClearFailedOpen(true)}>
+                Clear Failed ({failedCount})
+              </Button>
+            )}
             {can.createDeployment && (
               <>
                 <Button variant="ghost" icon={<Sparkles size={14} />} onClick={() => navigate('/cloud')} size="sm">AI Deploy</Button>
@@ -601,6 +625,15 @@ export default function Deployments() {
             )}
           </div>
         }
+      />
+
+      <ConfirmDialog
+        open={clearFailedOpen}
+        title="Clear Failed Deployments"
+        message={`This will permanently delete all ${failedCount} failed deployment record${failedCount === 1 ? '' : 's'}. This cannot be undone.`}
+        confirmLabel="Clear Failed"
+        onConfirm={handleClearFailed}
+        onCancel={() => setClearFailedOpen(false)}
       />
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

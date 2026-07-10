@@ -24,7 +24,7 @@ function getGithubToken(userId: string): string | undefined {
 // ── POST /api/ai-deploy/plan ─────────────────────────────────────────────────
 
 router.post('/plan', requireAuth, requireRole('admin', 'developer'), async (req: AuthRequest, res: Response) => {
-  const { repoUrl, branch = 'main', provider, selectedServicePath } = req.body;
+  const { repoUrl, branch = 'main', provider, selectedServicePath, forceStatic } = req.body;
 
   if (!repoUrl) return res.status(400).json({ error: 'repoUrl is required' });
   if (!provider || !['railway', 'render', 'vercel'].includes(provider)) {
@@ -37,7 +37,7 @@ router.post('/plan', requireAuth, requireRole('admin', 'developer'), async (req:
   const engine = new AIDeploymentEngine(githubToken);
 
   try {
-    const { plan, detection } = await engine.buildPlan(repoUrl, branch, provider, selectedServicePath);
+    const { plan, detection } = await engine.buildPlan(repoUrl, branch, provider, selectedServicePath, !!forceStatic);
     return res.json({ plan, detection });
   } catch (err: any) {
     console.error('[ai-deploy/plan]', err.message);

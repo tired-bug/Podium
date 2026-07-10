@@ -87,12 +87,22 @@ function LogViewer({ lines }: { lines: LogLine[] }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
+type InputMode = 'repos' | 'upload' | 'static';
+
 export default function AIDeploy() {
   const { can } = useRole();
   const { success, error: showError } = useToast();
 
   // Stage
   const [stage, setStage] = useState<Stage>('select');
+
+  // Input mode
+  const [inputMode, setInputMode] = useState<InputMode>('repos');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadRepoName, setUploadRepoName] = useState('');
+  const [uploadPrivate, setUploadPrivate] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Selection
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
@@ -128,6 +138,44 @@ export default function AIDeploy() {
 
   const connectedProviders = providers.filter(p => p.connected && ['railway', 'render', 'vercel'].includes(p.id));
 
+  // ── Upload zip → create GitHub repo → select it as the repo to analyze ──────
+
+  const handleUpload = async () => {
+    if (!uploadFile) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', uploadFile);
+      if (uploadRepoName.trim()) form.append('repoName', uploadRepoName.trim());
+      form.append('private', String(uploadPrivate));
+
+      const res = await api.post('/api/github/upload-zip', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
+      });
+      const { fullName, branch: defaultBranch } = res.data;
+
+      success(`Created ${fullName} on GitHub (${res.data.fileCount} files)`);
+
+      // Represent the freshly created repo as a selectable "repo" so the rest
+      // of the flow (branch, provider, analyze) works unchanged.
+      const syntheticRepo: GHRepo = {
+        id: -Date.now(),
+        full_name: fullName,
+        name: fullName.split('/').pop() || fullName,
+        default_branch: defaultBranch,
+        private: uploadPrivate,
+      };
+      setSelectedRepo(syntheticRepo);
+      setBranch(defaultBranch);
+      setRepos(prev => [syntheticRepo, ...prev]);
+    } catch (err: any) {
+      showError(parseApiError(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // ── Analyze repo ───────────────────────────────────────────────────────────
 
   const analyze = async (servicePath?: string) => {
@@ -143,6 +191,7 @@ export default function AIDeploy() {
         branch,
         provider: selectedProvider.id,
         selectedServicePath: servicePath,
+        forceStatic: inputMode === 'static',
       });
       const p: DeploymentPlan = res.data.plan;
       setPlan(p);
@@ -321,11 +370,36 @@ export default function AIDeploy() {
         }
       />
 
+      {/* ── Input mode switcher ─────────────────────────────────────────────── */}
+      {(stage === 'select' || stage === 'analyzing') && (
+        <div style={{ display: 'flex', gap: 6, padding: 4, background: 'var(--bg-tertiary)', borderRadius: 'var(--r-lg)', width: 'fit-content' }}>
+          {([
+            { id: 'repos', label: 'My Repos', icon: <GitBranch size={13} /> },
+            { id: 'upload', label: 'Upload ZIP', icon: <Package size={13} /> },
+            { id: 'static', label: 'Quick Static Site', icon: <Layers size={13} /> },
+          ] as { id: InputMode; label: string; icon: React.ReactNode }[]).map(m => (
+            <button key={m.id}
+              onClick={() => { setInputMode(m.id); setSelectedRepo(null); setUploadFile(null); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+                background: inputMode === m.id ? 'var(--accent-blue-dim)' : 'transparent',
+                border: `1px solid ${inputMode === m.id ? 'var(--accent-blue)' : 'transparent'}`,
+                borderRadius: 'var(--r-md)', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                color: inputMode === m.id ? 'var(--accent-blue-2)' : 'var(--text-muted)',
+                fontFamily: 'var(--font-sans)', transition: 'all 120ms',
+              }}>
+              {m.icon}{m.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Stage: SELECT ───────────────────────────────────────────────────── */}
       {(stage === 'select' || stage === 'analyzing') && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
-          {/* Repository picker */}
+          {/* Repository picker — "My Repos" mode */}
+          {inputMode === 'repos' && (
           <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <GitBranch size={15} color="var(--accent-blue)" />
@@ -375,6 +449,83 @@ export default function AIDeploy() {
               </>
             )}
           </Card>
+          )}
+
+          {/* Upload ZIP mode */}
+          {(inputMode === 'upload' || inputMode === 'static') && (
+          <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Package size={15} color="var(--accent-blue)" />
+              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {inputMode === 'static' ? 'Static Site Files (.zip)' : 'Upload Project (.zip)'}
+              </span>
+            </div>
+
+            {selectedRepo ? (
+              <div style={{ padding: '14px 16px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 'var(--r-md)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircle size={16} color="var(--accent-green)" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{selectedRepo.full_name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pushed to GitHub — ready to analyze</div>
+                </div>
+                <button onClick={() => { setSelectedRepo(null); setUploadFile(null); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  {inputMode === 'static'
+                    ? 'Zip your HTML/CSS/JS (or any static build output) and upload it. Podium pushes it to a new GitHub repo and deploys it as a static site — no build step needed.'
+                    : 'Upload a zip of your project. Podium creates a new GitHub repo from it, then the AI analyzes it exactly like any connected repo.'}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".zip"
+                  onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '20px 16px', background: 'var(--bg-tertiary)', border: '1px dashed var(--border)',
+                    borderRadius: 'var(--r-md)', cursor: 'pointer', fontSize: '12px', color: uploadFile ? 'var(--text-primary)' : 'var(--text-muted)',
+                    fontFamily: 'var(--font-sans)', fontWeight: 600,
+                  }}
+                >
+                  <Package size={16} />
+                  {uploadFile ? uploadFile.name : 'Choose a .zip file'}
+                </button>
+
+                <input
+                  value={uploadRepoName}
+                  onChange={e => setUploadRepoName(e.target.value)}
+                  placeholder={inputMode === 'static' ? 'Repo name (e.g. my-landing-page)' : 'Repo name (optional — auto-generated if blank)'}
+                  style={{ padding: '7px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', outline: 'none' }}
+                />
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '12px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={uploadPrivate} onChange={e => setUploadPrivate(e.target.checked)} />
+                  Make the GitHub repo private
+                </label>
+
+                <Button
+                  variant="primary"
+                  icon={uploading ? undefined : <Package size={14} />}
+                  loading={uploading}
+                  disabled={!uploadFile || uploading}
+                  onClick={handleUpload}
+                >
+                  {uploading ? 'Uploading & pushing to GitHub…' : 'Upload & Continue'}
+                </Button>
+              </>
+            )}
+          </Card>
+          )}
 
           {/* Provider picker */}
           <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
