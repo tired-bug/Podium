@@ -80,19 +80,20 @@ router.post('/account', requireAuth, async (req: AuthRequest, res: Response) => 
   }
 
   const db = getDb();
-  const existing = db.prepare('SELECT id FROM github_accounts WHERE user_id = ?').get(userId) as any;
-  if (existing) {
-    db.prepare(`
-      UPDATE github_accounts
-      SET token = ?, github_login = ?, github_name = ?, avatar_url = ?, scopes = ?, updated_at = datetime('now')
-      WHERE user_id = ?
-    `).run(token, login, name, avatarUrl, scopes, userId);
-  } else {
-    db.prepare(`
-      INSERT INTO github_accounts (id, user_id, token, github_login, github_name, avatar_url, scopes)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(uuidv4(), userId, token, login, name, avatarUrl, scopes);
-  }
+  // Atomic upsert — safe against concurrent/duplicate requests and safe to
+  // retry (idempotent), which also protects the Turso write-behind queue
+  // from poisoning itself on a repeated/racy write.
+  db.prepare(`
+    INSERT INTO github_accounts (id, user_id, token, github_login, github_name, avatar_url, scopes)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      token = excluded.token,
+      github_login = excluded.github_login,
+      github_name = excluded.github_name,
+      avatar_url = excluded.avatar_url,
+      scopes = excluded.scopes,
+      updated_at = datetime('now')
+  `).run(uuidv4(), userId, token, login, name, avatarUrl, scopes);
 
   return res.json({
     connected: true,

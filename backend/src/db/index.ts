@@ -42,19 +42,37 @@ async function flushQueue() {
       'write'
     );
   } catch (err: any) {
-  const msg = String(err);
+    const msg = String(err);
 
-  if (
-    msg.includes('duplicate column') ||
-    msg.includes('already exists')
-  ) {
-    console.warn('[turso] Ignoring migration error:', msg);
-    return;
-  }
+    if (msg.includes('duplicate column') || msg.includes('already exists')) {
+      console.warn('[turso] Ignoring migration error:', msg);
+      _flushing = false;
+      return;
+    }
 
-  console.error('[turso] Batch write error:', err);
-  _writeQueue = [...batch, ..._writeQueue];
-} finally {
+    console.error('[turso] Batch write error, falling back to per-statement retry:', err);
+
+    // The batch failed as a whole -- retry each statement individually so one
+    // bad/racy write cannot block or poison every other queued write, and so
+    // we can permanently drop a statement that will never succeed (e.g. a
+    // stale UNIQUE constraint violation) instead of retrying it forever.
+    for (const { sql, params } of batch) {
+      try {
+        await _turso.execute({ sql, args: params });
+      } catch (stmtErr: any) {
+        const stmtMsg = String(stmtErr);
+        if (stmtMsg.includes('duplicate column') || stmtMsg.includes('already exists')) {
+          continue;
+        }
+        if (stmtMsg.includes('SQLITE_CONSTRAINT')) {
+          console.error('[turso] Dropping statement after constraint failure (will not retry):', sql, stmtErr);
+          continue;
+        }
+        console.error('[turso] Statement failed, requeuing for retry:', sql, stmtErr);
+        _writeQueue.push({ sql, params });
+      }
+    }
+  } finally {
     _flushing = false;
   }
 }
