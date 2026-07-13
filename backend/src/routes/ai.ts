@@ -46,6 +46,13 @@ You help DevOps engineers with:
 Be concise, precise, and actionable. Format code in markdown code blocks with language specifiers.
 When analyzing issues, provide step-by-step resolution plans.`;
 
+// Frontend polls this on mount to decide whether to show the
+// "Groq API Key Required" empty state. Reflects the server-side
+// GROQ_API_KEY env var — never returns the key itself.
+router.get('/model', requireAuth, (_req: AuthRequest, res: Response) => {
+  res.json({ hasKey: !!getGroqKey(), model: getModel() });
+});
+
 router.get('/conversations', requireAuth, (req: AuthRequest, res: Response) => {
   const convos = getDb().prepare(`
     SELECT id, title, created_at, updated_at,
