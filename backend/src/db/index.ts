@@ -242,7 +242,7 @@ async function syncFromTurso() {
   const TABLES = [
     'users', 'invites', 'deployments', 'cloud_deployments',
     'metrics', 'build_logs', 'ai_conversations', 'anomalies',
-    'settings', 'github_repos',
+    'settings', 'github_repos', 'github_accounts',
     'user_profiles', 'notifications', 'domain_bindings',
   ];
 
