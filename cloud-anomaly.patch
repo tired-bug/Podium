@@ -1,0 +1,524 @@
+diff --git a/backend/src/index.ts b/backend/src/index.ts
+index 888b08d..10628eb 100644
+--- a/backend/src/index.ts
++++ b/backend/src/index.ts
+@@ -7,8 +7,7 @@ import path from 'path';
+ import fs from 'fs';
+ import { initDb, getDb, ensureExtendedSchema } from './db/index';
+ import { ensureDeploymentUserIdColumn } from './routes/providers';
+-import { v4 as uuidv4 } from 'uuid';
+-import { broadcastNotification } from './routes/notifications';
++
+ 
+ import authRouter from './routes/auth';
+ import invitesRouter from './routes/invites';
+@@ -22,6 +21,7 @@ import profileRouter from './routes/profile';
+ import notificationsRouter from './routes/notifications';
+ import providersRouter from './routes/providers';
+ import { startSyncService } from './services/SyncService';
++import { startAnomalyDetection } from './services/AnomalyDetectionService';
+ 
+ const app = express();
+ const PORT = parseInt(process.env.PORT || '4000');
+@@ -65,40 +65,7 @@ if (staticPath) {
+   app.get('/', (_req, res) => res.json({ status: 'Podium API running', health: '/api/health' }));
+ }
+ 
+-function detectAnomalies(depId: string, depName: string, cpu: number, memory: number) {
+-  const db = getDb();
+-  const cpuThr = parseFloat((db.prepare("SELECT value FROM settings WHERE key='cpu_threshold'").get() as any)?.value || '90');
+-  const memThr = parseFloat((db.prepare("SELECT value FROM settings WHERE key='memory_threshold_mb'").get() as any)?.value || '900');
+-  const enabled = (db.prepare("SELECT value FROM settings WHERE key='anomaly_detection'").get() as any)?.value === 'true';
+-  if (!enabled) return;
+-
+-  const tenMin = new Date(Date.now() - 600_000).toISOString();
+-
+-  if (cpu > cpuThr) {
+-    const exists = db.prepare(
+-      "SELECT id FROM anomalies WHERE deployment_id=? AND type='high_cpu' AND resolved=0 AND created_at>?"
+-    ).get(depId, tenMin);
+-    if (!exists) {
+-      const id = uuidv4();
+-      db.prepare('INSERT INTO anomalies (id, deployment_id, type, severity, message) VALUES (?, ?, ?, ?, ?)')
+-        .run(id, depId, 'high_cpu', 'critical', `CPU at ${cpu.toFixed(1)}% (threshold ${cpuThr}%)`);
+-      broadcastNotification('anomaly', `High CPU: ${depName}`,
+-        `CPU usage at ${cpu.toFixed(1)}% — exceeds ${cpuThr}% threshold`, '/ai/anomalies');
+-    }
+-  }
+-  if (memory > memThr) {
+-    const exists = db.prepare(
+-      "SELECT id FROM anomalies WHERE deployment_id=? AND type='high_memory' AND resolved=0 AND created_at>?"
+-    ).get(depId, tenMin);
+-    if (!exists) {
+-      const id = uuidv4();
+-      db.prepare('INSERT INTO anomalies (id, deployment_id, type, severity, message) VALUES (?, ?, ?, ?, ?)')
+-        .run(id, depId, 'high_memory', 'warning', `Memory at ${memory.toFixed(0)}MB (threshold ${memThr}MB)`);
+-      broadcastNotification('anomaly', `High Memory: ${depName}`,
+-        `Memory at ${memory.toFixed(0)}MB — exceeds ${memThr}MB threshold`, '/ai/anomalies');
+-    }
+-  }
+-}
++
+ 
+ function pruneOldData() {
+   const cutoff = Date.now() - 24 * 3600 * 1000;
+@@ -116,6 +83,7 @@ async function bootstrap() {
+   ensureDeploymentUserIdColumn();
+ 
+   startSyncService();
++  startAnomalyDetection();
+   app.listen(PORT, '0.0.0.0', () => {
+     console.log(`[podium] Backend on http://0.0.0.0:${PORT}`);
+   });
+diff --git a/backend/src/routes/ai.ts b/backend/src/routes/ai.ts
+index a32e652..651b19a 100644
+--- a/backend/src/routes/ai.ts
++++ b/backend/src/routes/ai.ts
+@@ -288,10 +288,7 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
+ });
+ 
+ router.get('/anomalies', requireAuth, (_req, res: Response) => {
+-  
+-  
+-  
+-  const anomalies = getDb().prepare(`
++  const rows = getDb().prepare(`
+     SELECT a.*,
+       COALESCE(d.name, cd.name) AS deployment_name,
+       CASE WHEN cd.id IS NOT NULL THEN cd.provider ELSE NULL END AS cloud_provider
+@@ -301,7 +298,25 @@ router.get('/anomalies', requireAuth, (_req, res: Response) => {
+     WHERE a.resolved = 0
+       AND (d.id IS NOT NULL OR cd.id IS NOT NULL)
+     ORDER BY a.created_at DESC
+-  `).all();
++  `).all() as any[];
++
++  // Parse JSON payload stored in message field (new format) while staying
++  // backward-compatible with legacy plain-string messages.
++  const anomalies = rows.map(row => {
++    let message = row.message;
++    let recommendation: string | null = null;
++    let provider: string | null = row.cloud_provider || null;
++    try {
++      const parsed = JSON.parse(row.message);
++      if (parsed && typeof parsed === 'object' && parsed.message) {
++        message        = parsed.message;
++        recommendation = parsed.recommendation || null;
++        provider       = parsed.provider || provider;
++      }
++    } catch { /* legacy plain string — keep as-is */ }
++    return { ...row, message, recommendation, provider };
++  });
++
+   res.json(anomalies);
+ });
+ 
+diff --git a/backend/src/services/AnomalyDetectionService.ts b/backend/src/services/AnomalyDetectionService.ts
+new file mode 100644
+index 0000000..8d0e8f0
+--- /dev/null
++++ b/backend/src/services/AnomalyDetectionService.ts
+@@ -0,0 +1,325 @@
++/**
++ * AnomalyDetectionService
++ *
++ * Cloud-deployment-focused anomaly detection.
++ * Operates entirely on cloud_deployments history — no container/Docker metrics.
++ *
++ * Rules implemented:
++ *   1. repeated_failure       — deployment failed ≥3 times in 24 h
++ *   2. stuck_building         — status has been 'building'/'queued' for >30 min
++ *   3. deployment_outage      — deployment was live, is now failed/suspended
++ *   4. build_duration_spike   — latest build took >2× the rolling average
++ *   5. unusual_frequency      — >5 deploys in 1 h (possible runaway CI or mistake)
++ *   6. health_degradation     — success rate dropped below 50 % in last 7 days
++ */
++
++import { getDb } from '../db/index';
++import { v4 as uuidv4 } from 'uuid';
++import { broadcastNotification } from '../routes/notifications';
++
++const DETECTION_INTERVAL_MS = 5 * 60_000; // every 5 minutes
++
++// ── helpers ──────────────────────────────────────────────────────────────────
++
++function isEnabled(): boolean {
++  try {
++    const row = getDb()
++      .prepare("SELECT value FROM settings WHERE key='anomaly_detection'")
++      .get() as any;
++    return row?.value === 'true';
++  } catch {
++    return true; // default on
++  }
++}
++
++function openAnomalyExists(
++  deploymentId: string,
++  type: string,
++  windowMs: number,
++): boolean {
++  const since = new Date(Date.now() - windowMs).toISOString();
++  const row = getDb()
++    .prepare(
++      `SELECT id FROM anomalies
++       WHERE deployment_id=? AND type=? AND resolved=0 AND created_at>?`,
++    )
++    .get(deploymentId, type, since);
++  return !!row;
++}
++
++function raiseAnomaly(
++  deploymentId: string,
++  type: string,
++  severity: 'warning' | 'critical',
++  message: string,
++  recommendation: string,
++  provider: string,
++  deploymentName: string,
++): void {
++  const db = getDb();
++  const id = uuidv4();
++  // Store recommendation in message field as JSON so the UI can read it
++  const payload = JSON.stringify({ message, recommendation, provider });
++  db.prepare(
++    `INSERT INTO anomalies (id, deployment_id, type, severity, message)
++     VALUES (?, ?, ?, ?, ?)`,
++  ).run(id, deploymentId, type, severity, payload);
++
++  broadcastNotification(
++    'anomaly',
++    `${severity === 'critical' ? '🔴' : '🟡'} ${deploymentName} — ${humanType(type)}`,
++    message,
++    '/ai/anomalies',
++  );
++}
++
++function humanType(type: string): string {
++  const map: Record<string, string> = {
++    repeated_failure:  'Repeated Failures',
++    stuck_building:    'Stuck Building',
++    deployment_outage: 'Deployment Outage',
++    build_duration_spike: 'Build Duration Spike',
++    unusual_frequency: 'Unusual Deploy Frequency',
++    health_degradation:'Health Degradation',
++  };
++  return map[type] ?? type;
++}
++
++// ── rule 1: repeated failure ─────────────────────────────────────────────────
++
++function detectRepeatedFailure(deps: any[]): void {
++  const window24h = Date.now() - 24 * 3600_000;
++
++  // Group all deployments by (provider, name-prefix to deduplicate provider_deployment_id variants)
++  // We use provider_deployment_id as the stable grouping key when available.
++  const failed = deps.filter(
++    d =>
++      d.status === 'failed' &&
++      d.updated_at &&
++      new Date(d.updated_at).getTime() > window24h,
++  );
++
++  // count failures per logical service (same provider + same name root)
++  const counts: Record<string, { count: number; dep: any }> = {};
++  for (const d of failed) {
++    const key = `${d.provider}::${d.name}`;
++    if (!counts[key]) counts[key] = { count: 0, dep: d };
++    counts[key].count++;
++  }
++
++  for (const { count, dep } of Object.values(counts)) {
++    if (count < 3) continue;
++    if (openAnomalyExists(dep.id, 'repeated_failure', 4 * 3600_000)) continue;
++    raiseAnomaly(
++      dep.id,
++      'repeated_failure',
++      'critical',
++      `${dep.name} has failed ${count} times in the last 24 hours on ${dep.provider}.`,
++      'Inspect build logs for the root cause. Check for dependency changes, environment variable issues, or provider-side outages.',
++      dep.provider,
++      dep.name,
++    );
++  }
++}
++
++// ── rule 2: stuck building ───────────────────────────────────────────────────
++
++function detectStuckBuilding(deps: any[]): void {
++  const STUCK_THRESHOLD_MS = 30 * 60_000; // 30 minutes
++  const now = Date.now();
++
++  for (const dep of deps) {
++    if (dep.status !== 'building' && dep.status !== 'queued') continue;
++    if (!dep.updated_at) continue;
++
++    const since = now - new Date(dep.updated_at).getTime();
++    if (since < STUCK_THRESHOLD_MS) continue;
++    if (openAnomalyExists(dep.id, 'stuck_building', 2 * 3600_000)) continue;
++
++    const minutes = Math.round(since / 60_000);
++    raiseAnomaly(
++      dep.id,
++      'stuck_building',
++      'critical',
++      `${dep.name} has been in "${dep.status}" state for ${minutes} minutes on ${dep.provider}.`,
++      'Force a redeploy or check provider status. Long build times may indicate a missing build cache, a frozen step, or a provider infrastructure issue.',
++      dep.provider,
++      dep.name,
++    );
++  }
++}
++
++// ── rule 3: deployment outage ─────────────────────────────────────────────────
++
++function detectDeploymentOutage(deps: any[]): void {
++  // Deployments that have a URL (were once live) but are now failed/suspended
++  for (const dep of deps) {
++    if (!dep.url) continue;
++    if (dep.status !== 'failed' && dep.status !== 'suspended') continue;
++    if (openAnomalyExists(dep.id, 'deployment_outage', 6 * 3600_000)) continue;
++
++    raiseAnomaly(
++      dep.id,
++      'deployment_outage',
++      'critical',
++      `${dep.name} is unreachable — status is "${dep.status}" but a live URL was previously recorded (${dep.url}).`,
++      'Trigger a new deployment or rollback to the last known good revision. Verify provider health and check for quota exhaustion.',
++      dep.provider,
++      dep.name,
++    );
++  }
++}
++
++// ── rule 4: build duration spike ─────────────────────────────────────────────
++
++function detectBuildDurationSpike(deps: any[]): void {
++  // Group by (provider, name) to get history per service
++  const byService: Record<string, any[]> = {};
++  for (const d of deps) {
++    const key = `${d.provider}::${d.name}`;
++    if (!byService[key]) byService[key] = [];
++    byService[key].push(d);
++  }
++
++  for (const [, history] of Object.entries(byService)) {
++    const finished = history
++      .filter(d => ['live', 'running', 'failed'].includes(d.status) && d.created_at && d.updated_at)
++      .map(d => ({
++        ...d,
++        duration: new Date(d.updated_at).getTime() - new Date(d.created_at).getTime(),
++      }))
++      .filter(d => d.duration > 10_000 && d.duration < 30 * 60_000) // plausible range
++      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
++
++    if (finished.length < 3) continue; // need baseline
++
++    const latest = finished[0];
++    const baseline = finished.slice(1, 6); // previous 1-5 builds
++    const avgMs = baseline.reduce((s, d) => s + d.duration, 0) / baseline.length;
++
++    if (latest.duration < avgMs * 2) continue; // not a spike
++    if (openAnomalyExists(latest.id, 'build_duration_spike', 4 * 3600_000)) continue;
++
++    const latestMin = (latest.duration / 60_000).toFixed(1);
++    const avgMin    = (avgMs / 60_000).toFixed(1);
++    raiseAnomaly(
++      latest.id,
++      'build_duration_spike',
++      'warning',
++      `${latest.name} took ${latestMin} min to build — ${((latest.duration / avgMs - 1) * 100).toFixed(0)}% longer than the ${avgMin} min average on ${latest.provider}.`,
++      'Investigate slow build steps: large dependencies, missing cache, or increased bundle size. Consider parallelising build tasks.',
++      latest.provider,
++      latest.name,
++    );
++  }
++}
++
++// ── rule 5: unusual deploy frequency ─────────────────────────────────────────
++
++function detectUnusualFrequency(deps: any[]): void {
++  const window1h = Date.now() - 3600_000;
++
++  // Group by (provider, name root)
++  const byService: Record<string, any[]> = {};
++  for (const d of deps) {
++    if (!d.created_at) continue;
++    if (new Date(d.created_at).getTime() < window1h) continue;
++    const key = `${d.provider}::${d.name}`;
++    if (!byService[key]) byService[key] = [];
++    byService[key].push(d);
++  }
++
++  for (const [, group] of Object.entries(byService)) {
++    if (group.length < 6) continue; // threshold: >5 deploys/hour
++    const rep = group[0];
++    if (openAnomalyExists(rep.id, 'unusual_frequency', 2 * 3600_000)) continue;
++
++    raiseAnomaly(
++      rep.id,
++      'unusual_frequency',
++      'warning',
++      `${rep.name} on ${rep.provider} was deployed ${group.length} times in the last hour — an unusually high rate.`,
++      'Check CI/CD webhooks for loops. Ensure branch protection rules are in place to prevent accidental rapid pushes.',
++      rep.provider,
++      rep.name,
++    );
++  }
++}
++
++// ── rule 6: health degradation ────────────────────────────────────────────────
++
++function detectHealthDegradation(deps: any[]): void {
++  const window7d = Date.now() - 7 * 24 * 3600_000;
++
++  // Group by provider
++  const byProvider: Record<string, any[]> = {};
++  for (const d of deps) {
++    if (!d.created_at) continue;
++    if (new Date(d.created_at).getTime() < window7d) continue;
++    if (!byProvider[d.provider]) byProvider[d.provider] = [];
++    byProvider[d.provider].push(d);
++  }
++
++  for (const [provider, group] of Object.entries(byProvider)) {
++    if (group.length < 5) continue; // need meaningful sample
++
++    const failed = group.filter(d => d.status === 'failed').length;
++    const rate   = (failed / group.length) * 100;
++    if (rate < 50) continue; // degradation = >50 % failure rate
++
++    // Use a synthetic provider-level ID (first dep's id) for dedup
++    const repId = group[0].id;
++    if (openAnomalyExists(repId, 'health_degradation', 6 * 3600_000)) continue;
++
++    raiseAnomaly(
++      repId,
++      'health_degradation',
++      'critical',
++      `${provider} has a ${rate.toFixed(0)}% failure rate across ${group.length} deployments in the last 7 days.`,
++      'Review recent changes across all services on this provider. Check for shared environment variables, provider limits, or a systemic configuration problem.',
++      provider,
++      provider,
++    );
++  }
++}
++
++// ── main loop ─────────────────────────────────────────────────────────────────
++
++async function runDetection(): Promise<void> {
++  if (!isEnabled()) return;
++
++  const db = getDb();
++  const deps = db
++    .prepare(
++      `SELECT id, provider, name, status, url, created_at, updated_at
++       FROM cloud_deployments
++       ORDER BY created_at DESC`,
++    )
++    .all() as any[];
++
++  if (deps.length === 0) return;
++
++  detectRepeatedFailure(deps);
++  detectStuckBuilding(deps);
++  detectDeploymentOutage(deps);
++  detectBuildDurationSpike(deps);
++  detectUnusualFrequency(deps);
++  detectHealthDegradation(deps);
++}
++
++let _timer: ReturnType<typeof setInterval> | null = null;
++
++export function startAnomalyDetection(): void {
++  if (_timer) return;
++  console.log('[anomaly] Starting cloud deployment anomaly detection');
++  // Initial run after 15 s startup delay, then every DETECTION_INTERVAL_MS
++  setTimeout(() => runDetection().catch(e => console.warn('[anomaly] Initial run error:', e.message)), 15_000);
++  _timer = setInterval(
++    () => runDetection().catch(e => console.warn('[anomaly] Detection error:', e.message)),
++    DETECTION_INTERVAL_MS,
++  );
++}
++
++export function stopAnomalyDetection(): void {
++  if (_timer) { clearInterval(_timer); _timer = null; }
++}
+diff --git a/frontend/src/pages/Dashboard.tsx b/frontend/src/pages/Dashboard.tsx
+index 9778e05..90f0c62 100644
+--- a/frontend/src/pages/Dashboard.tsx
++++ b/frontend/src/pages/Dashboard.tsx
+@@ -85,9 +85,15 @@ function AnomalyRow({ anomaly, onResolve, resolving }: {
+       transition: 'all 200ms',
+     }}>
+       <div style={{ flex: 1, minWidth: 0 }}>
+-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
++        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+           <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{anomaly.deployment_name}</span>
+           <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r-pill)', background: color + '20', color }}>{anomaly.severity}</span>
++          {anomaly.provider && (
++            <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 'var(--r-pill)' }}>{anomaly.provider}</span>
++          )}
++          {anomaly.type && (
++            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{anomaly.type.replace(/_/g, ' ')}</span>
++          )}
+         </div>
+         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{anomaly.message}</div>
+         <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 3 }}>{timeAgo(anomaly.created_at)}</div>
+diff --git a/frontend/src/pages/Settings.tsx b/frontend/src/pages/Settings.tsx
+index 7f025d7..9ad279b 100644
+--- a/frontend/src/pages/Settings.tsx
++++ b/frontend/src/pages/Settings.tsx
+@@ -210,13 +210,23 @@ export function AIAnomalies() {
+               <div style={{ display: 'flex', gap: 12 }}>
+                 <AlertTriangle size={18} color={a.severity === 'critical' ? 'var(--accent-red)' : 'var(--accent-orange)'} style={{ flexShrink: 0, marginTop: 2 }} />
+                 <div>
+-                  <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
++                  <div style={{ display: 'flex', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                     <span style={{ fontSize: '14px', fontWeight: 700 }}>{a.deployment_name}</span>
+                     <Badge variant="severity" value={a.severity}>{a.severity}</Badge>
+-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{a.type}</span>
++                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{a.type?.replace(/_/g, ' ')}</span>
++                    {a.provider && (
++                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '1px 6px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)' }}>
++                        {a.provider}
++                      </span>
++                    )}
+                   </div>
+                   <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{a.message}</div>
+-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 4 }}>Detected {timeAgo(a.created_at)}</div>
++                  {a.recommendation && (
++                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 6, padding: '6px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-sm)', borderLeft: '2px solid var(--accent-blue)' }}>
++                      <strong style={{ color: 'var(--accent-blue)' }}>Recommendation: </strong>{a.recommendation}
++                    </div>
++                  )}
++                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>Detected {timeAgo(a.created_at)}</div>
+                 </div>
+               </div>
+               <Button size="sm" variant="success" icon={<CheckCircle size={12} />}
+@@ -484,18 +494,20 @@ export function SettingsPage() {
+                 </div>
+               </div>
+ 
+-              <Section title="Anomaly Detection" description="Automatically detect infrastructure issues and create alerts" accent="linear-gradient(90deg,#f59e0b,#ef4444)">
++              <Section title="Anomaly Detection" description="Automatically detect cloud deployment issues and create alerts" accent="linear-gradient(90deg,#f59e0b,#ef4444)">
+                 <div>
+                   <ToggleRow
+                     label="Enable anomaly detection"
+-                    description="Monitor CPU and memory thresholds across all running deployments"
++                    description="Monitor cloud deployments for failures, build spikes, outages, and unusual activity"
+                     checked={local.anomaly_detection === 'true'}
+                     onChange={v => update('anomaly_detection', v ? 'true' : 'false')}
+                     accent="#f59e0b"
+                   />
+-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 16 }}>
+-                    <Input label="CPU Alert Threshold (%)" type="number" value={local.cpu_threshold || '90'} onChange={e => update('cpu_threshold', e.target.value)} hint="Alert when CPU exceeds this %" />
+-                    <Input label="Memory Alert Threshold (MB)" type="number" value={local.memory_threshold_mb || '900'} onChange={e => update('memory_threshold_mb', e.target.value)} hint="Alert when memory exceeds this MB" />
++                  <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)' }}>
++                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
++                      <strong style={{ color: 'var(--text-primary)' }}>Detected patterns:</strong>{' '}
++                      repeated build failures · stuck builds (&gt;30 min) · deployment outages · build duration spikes · unusual deploy frequency · provider health degradation
++                    </div>
+                   </div>
+                 </div>
+               </Section>
