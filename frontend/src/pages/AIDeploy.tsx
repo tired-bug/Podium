@@ -7,6 +7,7 @@ import {
 import { Card, Badge, SectionHeader, EmptyState } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../contexts/ToastContext';
+import { API_BASE_URL } from '../lib/api';
 import { useRole } from '../hooks/useRole';
 import { ViewerBanner } from '../components/ui/ViewerBanner';
 import { parseApiError, timeAgo } from '../lib/utils';
@@ -314,7 +315,7 @@ export default function AIDeploy() {
     sseRef.current = ctrl;
 
     try {
-      const resp = await fetch('/api/ai-deploy/execute', {
+      const resp = await fetch(`${API_BASE_URL}/api/ai-deploy/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -418,7 +419,7 @@ export default function AIDeploy() {
     const ctrl = new AbortController();
     sseRef.current = ctrl;
     try {
-      const resp = await fetch('/api/ai-deploy/redeploy', {
+      const resp = await fetch(`${API_BASE_URL}/api/ai-deploy/redeploy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

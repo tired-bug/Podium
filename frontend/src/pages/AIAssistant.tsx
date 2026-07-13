@@ -3,6 +3,7 @@ import { Plus, Send, Bot, User, Copy, CheckCircle, Trash2, Edit2, Zap, ChevronRi
 import { Card, EmptyState, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { useDeployments } from '../hooks/useDeployments';
+import { API_BASE_URL } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
 import { timeAgo, copyToClipboard, parseApiError } from '../lib/utils';
 import api from '../lib/api';
@@ -146,7 +147,7 @@ export default function AIAssistant() {
     setStreamingContent('');
 
     try {
-      const response = await fetch('/api/ai/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/ai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
