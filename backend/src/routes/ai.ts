@@ -23,6 +23,81 @@ function isGroqAuthError(err: any): boolean {
   return err?.response?.status === 401 || err?.response?.status === 403;
 }
 
+// Normalized shape used by every AI tool below so local (Docker) and cloud
+// deployments can be treated uniformly regardless of which table they live in.
+interface NormalizedDeployment {
+  id: string;
+  name: string;
+  status: string;
+  source: 'local' | 'cloud';
+  provider?: string;       // cloud only
+  image: string | null;    // docker image / repo, whichever applies
+  branch?: string;
+  ports: string[];
+  envVars: { key: string }[];
+  memoryLimit: string | null;
+  cpuLimit: string | null;
+  replicas: number | null;
+  restartPolicy: string | null;
+  raw: any;                // original row, for callers that still want it
+}
+
+function safeParseArray(val: any): any[] {
+  if (Array.isArray(val)) return val;
+  if (!val) return [];
+  try { const parsed = JSON.parse(val); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+}
+
+function normalizeLocalDeployment(dep: any): NormalizedDeployment {
+  return {
+    id: dep.id,
+    name: dep.name,
+    status: dep.status,
+    source: 'local',
+    image: dep.image || null,
+    branch: dep.branch,
+    ports: safeParseArray(dep.ports),
+    envVars: safeParseArray(dep.env_vars),
+    memoryLimit: dep.memory_limit ?? null,
+    cpuLimit: dep.cpu_limit ?? null,
+    replicas: dep.replicas ?? null,
+    restartPolicy: dep.restart_policy ?? null,
+    raw: dep,
+  };
+}
+
+function normalizeCloudDeployment(dep: any): NormalizedDeployment {
+  let config: any = {};
+  try { config = JSON.parse(dep.config || '{}'); } catch { /* ignore */ }
+  return {
+    id: dep.id,
+    name: dep.name,
+    status: dep.status,
+    source: 'cloud',
+    provider: dep.provider,
+    image: dep.docker_image || dep.repo_url || config.image || null,
+    branch: dep.branch || config.branch,
+    ports: safeParseArray(config.ports),
+    envVars: safeParseArray(config.envVars || config.env_vars),
+    memoryLimit: config.memoryLimit || config.memory_limit || null,
+    cpuLimit: config.cpuLimit || config.cpu_limit || null,
+    replicas: config.replicas ?? null,
+    restartPolicy: config.restartPolicy || config.restart_policy || null,
+    raw: dep,
+  };
+}
+
+// Looks up a deployment by id in either table (local first, then cloud) and
+// returns it normalized. This is the single source of truth every AI route
+// should use instead of querying `deployments` alone.
+function findDeploymentById(id: string): NormalizedDeployment | null {
+  const local = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(id) as any;
+  if (local) return normalizeLocalDeployment(local);
+  const cloud = getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(id) as any;
+  if (cloud) return normalizeCloudDeployment(cloud);
+  return null;
+}
+
 function groqErrorResponse(res: Response, err: any) {
   if (!getGroqKey()) {
     return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
@@ -192,7 +267,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
 
 router.post('/analyze', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId, prompt } = req.body;
-  const dep = getDb().prepare('SELECT * FROM deployments WHERE id = ?').get(deploymentId) as any;
+  const dep = findDeploymentById(deploymentId);
   if (!dep) return res.status(404).json({ error: 'Deployment not found' });
 
   const logs = getDb().prepare('SELECT * FROM build_logs WHERE deployment_id = ? ORDER BY id DESC LIMIT 50').all(deploymentId) as any[];
@@ -200,10 +275,10 @@ router.post('/analyze', requireAuth, async (req: AuthRequest, res: Response) => 
   const anomalies = getDb().prepare('SELECT * FROM anomalies WHERE deployment_id = ? AND resolved = 0').all(deploymentId) as any[];
 
   const context = `
-Deployment: ${dep.name} (${dep.status})
+Deployment: ${dep.name} (${dep.status})${dep.source === 'cloud' ? ` [cloud: ${dep.provider}]` : ''}
 Image: ${dep.image || 'N/A'}
-Branch: ${dep.branch}
-Memory Limit: ${dep.memory_limit}, CPU Limit: ${dep.cpu_limit}
+Branch: ${dep.branch || 'N/A'}
+Memory Limit: ${dep.memoryLimit || 'N/A'}, CPU Limit: ${dep.cpuLimit || 'N/A'}
 
 Recent Logs (last 50):
 ${logs.map(l => `[${l.level.toUpperCase()}] ${l.message}`).join('\n')}
@@ -241,7 +316,7 @@ Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join(';
 
 router.post('/suggest-fix', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId } = req.body;
-  const dep = getDb().prepare('SELECT * FROM deployments WHERE id = ?').get(deploymentId) as any;
+  const dep = findDeploymentById(deploymentId);
   if (!dep) return res.status(404).json({ error: 'Not found' });
 
   const logs = getDb().prepare(`
@@ -332,8 +407,6 @@ router.put('/anomalies/:id/resolve', requireAuth, (req, res: Response) => {
   res.json({ ok: true });
 });
 
-export default router;
-
 async function groqChat(systemPrompt: string, userPrompt: string, maxTokens = 1200): Promise<string> {
   const apiKey = getGroqKey();
   if (!apiKey) throw new Error('Groq API key not configured');
@@ -347,7 +420,29 @@ async function groqChat(systemPrompt: string, userPrompt: string, maxTokens = 12
 }
 
 router.post('/risk-score', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { name, image, envVars = [], ports = [], memoryLimit, cpuLimit, branch } = req.body;
+  const { deploymentId } = req.body;
+
+  // Prefer a real deployment lookup (local or cloud) when a deploymentId is
+  // given — this is how AI Hub's Risk Score tool calls this route. Fall back
+  // to raw config fields for the pre-deploy (not-yet-created) use case.
+  let name: string, image: string | null, envVars: any[], ports: any[], memoryLimit: string | null, cpuLimit: string | null, branch: string | undefined;
+  let sourceNote = '';
+
+  if (deploymentId) {
+    const dep = findDeploymentById(deploymentId);
+    if (!dep) return res.status(404).json({ error: 'Deployment not found' });
+    name = dep.name;
+    image = dep.image;
+    envVars = dep.envVars;
+    ports = dep.ports;
+    memoryLimit = dep.memoryLimit;
+    cpuLimit = dep.cpuLimit;
+    branch = dep.branch;
+    sourceNote = dep.source === 'cloud' ? ` (cloud, provider: ${dep.provider})` : ' (local)';
+  } else {
+    ({ name, image = null, envVars = [], ports = [], memoryLimit = null, cpuLimit = null, branch } = req.body);
+  }
+
   const existingDeployments = getDb().prepare("SELECT name, status FROM deployments LIMIT 20").all() as any[];
   const recentFailures = getDb().prepare(
     "SELECT d.name, COUNT(*) as c FROM deployments d JOIN build_logs l ON l.deployment_id=d.id WHERE l.level='error' GROUP BY d.id ORDER BY c DESC LIMIT 5"
@@ -355,7 +450,7 @@ router.post('/risk-score', requireAuth, async (req: AuthRequest, res: Response) 
 
   const prompt = `You are a DevOps risk assessor. Rate this deployment config from 0-100 (0=safe, 100=critical risk).
 
-Config to assess:
+Config to assess${sourceNote}:
 - Name: ${name || 'unnamed'}
 - Image: ${image || 'not set'}
 - Branch: ${branch || 'main'}
@@ -435,7 +530,7 @@ Provide a concise root cause analysis with:
 
 router.post('/optimize-config', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId } = req.body;
-  const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any;
+  const dep = findDeploymentById(deploymentId);
   if (!dep) return res.status(404).json({ error: 'Deployment not found' });
 
   const metrics = getDb().prepare("SELECT cpu, memory FROM metrics WHERE deployment_id=? ORDER BY timestamp DESC LIMIT 60").all(deploymentId) as any[];
@@ -447,12 +542,13 @@ router.post('/optimize-config', requireAuth, async (req: AuthRequest, res: Respo
   const maxMem = mems.length ? Math.max(...mems).toFixed(0) : 'N/A';
 
   const prompt = `Optimize this deployment's resource configuration for a production company environment.
+${dep.source === 'cloud' ? `This is a cloud deployment on ${dep.provider}. Resource limits may not be directly configurable the same way as containers — advise accordingly.` : ''}
 
 Current config:
-- Memory limit: ${dep.memory_limit}
-- CPU limit: ${dep.cpu_limit}
-- Restart policy: ${dep.restart_policy}
-- Replicas: ${dep.replicas}
+- Memory limit: ${dep.memoryLimit || 'not set / managed by provider'}
+- CPU limit: ${dep.cpuLimit || 'not set / managed by provider'}
+- Restart policy: ${dep.restartPolicy || 'N/A'}
+- Replicas: ${dep.replicas ?? 'N/A'}
 
 Observed metrics (last 60 data points):
 - Avg CPU: ${avgCpu}% | Max CPU: ${maxCpu}%
@@ -461,9 +557,9 @@ Observed metrics (last 60 data points):
 Respond ONLY with valid JSON:
 {
   "recommendations": [
-    { "field": "memory_limit", "current": "${dep.memory_limit}", "suggested": "<value>", "reason": "<why>" },
-    { "field": "cpu_limit", "current": "${dep.cpu_limit}", "suggested": "<value>", "reason": "<why>" },
-    { "field": "replicas", "current": "${dep.replicas}", "suggested": "<number>", "reason": "<why>" }
+    { "field": "memory_limit", "current": "${dep.memoryLimit || 'N/A'}", "suggested": "<value>", "reason": "<why>" },
+    { "field": "cpu_limit", "current": "${dep.cpuLimit || 'N/A'}", "suggested": "<value>", "reason": "<why>" },
+    { "field": "replicas", "current": "${dep.replicas ?? 'N/A'}", "suggested": "<number>", "reason": "<why>" }
   ],
   "estimatedSavings": "<cost/resource savings estimate>",
   "priorityActions": ["<action1>", "<action2>"]
@@ -523,17 +619,17 @@ Write a concise, professional incident report with these sections:
 
 router.post('/security-scan', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentId } = req.body;
-  const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any;
+  const dep = findDeploymentById(deploymentId);
   if (!dep) return res.status(404).json({ error: 'Not found' });
-  const envVars = JSON.parse(dep.env_vars || '[]');
 
   const prompt = `Perform a security review of this deployment configuration.
+${dep.source === 'cloud' ? `This is a cloud deployment hosted on ${dep.provider}.` : 'This is a locally managed Docker deployment.'}
 
 Deployment: ${dep.name}
 Image: ${dep.image || 'N/A'}
-Ports exposed: ${JSON.parse(dep.ports || '[]').join(', ') || 'none'}
-Restart policy: ${dep.restart_policy}
-Env var keys (values hidden): ${envVars.map((e: any) => e.key).join(', ') || 'none'}
+Ports exposed: ${dep.ports.join(', ') || 'none'}
+Restart policy: ${dep.restartPolicy || 'N/A'}
+Env var keys (values hidden): ${dep.envVars.map((e: any) => e.key).join(', ') || 'none'}
 
 Respond ONLY with valid JSON:
 {
@@ -556,7 +652,7 @@ Respond ONLY with valid JSON:
 });
 
 router.get('/cost-analysis', requireAuth, (_req, res: Response) => {
-  const cloudDeps = getDb().prepare("SELECT provider, name, status FROM cloud_deployments WHERE status='running'").all() as any[];
+  const cloudDeps = getDb().prepare("SELECT provider, name, status FROM cloud_deployments WHERE status='live'").all() as any[];
   const localDeps = getDb().prepare("SELECT name, memory_limit, cpu_limit, status FROM deployments WHERE status='running'").all() as any[];
 
   
@@ -578,8 +674,8 @@ router.get('/cost-analysis', requireAuth, (_req, res: Response) => {
 
 router.post('/compare-deployments', requireAuth, async (req: AuthRequest, res: Response) => {
   const { deploymentIdA, deploymentIdB } = req.body;
-  const depA = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentIdA) as any;
-  const depB = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentIdB) as any;
+  const depA = findDeploymentById(deploymentIdA);
+  const depB = findDeploymentById(deploymentIdB);
   if (!depA || !depB) return res.status(404).json({ error: 'One or both deployments not found' });
 
   const metricsA = getDb().prepare("SELECT AVG(cpu) as avgCpu, AVG(memory) as avgMem FROM metrics WHERE deployment_id=? AND timestamp > ?").get(depA.id, Date.now() - 3600000) as any;
@@ -587,14 +683,14 @@ router.post('/compare-deployments', requireAuth, async (req: AuthRequest, res: R
 
   const prompt = `Compare these two deployments and provide actionable insights.
 
-Deployment A: ${depA.name} (${depA.status})
-- Image: ${depA.image || 'N/A'} | Branch: ${depA.branch}
-- Memory: ${depA.memory_limit} | CPU: ${depA.cpu_limit}
+Deployment A: ${depA.name} (${depA.status})${depA.source === 'cloud' ? ` [cloud: ${depA.provider}]` : ' [local]'}
+- Image: ${depA.image || 'N/A'} | Branch: ${depA.branch || 'N/A'}
+- Memory: ${depA.memoryLimit || 'N/A'} | CPU: ${depA.cpuLimit || 'N/A'}
 - Avg CPU (1h): ${metricsA?.avgCpu?.toFixed(1) || 'N/A'}% | Avg Mem: ${metricsA?.avgMem?.toFixed(0) || 'N/A'}MB
 
-Deployment B: ${depB.name} (${depB.status})
-- Image: ${depB.image || 'N/A'} | Branch: ${depB.branch}
-- Memory: ${depB.memory_limit} | CPU: ${depB.cpu_limit}
+Deployment B: ${depB.name} (${depB.status})${depB.source === 'cloud' ? ` [cloud: ${depB.provider}]` : ' [local]'}
+- Image: ${depB.image || 'N/A'} | Branch: ${depB.branch || 'N/A'}
+- Memory: ${depB.memoryLimit || 'N/A'} | CPU: ${depB.cpuLimit || 'N/A'}
 - Avg CPU (1h): ${metricsB?.avgCpu?.toFixed(1) || 'N/A'}% | Avg Mem: ${metricsB?.avgMem?.toFixed(0) || 'N/A'}MB
 
 Provide: 1) Performance winner and why, 2) Resource efficiency comparison, 3) Config differences worth addressing, 4) Recommendation for which to promote to production.`;
@@ -614,12 +710,13 @@ router.get('/platform-summary', requireAuth, async (_req, res: Response) => {
   const failedDeps = (db.prepare("SELECT COUNT(*) as c FROM deployments WHERE status='failed'").get() as any)?.c || 0;
   const openAnomalies = (db.prepare("SELECT COUNT(*) as c FROM anomalies WHERE resolved=0").get() as any)?.c || 0;
   const criticalAnomalies = (db.prepare("SELECT COUNT(*) as c FROM anomalies WHERE resolved=0 AND severity='critical'").get() as any)?.c || 0;
-  const cloudRunning = (db.prepare("SELECT COUNT(*) as c FROM cloud_deployments WHERE status='running'").get() as any)?.c || 0;
+  const cloudRunning = (db.prepare("SELECT COUNT(*) as c FROM cloud_deployments WHERE status='live'").get() as any)?.c || 0;
+  const cloudFailedDeps = (db.prepare("SELECT COUNT(*) as c FROM cloud_deployments WHERE status='failed'").get() as any)?.c || 0;
   const recentErrors = (db.prepare("SELECT COUNT(*) as c FROM build_logs WHERE level='error' AND timestamp > datetime('now','-1 hour')").get() as any)?.c || 0;
 
   const platformPrompt = `Generate a 3-sentence executive health summary for this DevOps platform:
 - Total deployments: ${totalDeps} (${runningDeps} running, ${failedDeps} failed)
-- Cloud deployments running: ${cloudRunning}
+- Cloud deployments: ${cloudRunning} live, ${cloudFailedDeps} failed
 - Open anomalies: ${openAnomalies} (${criticalAnomalies} critical)
 - Errors in last hour: ${recentErrors}
 
@@ -629,7 +726,7 @@ Be direct, professional, and action-oriented. Mention if anything needs immediat
     const summary = await groqChat(SYSTEM_PROMPT, platformPrompt, 300);
     return res.json({
       summary,
-      stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, recentErrors },
+      stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, cloudFailedDeps, recentErrors },
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
@@ -641,7 +738,7 @@ Be direct, professional, and action-oriented. Mention if anything needs immediat
     return res.json({
       summary: null,
       aiError,
-      stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, recentErrors },
+      stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, cloudFailedDeps, recentErrors },
       generatedAt: new Date().toISOString(),
     });
   }
@@ -757,3 +854,5 @@ Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
     return groqErrorResponse(res, err);
   }
 });
+
+export default router;

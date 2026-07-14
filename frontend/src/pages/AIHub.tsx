@@ -324,7 +324,7 @@ function RiskTool({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
   const { error: showError } = useToast();
   const tool = AI_TOOLS.find(t => t.id === 'risk')!;
-  const run = async () => { const dep = deployments.find(d => d.id === depId); if (!dep) return; setLoading(true); try { const { data } = await api.post('/api/ai/risk-score', { name: dep.name }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
+  const run = async () => { const dep = deployments.find(d => d.id === depId); if (!dep) return; setLoading(true); try { const { data } = await api.post('/api/ai/risk-score', { deploymentId: dep.id }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
   const rColor = result ? (SEVERITY_COLOR[result.level] || '#f59e0b') : tool.accent;
   return (
     <ToolPanel tool={tool}>
