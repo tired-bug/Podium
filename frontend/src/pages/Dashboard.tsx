@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Rocket, Container, AlertTriangle, Cloud, CheckCircle,
+  Rocket, CheckCircle,
   TrendingUp, TrendingDown, RefreshCw,
   Activity, Zap,
 } from 'lucide-react';
-import { Card, Badge, EmptyState, Skeleton } from '../components/ui/Badge';
+import { Card, Badge, EmptyState } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { MetricChart } from '../components/charts/MetricChart';
-import { useDeployments } from '../hooks/useDeployments';
 import { useToast } from '../contexts/ToastContext';
 import { timeAgo, parseApiError } from '../lib/utils';
 import api from '../lib/api';
@@ -108,7 +107,7 @@ function AnomalyRow({ anomaly, onResolve, resolving }: {
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { deployments, loading, refetch } = useDeployments(15_000);
+  const [loading,    setLoading]    = useState(true);
   const [anomalies,  setAnomalies]  = useState<any[]>([]);
   const [cloudDeps,  setCloudDeps]  = useState<any[]>([]);
   const [metrics,    setMetrics]    = useState<any[]>([]);
@@ -128,6 +127,7 @@ export default function Dashboard() {
       successRate: 82 + Math.random() * 18,
     }));
     setMetrics(days);
+    setLoading(false);
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -142,14 +142,13 @@ export default function Dashboard() {
     finally { setResolving(null); }
   };
 
-  const running  = deployments.filter(d => d.status === 'running').length;
-  const failed   = deployments.filter(d => d.status === 'failed').length;
+  // "Total Deployments" counts every deployment on the platform. Real deploys
+  // all go through the cloud provider engine now (see /api/cloud), so that's
+  // the single source of truth — not the legacy/local `deployments` table.
+  const totalDeployments = cloudDeps.length;
 
   const statCards = [
-    { label: 'Total Deployments', value: deployments.length, icon: <Rocket size={20} color="#fff" />,    gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', trend: 12,  onClick: () => navigate('/cloud') },
-    { label: 'Running Deployments', value: running,          icon: <Container size={20} color="#fff" />,  gradient: 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/cloud') },
-    { label: 'Active Anomalies',   value: anomalies.length,  icon: <AlertTriangle size={20} color="#fff" />, gradient: anomalies.length > 0 ? 'linear-gradient(135deg,#ef4444,#f59e0b)' : 'linear-gradient(135deg,#10b981,#14b8a6)', onClick: () => navigate('/ai/anomalies') },
-    { label: 'Cloud Deployments',  value: cloudDeps.length,  icon: <Cloud size={20} color="#fff" />,      gradient: 'linear-gradient(135deg,#22d3ee,#6366f1)',  onClick: () => navigate('/cloud') },
+    { label: 'Total Deployments', value: totalDeployments, icon: <Rocket size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', onClick: () => navigate('/cloud') },
   ];
 
   return (
@@ -160,15 +159,13 @@ export default function Dashboard() {
           <h1 style={{ fontSize: '22px', fontWeight: 900, margin: 0, letterSpacing: '-.01em' }}>Dashboard</h1>
           <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 3 }}>Platform health at a glance</p>
         </div>
-        <Button icon={<RefreshCw size={14} />} onClick={() => { fetchAll(); refetch(); }} size="sm">Refresh</Button>
+        <Button icon={<RefreshCw size={14} />} onClick={() => { setLoading(true); fetchAll(); }} size="sm">Refresh</Button>
       </div>
 
       {}
-      <div className="anim-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+      <div className="anim-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px)', gap: 16 }}>
         {loading
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: 110, borderRadius: 'var(--r-lg)' }} />
-            ))
+          ? <div className="skeleton" style={{ height: 110, borderRadius: 'var(--r-lg)' }} />
           : statCards.map((c, i) => <StatCard key={c.label} {...c} delay={i * 60} />)
         }
       </div>
@@ -229,7 +226,7 @@ export default function Dashboard() {
             </div>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 700 }}>Recent Deployments</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{deployments.length} total</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{cloudDeps.length} total</div>
             </div>
           </div>
           <Button size="sm" variant="ghost" onClick={() => navigate('/cloud')}>View all →</Button>
@@ -239,7 +236,7 @@ export default function Dashboard() {
           <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[1, 2, 3].map(i => <div key={i} className="skeleton" style={{ height: 44 }} />)}
           </div>
-        ) : deployments.length === 0 ? (
+        ) : cloudDeps.length === 0 ? (
           <EmptyState icon="🚀" title="No deployments yet"
             description="Deploy your first project to get started."
             action={<Button variant="primary" size="sm" onClick={() => navigate('/cloud')}>New Deployment</Button>}
@@ -249,13 +246,16 @@ export default function Dashboard() {
             <table style={{ width: '100%' }}>
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)' }}>
-                  {['Name', 'Status', 'Branch', 'Image', 'Updated', 'Actions'].map(h => (
+                  {['Name', 'Status', 'Provider', 'Region', 'Updated'].map(h => (
                     <th key={h} style={{ padding: '9px 20px', fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 600, textAlign: 'left' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {deployments.slice(0, 8).map((d, i) => (
+                {[...cloudDeps]
+                  .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+                  .slice(0, 8)
+                  .map((d, i) => (
                   <tr
                     key={d.id}
                     onClick={() => navigate('/cloud')}
@@ -276,19 +276,9 @@ export default function Dashboard() {
                       </div>
                     </td>
                     <td style={{ padding: '12px 20px' }}><Badge variant="status" value={d.status}>{d.status}</Badge></td>
-                    <td style={{ padding: '12px 20px', fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>{d.branch}</td>
-                    <td style={{ padding: '12px 20px', fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.image || '—'}</td>
+                    <td style={{ padding: '12px 20px', fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', textTransform: 'capitalize' }}>{d.provider}</td>
+                    <td style={{ padding: '12px 20px', fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{d.region || '—'}</td>
                     <td style={{ padding: '12px 20px', fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{timeAgo(d.updated_at)}</td>
-                    <td style={{ padding: '12px 20px' }} onClick={e => e.stopPropagation()}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {d.status !== 'running' && d.status !== 'building' && (
-                          <Button size="sm" variant="success" onClick={async () => { await api.post(`/api/deployments/${d.id}/start`); refetch(); }}>Start</Button>
-                        )}
-                        {d.status === 'running' && (
-                          <Button size="sm" variant="ghost" onClick={async () => { await api.post(`/api/deployments/${d.id}/stop`); refetch(); }}>Stop</Button>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>

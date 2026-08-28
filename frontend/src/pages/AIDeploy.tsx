@@ -68,6 +68,25 @@ const STATUS_COLORS: Record<string, string> = {
   queued: 'var(--accent-orange)', suspended: 'var(--text-muted)',
 };
 
+// ── GitHub link parsing (for Quick Static Site) ─────────────────────────────
+// Accepts full URLs, git@ SSH URLs, github.com/owner/repo, or plain owner/repo.
+// Also picks a branch out of a /tree/<branch> URL if present.
+function parseGithubRepoLink(input: string): { fullName: string; branch?: string } | null {
+  let s = (input || '').trim();
+  if (!s) return null;
+  s = s.replace(/^git@github\.com:/i, '');
+  s = s.replace(/^(https?:\/\/)?(www\.)?github\.com\//i, '');
+  s = s.replace(/\.git$/i, '');
+  s = s.replace(/^\/+|\/+$/g, '');
+  const parts = s.split('/').filter(Boolean);
+  if (parts.length < 2) return null;
+  const [owner, repo] = parts;
+  if (!owner || !repo) return null;
+  let branch: string | undefined;
+  if (parts[2] === 'tree' && parts[3]) branch = decodeURIComponent(parts.slice(3).join('/'));
+  return { fullName: `${owner}/${repo}`, branch };
+}
+
 // ── Small helpers ──────────────────────────────────────────────────────────────
 
 function PlanRow({ label, value, mono = false }: { label: string; value?: string | number | null; mono?: boolean }) {
@@ -179,6 +198,10 @@ export default function AIDeploy() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Quick Static Site — deploy straight from a GitHub link, no zip needed
+  const [staticRepoUrl, setStaticRepoUrl] = useState('');
+  const [staticBranch, setStaticBranch] = useState('main');
+
   // Selection
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [repos, setRepos] = useState<GHRepo[]>([]);
@@ -261,6 +284,25 @@ export default function AIDeploy() {
     } finally {
       setUploading(false);
     }
+  };
+
+  // ── Quick Static Site — use a GitHub link directly, no upload needed ───────
+
+  const handleStaticLink = () => {
+    const parsed = parseGithubRepoLink(staticRepoUrl);
+    if (!parsed) {
+      showError('Enter a valid GitHub repo link, e.g. https://github.com/owner/repo');
+      return;
+    }
+    const syntheticRepo: GHRepo = {
+      id: -Date.now(),
+      full_name: parsed.fullName,
+      name: parsed.fullName.split('/').pop() || parsed.fullName,
+      default_branch: parsed.branch || staticBranch || 'main',
+      private: false,
+    };
+    setSelectedRepo(syntheticRepo);
+    setBranch(parsed.branch || staticBranch || 'main');
   };
 
   // ── Analyze repo ───────────────────────────────────────────────────────────
@@ -548,7 +590,7 @@ export default function AIDeploy() {
             { id: 'static', label: 'Quick Static Site', icon: <Layers size={13} /> },
           ] as { id: InputMode; label: string; icon: React.ReactNode }[]).map(m => (
             <button key={m.id}
-              onClick={() => { setInputMode(m.id); setSelectedRepo(null); setUploadFile(null); }}
+              onClick={() => { setInputMode(m.id); setSelectedRepo(null); setUploadFile(null); setStaticRepoUrl(''); setStaticBranch('main'); }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
                 background: inputMode === m.id ? 'var(--accent-blue-dim)' : 'transparent',
@@ -621,12 +663,12 @@ export default function AIDeploy() {
           )}
 
           {/* Upload ZIP mode */}
-          {(inputMode === 'upload' || inputMode === 'static') && (
+          {inputMode === 'upload' && (
           <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Package size={15} color="var(--accent-blue)" />
               <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {inputMode === 'static' ? 'Static Site Files (.zip)' : 'Upload Project (.zip)'}
+                Upload Project (.zip)
               </span>
             </div>
 
@@ -645,9 +687,7 @@ export default function AIDeploy() {
             ) : (
               <>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                  {inputMode === 'static'
-                    ? 'Zip your HTML/CSS/JS (or any static build output) and upload it. Podium pushes it to a new GitHub repo and deploys it as a static site — no build step needed.'
-                    : 'Upload a zip of your project. Podium creates a new GitHub repo from it, then the AI analyzes it exactly like any connected repo.'}
+                  Upload a zip of your project. Podium creates a new GitHub repo from it, then the AI analyzes it exactly like any connected repo.
                 </div>
 
                 <input
@@ -673,7 +713,7 @@ export default function AIDeploy() {
                 <input
                   value={uploadRepoName}
                   onChange={e => setUploadRepoName(e.target.value)}
-                  placeholder={inputMode === 'static' ? 'Repo name (e.g. my-landing-page)' : 'Repo name (optional — auto-generated if blank)'}
+                  placeholder="Repo name (optional — auto-generated if blank)"
                   style={{ padding: '7px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', outline: 'none' }}
                 />
 
@@ -684,6 +724,7 @@ export default function AIDeploy() {
 
                 <Button
                   variant="primary"
+                  size="sm"
                   icon={uploading ? undefined : <Package size={14} />}
                   loading={uploading}
                   disabled={!uploadFile || uploading}
@@ -695,6 +736,63 @@ export default function AIDeploy() {
             )}
           </Card>
           )}
+
+          {/* Quick Static Site mode — deploy straight from a GitHub link */}
+          {inputMode === 'static' && (
+          <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Layers size={15} color="var(--accent-blue)" />
+              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Quick Static Site
+              </span>
+            </div>
+
+            {selectedRepo ? (
+              <div style={{ padding: '14px 16px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 'var(--r-md)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <CheckCircle size={16} color="var(--accent-green)" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{selectedRepo.full_name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Branch: {branch} — ready to analyze</div>
+                </div>
+                <button onClick={() => { setSelectedRepo(null); setStaticRepoUrl(''); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  Paste a link to any GitHub repo — HTML/CSS/JS or any static build output. Podium deploys it straight from the link, no zip needed and no build step.
+                </div>
+
+                <input
+                  value={staticRepoUrl}
+                  onChange={e => setStaticRepoUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleStaticLink(); }}
+                  placeholder="https://github.com/owner/repo"
+                  style={{ padding: '9px 10px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', outline: 'none' }}
+                />
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, flexShrink: 0 }}>Branch</label>
+                  <input value={staticBranch} onChange={e => setStaticBranch(e.target.value)}
+                    style={{ flex: 1, padding: '5px 8px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', outline: 'none' }} />
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Layers size={14} />}
+                  disabled={!staticRepoUrl.trim()}
+                  onClick={handleStaticLink}
+                >
+                  Use This Link
+                </Button>
+              </>
+            )}
+          </Card>
+          )}
+
 
           {/* Provider picker */}
           <Card style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -730,6 +828,7 @@ export default function AIDeploy() {
             <div style={{ marginTop: 'auto', paddingTop: 8 }}>
               <Button
                 variant="primary"
+                size="sm"
                 icon={analyzing ? undefined : <Zap size={14} />}
                 loading={analyzing}
                 disabled={!selectedRepo || !selectedProvider || analyzing}

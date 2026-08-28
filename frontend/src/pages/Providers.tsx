@@ -440,21 +440,21 @@ function ProviderCard({
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Actions — flex:1 on each button so they stay side by side and never overflow the card */}
       <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
         {provider.connected ? (
           <>
-            <Button variant="secondary" size="sm" icon={<RefreshCw size={12} />} onClick={onConnect} fullWidth>
+            <Button variant="secondary" size="sm" icon={<RefreshCw size={12} />} onClick={onConnect} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }}>
               Reconfigure
             </Button>
             {can.deleteDeployment && (
-              <Button variant="danger" size="sm" icon={<Trash2 size={12} />} loading={disconnecting} onClick={handleDisconnect}>
+              <Button variant="danger" size="sm" icon={<Trash2 size={12} />} loading={disconnecting} onClick={handleDisconnect} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }}>
                 Disconnect
               </Button>
             )}
           </>
         ) : (
-          <Button variant="primary" size="sm" icon={<Zap size={12} />} onClick={onConnect} fullWidth disabled={!can.startStopRestart}>
+          <Button variant="primary" size="sm" icon={<Zap size={12} />} onClick={onConnect} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }} disabled={!can.startStopRestart}>
             Connect
           </Button>
         )}
@@ -514,6 +514,43 @@ export default function Providers() {
           ))}
         </div>
       )}
+
+      {/* Coming soon — not wired up to the backend yet */}
+      <div>
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 12 }}>
+          Coming Soon
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: 16 }}>
+          {[
+            { id: 'azure', name: 'Microsoft Azure', description: 'Deploy containers to Azure Container Instances across any region.' },
+            { id: 'aws', name: 'Amazon Web Services', description: 'Ship to AWS App Runner with serverless container deploys.' },
+            { id: 'gcp', name: 'Google Cloud Platform', description: 'Deploy to Cloud Run with automatic scale-to-zero.' },
+          ].map(p => (
+            <div key={p.id} style={{
+              background: 'var(--bg-card)', border: '1px solid var(--border)',
+              borderRadius: 'var(--r-xl)', padding: 20, display: 'flex', flexDirection: 'column', gap: 16,
+              opacity: 0.6,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{ flexShrink: 0 }}>{LOGOS[p.id]}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: 'var(--text-primary)' }}>{p.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-muted)', flexShrink: 0 }} />
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Coming soon</span>
+                  </div>
+                </div>
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                {p.description}
+              </p>
+              <Button variant="secondary" size="sm" disabled fullWidth style={{ marginTop: 'auto' }}>
+                Coming Soon
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Connection wizard modal */}
       {wizard && (

@@ -3,7 +3,6 @@ import { ScrollText, Search, Trash2, ChevronDown } from 'lucide-react';
 import { Card, EmptyState, SectionHeader, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Select, Tabs } from '../components/ui/Modal';
-import { useDeployments } from '../hooks/useDeployments';
 import { useToast } from '../contexts/ToastContext';
 import { parseApiError } from '../lib/utils';
 import api from '../lib/api';
@@ -34,7 +33,6 @@ const LEVEL_TABS = [
 ];
 
 export default function Logs() {
-  const { deployments } = useDeployments();
   const { success, error: showError } = useToast();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,9 +42,16 @@ export default function Logs() {
   const [deploymentId, setDeploymentId] = useState('all');
   const [autoScroll, setAutoScroll] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [cloudDeps, setCloudDeps] = useState<Array<{ id: string; name: string }>>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const LIMIT = 200;
+
+  // Deployment filter options — pulled from the real platform-wide deployment
+  // list (same source as the Dashboard/Cloud pages), not the legacy table.
+  useEffect(() => {
+    api.get('/api/cloud').then(r => setCloudDeps(r.data || [])).catch(() => {});
+  }, []);
 
   const fetchLogs = useCallback(async (reset = false) => {
     const currentOffset = reset ? 0 : offset;
@@ -107,7 +112,7 @@ export default function Logs() {
 
   const depOptions = [
     { value: 'all', label: 'All Deployments' },
-    ...deployments.map(d => ({ value: d.id, label: d.name })),
+    ...cloudDeps.map(d => ({ value: d.id, label: d.name })),
   ];
 
   return (
