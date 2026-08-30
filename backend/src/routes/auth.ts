@@ -27,10 +27,7 @@ router.post('/login', async (req, res) => {
   const valid = await comparePassword(password, user.password_hash);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
-  // Require email verification (skip for admin accounts created before verification was added)
-  if (user.email_verified === 0 && user.email_verification_token !== null) {
-    return res.status(403).json({ error: 'Email not verified. Please check your inbox.' });
-  }
+  // Email verification requirement removed — all new signups are auto-verified and auto-logged-in.
 
   getDb()
     .prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?")
@@ -86,10 +83,11 @@ router.post('/signup', async (req, res) => {
   const id = uuidv4();
   const hash = await hashPassword(password);
 
-  // First user (admin) is auto-verified; subsequent users need email verification
-  const verificationToken = role === 'admin' ? null : generateToken();
-  const verificationExpires = role === 'admin' ? null : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-  const emailVerified = role === 'admin' ? 1 : 0;
+  // Verification requirement removed — every account is auto-verified and
+  // auto-logged-in on signup, same as the original admin-only fast path.
+  const verificationToken = null;
+  const verificationExpires = null;
+  const emailVerified = 1;
 
   db.prepare(`
     INSERT INTO users (id, username, email, password_hash, role, email_verified, email_verification_token, email_verification_expires)
@@ -104,18 +102,7 @@ router.post('/signup', async (req, res) => {
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
   }
 
-  // Send verification email (non-blocking)
-  if (verificationToken) {
-    try {
-      await sendVerificationEmail(email, verificationToken);
-      console.log('[auth] Verification email dispatched to', email);
-    } catch (err: any) {
-      console.error('[auth] Failed to send verification email:', err?.message || err);
-    }
-    return res.status(201).json({ message: 'Account created. Please check your email to verify your account.' });
-  }
-
-  // Admin: auto-login
+  // All accounts (not just admin) now auto-login on signup.
   const token = signToken({ sub: id, username, role });
   return res.status(201).json({
     token,
