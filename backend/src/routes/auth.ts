@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { getDb } from '../db/index';
 import { signToken, hashPassword, comparePassword, requireAuth, requireRole, AuthRequest } from '../auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
+import { createNotification } from './notifications';
 
 const router = Router();
 
@@ -104,6 +105,16 @@ router.post('/signup', async (req, res) => {
 
   // All accounts (not just admin) now auto-login on signup.
   const token = signToken({ sub: id, username, role });
+
+  // Notify the rest of the team when someone new joins (invite-based signups
+  // only — the very first admin account has no team to notify yet).
+  if (inviteId) {
+    const teammates = db.prepare('SELECT id FROM users WHERE id != ?').all(id) as Array<{ id: string }>;
+    for (const t of teammates) {
+      createNotification(t.id, 'team', 'New team member', `${username} joined the team.`, '/team');
+    }
+  }
+
   return res.status(201).json({
     token,
     user: { id, username, email, role },
