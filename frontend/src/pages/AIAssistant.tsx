@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Send, Bot, User, Copy, CheckCircle, Trash2, Edit2, Zap, ChevronRight, Search, Cloud, HardDrive } from 'lucide-react';
+import { Plus, Send, Bot, User, Copy, CheckCircle, Trash2, Edit2, Zap, ChevronRight, Search, Cloud, HardDrive, RotateCcw } from 'lucide-react';
 import { Card, EmptyState, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { useDeployments } from '../hooks/useDeployments';
@@ -166,13 +166,14 @@ export default function AIAssistant() {
     } catch {}
   };
 
-  const sendMessage = useCallback(async () => {
-    if (!input.trim() || streaming) return;
+  const sendMessage = useCallback(async (overrideText?: string) => {
+    const text = overrideText ?? input;
+    if (!text.trim() || streaming) return;
     if (!activeConvId) { await createConversation(); }
 
     const convId = activeConvId;
     const userMsg: Message = {
-      id: Date.now().toString(), role: 'user', content: input,
+      id: Date.now().toString(), role: 'user', content: text,
       created_at: new Date().toISOString(),
     };
     const history = [...messages, userMsg];
@@ -189,7 +190,7 @@ export default function AIAssistant() {
           'Authorization': `Bearer ${localStorage.getItem('podium_token')}`,
         },
         body: JSON.stringify({
-          message: input,
+          message: text,
           history: messages.slice(-20).map(m => ({ role: m.role, content: m.content })),
           conversationId: convId,
         }),
@@ -253,7 +254,7 @@ export default function AIAssistant() {
     try {
       const { data } = await api.post('/api/ai/analyze', { deploymentId: analyzeDepId });
       let convId = activeConvId;
-      if (!convId) convId = await createConversation();
+      if (!convId) convId = (await createConversation()) ?? null;
       const msg: Message = {
         id: Date.now().toString(), role: 'assistant',
         content: data.analysis, created_at: new Date().toISOString(),
@@ -465,14 +466,31 @@ export default function AIAssistant() {
             {}
             <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
               {messages.map(msg => (
-                <div key={msg.id} style={{
-                  display: 'flex', gap: 12, marginBottom: 20,
+                <div key={msg.id} className="msg-row" style={{
+                  display: 'flex', gap: 12, marginBottom: 20, alignItems: 'flex-start',
                   justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
                 }}>
                   {msg.role === 'assistant' && (
                     <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
                       <Bot size={15} color="#fff" />
                     </div>
+                  )}
+                  {msg.role === 'user' && (
+                    <button
+                      className="msg-resend"
+                      onClick={() => sendMessage(msg.content)}
+                      disabled={streaming}
+                      title="Resend this prompt"
+                      style={{
+                        width: 24, height: 24, borderRadius: 7, flexShrink: 0, marginTop: 6,
+                        background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: streaming ? 'default' : 'pointer', opacity: 0, transition: 'opacity 120ms',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      <RotateCcw size={12} />
+                    </button>
                   )}
                   <div style={{
                     maxWidth: '75%',
@@ -492,6 +510,7 @@ export default function AIAssistant() {
                   )}
                 </div>
               ))}
+              <style>{`.msg-row:hover .msg-resend { opacity: 1 !important; }`}</style>
 
               {}
               {streaming && (
@@ -538,7 +557,7 @@ export default function AIAssistant() {
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(undefined); }
                   }}
                   placeholder="Ask anything about your infrastructure... (Enter to send, Shift+Enter for newline)"
                   style={{
@@ -551,7 +570,7 @@ export default function AIAssistant() {
                   disabled={streaming}
                 />
                 <button
-                  onClick={sendMessage}
+                  onClick={() => sendMessage(undefined)}
                   disabled={!input.trim() || streaming}
                   style={{
                     width: 34, height: 34, borderRadius: 10, flexShrink: 0,

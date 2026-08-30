@@ -277,12 +277,63 @@ function MiniBarChart({ data }: { data: BuildPoint[] }) {
   );
 }
 
+// ISO-week key like "2026-W35"
+function isoWeekKey(d: Date) {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+}
+
+type Granularity = 'day' | 'week' | 'month';
+
+function aggregateTimeline(data: BuildPoint[], granularity: Granularity): BuildPoint[] {
+  if (granularity === 'day') return data;
+  const buckets: Record<string, number> = {};
+  for (const d of data) {
+    const date = new Date(d.date);
+    const key = granularity === 'week'
+      ? isoWeekKey(date)
+      : date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+    buckets[key] = (buckets[key] || 0) + d.count;
+  }
+  return Object.entries(buckets).map(([date, count]) => ({ date, count }));
+}
+
+function GranularityToggle({ value, onChange }: { value: Granularity; onChange: (g: Granularity) => void }) {
+  const opts: { id: Granularity; label: string }[] = [
+    { id: 'day', label: 'Daily' },
+    { id: 'week', label: 'Weekly' },
+    { id: 'month', label: 'Monthly' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 'var(--r-md)', background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)' }}>
+      {opts.map(o => (
+        <button
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          style={{
+            padding: '4px 10px', borderRadius: 'var(--r-sm)', border: 'none', cursor: 'pointer',
+            fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-sans)',
+            background: value === o.id ? 'var(--accent)' : 'transparent',
+            color: value === o.id ? '#fff' : 'var(--text-muted)',
+            transition: 'all 150ms',
+          }}
+        >{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function FinOps() {
   const [data, setData]       = useState<FinOpsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [tab, setTab]         = useState<'overview' | 'recommendations' | 'providers'>('overview');
+  const [granularity, setGranularity] = useState<Granularity>('week');
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -394,23 +445,31 @@ export default function FinOps() {
 
               {/* Build timeline */}
               <Card>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <BarChart2 size={14} color="var(--accent)" />
-                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>Deploy Activity (30 days)</span>
-                </div>
-                {data.buildTimeline.length > 0 ? (
-                  <div>
-                    <MiniBarChart data={data.buildTimeline} />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                        {data.buildTimeline[0]?.date}
-                      </span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                        {data.buildTimeline[data.buildTimeline.length - 1]?.date}
-                      </span>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <BarChart2 size={14} color="var(--accent)" />
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      Deploy Activity {granularity === 'day' ? '(30 days)' : granularity === 'week' ? '(by week)' : '(by month)'}
+                    </span>
                   </div>
-                ) : (
+                  <GranularityToggle value={granularity} onChange={setGranularity} />
+                </div>
+                {data.buildTimeline.length > 0 ? (() => {
+                  const aggregated = aggregateTimeline(data.buildTimeline, granularity);
+                  return (
+                    <div>
+                      <MiniBarChart data={aggregated} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                          {aggregated[0]?.date}
+                        </span>
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                          {aggregated[aggregated.length - 1]?.date}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })() : (
                   <EmptyState icon={<BarChart2 size={22} />} title="No deploys yet" />
                 )}
               </Card>

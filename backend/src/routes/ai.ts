@@ -25,6 +25,17 @@ interface NormalizedDeployment {
   raw: any;                // original row, for callers that still want it
 }
 
+// Turns a user's first prompt into a short, clean conversation name — single
+// line, trimmed to a word boundary, capped well under the sidebar width.
+function shortConversationTitle(message: string): string {
+  const cleaned = message.replace(/\s+/g, ' ').trim();
+  const MAX = 42;
+  if (cleaned.length <= MAX) return cleaned;
+  const truncated = cleaned.slice(0, MAX);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return (lastSpace > 15 ? truncated.slice(0, lastSpace) : truncated).trim() + '…';
+}
+
 function safeParseArray(val: any): any[] {
   if (Array.isArray(val)) return val;
   if (!val) return [];
@@ -185,7 +196,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
           msgs.push({ id: uuidv4(), role: 'user', content: message, created_at: new Date().toISOString() });
           msgs.push({ id: uuidv4(), role: 'assistant', content: fullContent, created_at: new Date().toISOString() });
 
-          const titleUpdate = msgs.length === 2 ? message.slice(0, 60) : null;
+          const titleUpdate = msgs.length === 2 ? shortConversationTitle(message) : null;
           getDb().prepare(`
             UPDATE ai_conversations SET messages = ?, updated_at = datetime('now')
             ${titleUpdate ? ", title = ?" : ""}

@@ -47,6 +47,63 @@ interface ProviderMetrics {
   deployments: DeploymentMetrics[];
 }
 
+type Granularity = 'week' | 'month';
+
+function isoWeekKey(d: Date) {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = dt.getUTCDay() || 7;
+  dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return { key: `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`, ts: dt.getTime() };
+}
+
+// Aggregates the daily trend into weekly or monthly buckets, keeping
+// successful/failed/total sums per bucket for the stacked chart.
+function aggregateTrend(trend: TrendPoint[], granularity: Granularity) {
+  const buckets: Record<string, { ts: number; total: number; successful: number; failed: number }> = {};
+  for (const t of trend) {
+    const date = new Date(t.date);
+    let key: string, ts: number;
+    if (granularity === 'week') {
+      const w = isoWeekKey(date);
+      key = w.key; ts = w.ts;
+    } else {
+      key = date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+      ts = new Date(date.getFullYear(), date.getMonth(), 1).getTime();
+    }
+    if (!buckets[key]) buckets[key] = { ts, total: 0, successful: 0, failed: 0 };
+    buckets[key].total += t.deployments;
+    buckets[key].successful += t.successful;
+    buckets[key].failed += (t.deployments - t.successful);
+  }
+  return Object.values(buckets).sort((a, b) => a.ts - b.ts);
+}
+
+function GranularityToggle({ value, onChange }: { value: Granularity; onChange: (g: Granularity) => void }) {
+  const opts: { id: Granularity; label: string }[] = [
+    { id: 'week', label: 'Weekly' },
+    { id: 'month', label: 'Monthly' },
+  ];
+  return (
+    <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 'var(--radius-md)', background: 'var(--bg-tertiary)', border: '1px solid var(--border-muted)' }}>
+      {opts.map(o => (
+        <button
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          style={{
+            padding: '3px 10px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
+            fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-sans)',
+            background: value === o.id ? 'var(--accent-blue)' : 'transparent',
+            color: value === o.id ? '#fff' : 'var(--text-muted)',
+            transition: 'all 150ms',
+          }}
+        >{o.label}</button>
+      ))}
+    </div>
+  );
+}
+
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return '—';
   if (seconds < 60) return `${seconds}s`;
@@ -92,13 +149,15 @@ function ProviderSection({ metrics, expanded, onToggle }: {
 }) {
   const color = PROVIDER_COLORS[metrics.provider] || 'var(--accent-blue)';
   const label = PROVIDER_LABELS[metrics.provider] || metrics.provider;
+  const [granularity, setGranularity] = useState<Granularity>('week');
 
-  // Build chart data from trend
-  const trendData = metrics.trend.map(t => ({
-    timestamp: new Date(t.date).getTime(),
-    total: t.deployments,
-    successful: t.successful,
-    failed: t.deployments - t.successful,
+  // Build chart data from trend, aggregated by the selected granularity
+  const aggregated = aggregateTrend(metrics.trend, granularity);
+  const trendData = aggregated.map(b => ({
+    timestamp: b.ts,
+    total: b.total,
+    successful: b.successful,
+    failed: b.failed,
   }));
 
   const sparkData = metrics.trend.map(t => t.deployments);
@@ -177,8 +236,11 @@ function ProviderSection({ metrics, expanded, onToggle }: {
           {/* Trend chart */}
           {trendData.length > 0 && trendData.some(d => d.total > 0) && (
             <div>
-              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 10, fontWeight: 600 }}>
-                Deployment Trend (14 days)
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  Deployment Trend ({granularity === 'week' ? 'by week' : 'by month'})
+                </div>
+                <GranularityToggle value={granularity} onChange={setGranularity} />
               </div>
               <MetricChart
                 data={trendData}

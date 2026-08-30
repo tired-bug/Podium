@@ -3,13 +3,95 @@ import { useNavigate } from 'react-router-dom';
 import {
   Rocket, FileText,
   TrendingUp, TrendingDown, RefreshCw,
-  Activity, Zap, Search,
+  Activity, Zap, Search, CheckCircle2, XCircle, Cloud,
 } from 'lucide-react';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Card, Badge, EmptyState } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { MetricChart } from '../components/charts/MetricChart';
 import { timeAgo } from '../lib/utils';
 import api from '../lib/api';
+
+const PIE_COLORS = ['#6366f1', '#a855f7', '#22d3ee', '#f59e0b', '#30d158', '#ec4899', '#ff453a'];
+
+function ProviderPieChart({ cloudDeps }: { cloudDeps: any[] }) {
+  const navigate = useNavigate();
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  const counts: Record<string, number> = {};
+  for (const d of cloudDeps) counts[d.provider || 'unknown'] = (counts[d.provider || 'unknown'] || 0) + 1;
+  const chartData = Object.entries(counts).map(([name, value]) => ({ name, value }));
+
+  if (chartData.length === 0) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '20px 0' }}>
+        <Cloud size={28} color="var(--text-muted)" />
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No providers yet</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <ResponsiveContainer width="100%" height={190}>
+        <PieChart>
+          <Pie
+            data={chartData}
+            dataKey="value"
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            innerRadius={44}
+            outerRadius={activeIndex === null ? 70 : 74}
+            paddingAngle={2}
+            isAnimationActive
+            onClick={(_, i) => navigate('/providers')}
+            style={{ cursor: 'pointer' }}
+          >
+            {chartData.map((entry, i) => (
+              <Cell
+                key={entry.name}
+                fill={PIE_COLORS[i % PIE_COLORS.length]}
+                stroke="var(--bg-card)"
+                strokeWidth={2}
+                onMouseEnter={() => setActiveIndex(i)}
+                onMouseLeave={() => setActiveIndex(null)}
+                opacity={activeIndex === null || activeIndex === i ? 1 : 0.45}
+                style={{ transition: 'opacity 150ms' }}
+              />
+            ))}
+          </Pie>
+          <Tooltip
+            content={({ active, payload }: any) => {
+              if (!active || !payload?.length) return null;
+              const p = payload[0];
+              return (
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '6px 10px', fontSize: '12px' }}>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 700, textTransform: 'capitalize' }}>{p.name}</span>
+                  <span style={{ color: 'var(--text-muted)' }}> · {p.value} deployment{p.value !== 1 ? 's' : ''}</span>
+                </div>
+              );
+            }}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 4 }}>
+        {chartData.map((entry, i) => (
+          <div
+            key={entry.name}
+            onMouseEnter={() => setActiveIndex(i)}
+            onMouseLeave={() => setActiveIndex(null)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '11px', color: 'var(--text-secondary)', cursor: 'default', opacity: activeIndex === null || activeIndex === i ? 1 : 0.45, transition: 'opacity 150ms' }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: PIE_COLORS[i % PIE_COLORS.length] }} />
+            <span style={{ textTransform: 'capitalize' }}>{entry.name}</span>
+            <span style={{ color: 'var(--text-muted)' }}>({entry.value})</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function StatCard({
   label, value, icon, gradient, trend, onClick, delay = 0,
@@ -129,9 +211,16 @@ export default function Dashboard() {
   // all go through the cloud provider engine now (see /api/cloud), so that's
   // the single source of truth — not the legacy/local `deployments` table.
   const totalDeployments = cloudDeps.length;
+  const liveDeployments   = cloudDeps.filter(d => ['live', 'active', 'running', 'ready'].includes(d.status)).length;
+  const failedDeployments = cloudDeps.filter(d => ['failed', 'error', 'crashed'].includes(d.status)).length;
+  const providerCount     = new Set(cloudDeps.map(d => d.provider)).size;
 
   const statCards = [
     { label: 'Total Deployments', value: totalDeployments, icon: <Rocket size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', onClick: () => navigate('/cloud') },
+    { label: 'Live', value: liveDeployments, icon: <CheckCircle2 size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#30d158,#22d3ee)', onClick: () => navigate('/cloud') },
+    { label: 'Failed', value: failedDeployments, icon: <XCircle size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#ff453a,#f59e0b)', onClick: () => navigate('/cloud') },
+    { label: 'Providers', value: providerCount, icon: <Cloud size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#a855f7,#ec4899)', onClick: () => navigate('/providers') },
+    { label: 'AI Reports', value: reports.length, icon: <FileText size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#f59e0b,#ec4899)', onClick: () => navigate('/ai/hub') },
   ];
 
   return (
@@ -146,15 +235,15 @@ export default function Dashboard() {
       </div>
 
       {}
-      <div className="anim-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px)', gap: 16 }}>
+      <div className="anim-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 16 }}>
         {loading
-          ? <div className="skeleton" style={{ height: 110, borderRadius: 'var(--r-lg)' }} />
+          ? [...Array(5)].map((_, i) => <div key={i} className="skeleton" style={{ height: 110, borderRadius: 'var(--r-lg)' }} />)
           : statCards.map((c, i) => <StatCard key={c.label} {...c} delay={i * 60} />)
         }
       </div>
 
       {}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16 }}>
         {}
         <Card style={{ animation: 'float-up 350ms ease-out 240ms both' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -166,6 +255,14 @@ export default function Dashboard() {
             lines={[{ key: 'successRate', label: 'Success Rate', color: 'var(--accent-green)' }]}
             type="area" unit="%" height={160} yDomain={[0, 100]}
           />
+        </Card>
+
+        {}
+        <Card style={{ display: 'flex', flexDirection: 'column', animation: 'float-up 350ms ease-out 270ms both' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Deployments by Provider</div>
+          </div>
+          <ProviderPieChart cloudDeps={cloudDeps} />
         </Card>
 
         {}

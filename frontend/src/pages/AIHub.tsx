@@ -381,11 +381,42 @@ function IncidentTool({ deployments, onSaved }: { deployments: Deployment[]; onS
 // Root-cause and incident reports are persisted server-side (ai_reports
 // table) so they survive a refresh — this panel is just a reader over them.
 
+function ReportRowItem({ r, selected, onToggleSelect, onOpen, onDelete }: {
+  r: any; selected: boolean; onToggleSelect: (id: string) => void; onOpen: (r: any) => void; onDelete: (id: string, e: React.MouseEvent) => void;
+}) {
+  const isIncident = r.type === 'incident';
+  const accent = isIncident ? '#a855f7' : '#f59e0b';
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', borderLeft: `3px solid ${accent}` }}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        onClick={e => e.stopPropagation()}
+        onChange={() => onToggleSelect(r.id)}
+        style={{ flexShrink: 0, cursor: 'pointer' }}
+      />
+      <div onClick={() => onOpen(r)} style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0, cursor: 'pointer' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.deployment_name}</div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{timeAgo(r.created_at)}</div>
+      </div>
+      <button onClick={e => onDelete(r.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0, padding: 2 }}>
+        <XCircle size={13} />
+      </button>
+    </div>
+  );
+}
+
 function ReportsHistory({ refreshKey }: { refreshKey: number }) {
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<any>(null);
   const [pdf, setPdf] = useState<{ url: string; save: () => void; revoke: () => void } | null>(null);
+  const [reportTab, setReportTab] = useState<'incident' | 'rootcause'>('incident');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const { success } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -405,51 +436,133 @@ function ReportsHistory({ refreshKey }: { refreshKey: number }) {
 
   const remove = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    try { await api.delete(`/api/ai/reports/${id}`); setReports(rs => rs.filter(r => r.id !== id)); } catch {}
+    try {
+      await api.delete(`/api/ai/reports/${id}`);
+      setReports(rs => rs.filter(r => r.id !== id));
+      setSelected(s => { const next = new Set(s); next.delete(id); return next; });
+    } catch {}
   };
+
+  const toggleSelect = (id: string) => {
+    setSelected(s => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const deleteSelected = async () => {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    await Promise.all(ids.map(id => api.delete(`/api/ai/reports/${id}`).catch(() => {})));
+    setReports(rs => rs.filter(r => !selected.has(r.id)));
+    setSelected(new Set());
+    success(`Deleted ${ids.length} report${ids.length !== 1 ? 's' : ''}`);
+  };
+
+  const incidents = reports.filter(r => r.type === 'incident');
+  const rootCauses = reports.filter(r => r.type !== 'incident');
+  const activeList = reportTab === 'incident' ? incidents : rootCauses;
 
   if (loading && reports.length === 0) return null;
 
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden', marginBottom: 28 }}>
       <div style={{ height: 2, background: 'linear-gradient(90deg,#f59e0b,#a855f7)' }} />
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <FileText size={15} color="var(--accent-blue)" />
           <span style={{ fontSize: 13, fontWeight: 700 }}>Saved Reports</span>
           <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{reports.length} saved</span>
         </div>
-        <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '4px 8px', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-sans)' }}>
-          <RefreshCw size={12} /> Refresh
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {selected.size > 0 && (
+            <button onClick={deleteSelected} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-sans)' }}>
+              <XCircle size={12} /> Delete {selected.size} selected
+            </button>
+          )}
+          <button onClick={() => setHistoryOpen(true)} style={{ background: 'none', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '4px 10px', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-sans)' }}>
+            View all →
+          </button>
+          <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '4px 8px', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-sans)' }}>
+            <RefreshCw size={12} /> Refresh
+          </button>
+        </div>
       </div>
+
+      {/* Incident vs Root Cause tabs */}
+      <div style={{ display: 'flex', gap: 4, padding: '10px 18px 0' }}>
+        {[
+          { id: 'incident' as const, label: 'Incident', count: incidents.length, accent: '#a855f7' },
+          { id: 'rootcause' as const, label: 'Root Cause', count: rootCauses.length, accent: '#f59e0b' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setReportTab(t.id)} style={{
+            padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 12, fontWeight: reportTab === t.id ? 700 : 500,
+            color: reportTab === t.id ? t.accent : 'var(--text-muted)',
+            borderBottom: `2px solid ${reportTab === t.id ? t.accent : 'transparent'}`,
+            fontFamily: 'var(--font-sans)', display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            {t.label} <span style={{ fontSize: 10, opacity: 0.8 }}>({t.count})</span>
+          </button>
+        ))}
+      </div>
+
       <div style={{ padding: reports.length ? '10px 14px' : '20px' }}>
         {reports.length === 0 ? (
           <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', padding: '16px 0' }}>
             Root cause and incident reports you generate are saved here automatically.
           </div>
+        ) : activeList.length === 0 ? (
+          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', padding: '16px 0' }}>
+            No {reportTab === 'incident' ? 'incident' : 'root cause'} reports yet.
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {reports.map(r => {
-              const isIncident = r.type === 'incident';
-              const accent = isIncident ? '#a855f7' : '#f59e0b';
-              return (
-                <div key={r.id} onClick={() => open(r)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', cursor: 'pointer', borderLeft: `3px solid ${accent}` }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '.04em', flexShrink: 0, width: 78 }}>
-                    {isIncident ? 'Incident' : 'Root Cause'}
-                  </div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.deployment_name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{timeAgo(r.created_at)}</div>
-                  <button onClick={e => remove(r.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0, padding: 2 }}>
-                    <XCircle size={13} />
-                  </button>
-                </div>
-              );
-            })}
+            {activeList.slice(0, 5).map(r => (
+              <ReportRowItem key={r.id} r={r} selected={selected.has(r.id)} onToggleSelect={toggleSelect} onOpen={open} onDelete={remove} />
+            ))}
+            {activeList.length > 5 && (
+              <button onClick={() => setHistoryOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', fontSize: 12, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: '4px 4px', fontFamily: 'var(--font-sans)' }}>
+                View all {activeList.length} {reportTab === 'incident' ? 'incident' : 'root cause'} reports →
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Full history modal — organized by type, with select + delete */}
+      <Modal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Report History"
+        width={640}
+        footer={selected.size > 0 ? (
+          <Button variant="danger" icon={<XCircle size={13} />} onClick={deleteSelected}>Delete {selected.size} selected</Button>
+        ) : undefined}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxHeight: '65vh', overflowY: 'auto' }}>
+          {[
+            { label: 'Incident Reports', list: incidents, accent: '#a855f7' },
+            { label: 'Root Cause Reports', list: rootCauses, accent: '#f59e0b' },
+          ].map(group => (
+            <div key={group.label}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: group.accent, textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
+                {group.label} ({group.list.length})
+              </div>
+              {group.list.length === 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '4px 0 8px' }}>None yet</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {group.list.map(r => (
+                    <ReportRowItem key={r.id} r={r} selected={selected.has(r.id)} onToggleSelect={toggleSelect} onOpen={open} onDelete={remove} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Modal>
 
       <Modal
         open={!!active && !!pdf}
@@ -534,6 +647,9 @@ export default function AIHub() {
         </div>
       </div>
 
+      {/* Platform Health — surfaced first so overall status is visible immediately */}
+      <PlatformHealth cloudDeps={cloudDeps} />
+
       {/* Tool navigation cards */}
       <ToolNavCards activeToolId={activeTool} onSelect={id => setActiveTool(prev => prev === id ? null : id)} />
 
@@ -547,8 +663,7 @@ export default function AIHub() {
       {/* Saved reports (root cause + incident) */}
       <ReportsHistory refreshKey={reportsRefreshKey} />
 
-      {/* Overview + Health */}
-      <PlatformHealth cloudDeps={cloudDeps} />
+      {/* Overview */}
       <OverviewPanel providers={providers} cloudDeps={cloudDeps} />
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
