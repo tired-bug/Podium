@@ -1,27 +1,10 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import axios from 'axios';
 import { getDb } from '../db/index';
 import { requireAuth, AuthRequest } from '../auth';
+import { aiAvailable, aiModelName, aiChat, aiChatStream, isAIAuthError } from '../services/ai/AIClient';
 
 const router = Router();
-
-// The Groq API key is a server-side secret only — set GROQ_API_KEY in the
-// backend's environment. It is intentionally NOT readable/writable via the
-// API or Settings UI, so individual users/deployments can't see or change
-// the key the whole app runs on.
-function getGroqKey(): string | null {
-  return process.env.GROQ_API_KEY || null;
-}
-
-// Model is fixed server-side. Change via GROQ_MODEL env var if needed.
-function getModel(): string {
-  return process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-}
-
-function isGroqAuthError(err: any): boolean {
-  return err?.response?.status === 401 || err?.response?.status === 403;
-}
 
 // Normalized shape used by every AI tool below so local (Docker) and cloud
 // deployments can be treated uniformly regardless of which table they live in.
@@ -98,11 +81,11 @@ function findDeploymentById(id: string): NormalizedDeployment | null {
   return null;
 }
 
-function groqErrorResponse(res: Response, err: any) {
-  if (!getGroqKey()) {
+function aiErrorResponse(res: Response, err: any) {
+  if (!aiAvailable()) {
     return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
   }
-  if (isGroqAuthError(err)) {
+  if (isAIAuthError(err)) {
     return res.status(400).json({ error: 'AI features are misconfigured on this server (the configured key was rejected). Contact your administrator.' });
   }
   const errMsg = err?.response?.data?.error?.message || err?.message || 'AI request failed';
@@ -122,10 +105,10 @@ Be concise, precise, and actionable. Format code in markdown code blocks with la
 When analyzing issues, provide step-by-step resolution plans.`;
 
 // Frontend polls this on mount to decide whether to show the
-// "Groq API Key Required" empty state. Reflects the server-side
-// GROQ_API_KEY env var — never returns the key itself.
+// "AI API Key Required" empty state. Reflects the server-side
+// GEMINI_API_KEY env var — never returns the key itself.
 router.get('/model', requireAuth, (_req: AuthRequest, res: Response) => {
-  res.json({ hasKey: !!getGroqKey(), model: getModel() });
+  res.json({ hasKey: aiAvailable(), model: aiModelName() });
 });
 
 router.get('/conversations', requireAuth, (req: AuthRequest, res: Response) => {
@@ -169,8 +152,7 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
   const { message, history = [], conversationId } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
 
-  const apiKey = getGroqKey();
-  if (!apiKey) {
+  if (!aiAvailable()) {
     return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
   }
 
@@ -184,80 +166,37 @@ router.post('/chat', requireAuth, async (req: AuthRequest, res: Response) => {
     { role: 'user', content: message },
   ];
 
-  let fullContent = '';
-
   try {
-    const response = await axios.post(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        model: getModel(),
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
-        stream: true,
-        max_tokens: 2048,
-        temperature: 0.7,
+    const fullContent = await aiChatStream(
+      SYSTEM_PROMPT,
+      messages,
+      (piece) => {
+        res.write(`data: ${JSON.stringify({ content: piece, done: false })}\n\n`);
       },
-      {
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        responseType: 'stream',
-      }
+      2048
     );
+    res.write(`data: [DONE]\n\n`);
 
-    const stream = response.data;
-    let buffer = '';
+    if (conversationId && fullContent) {
+      try {
+        const conv = getDb().prepare('SELECT messages FROM ai_conversations WHERE id = ?').get(conversationId) as any;
+        if (conv) {
+          const msgs = JSON.parse(conv.messages || '[]');
+          msgs.push({ id: uuidv4(), role: 'user', content: message, created_at: new Date().toISOString() });
+          msgs.push({ id: uuidv4(), role: 'assistant', content: fullContent, created_at: new Date().toISOString() });
 
-    stream.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString();
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') {
-          res.write(`data: [DONE]\n\n`);
-          continue;
+          const titleUpdate = msgs.length === 2 ? message.slice(0, 60) : null;
+          getDb().prepare(`
+            UPDATE ai_conversations SET messages = ?, updated_at = datetime('now')
+            ${titleUpdate ? ", title = ?" : ""}
+            WHERE id = ?
+          `).run(JSON.stringify(msgs), ...(titleUpdate ? [titleUpdate, conversationId] : [conversationId]));
         }
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-          if (content) {
-            fullContent += content;
-            res.write(`data: ${JSON.stringify({ content, done: false })}\n\n`);
-          }
-        } catch {}
-      }
-    });
-
-    stream.on('end', () => {
-      
-      if (conversationId && fullContent) {
-        try {
-          const conv = getDb().prepare('SELECT messages FROM ai_conversations WHERE id = ?').get(conversationId) as any;
-          if (conv) {
-            const msgs = JSON.parse(conv.messages || '[]');
-            msgs.push({ id: uuidv4(), role: 'user', content: message, created_at: new Date().toISOString() });
-            msgs.push({ id: uuidv4(), role: 'assistant', content: fullContent, created_at: new Date().toISOString() });
-            
-            const titleUpdate = msgs.length === 2 ? message.slice(0, 60) : null;
-            getDb().prepare(`
-              UPDATE ai_conversations SET messages = ?, updated_at = datetime('now')
-              ${titleUpdate ? ", title = ?" : ""}
-              WHERE id = ?
-            `).run(JSON.stringify(msgs), ...(titleUpdate ? [titleUpdate, conversationId] : [conversationId]));
-          }
-        } catch {}
-      }
-      res.end();
-    });
-
-    stream.on('error', (err: Error) => {
-      res.write(`data: ${JSON.stringify({ error: err.message, done: true })}\n\n`);
-      res.end();
-    });
-
+      } catch {}
+    }
+    res.end();
   } catch (err: any) {
-    const errMsg = isGroqAuthError(err)
+    const errMsg = isAIAuthError(err)
       ? 'AI features are misconfigured on this server (the configured key was rejected). Contact your administrator.'
       : (err.response?.data?.error?.message || err.message);
     res.write(`data: ${JSON.stringify({ error: errMsg, done: true })}\n\n`);
@@ -295,22 +234,13 @@ Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join(';
 3. Recommended actions
 4. Performance optimization tips`;
 
-  const apiKey = getGroqKey();
-  if (!apiKey) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
+  if (!aiAvailable()) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
 
   try {
-    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: getModel(),
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `${analysisPrompt}\n\n${context}` },
-      ],
-      max_tokens: 1500,
-    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
-
-    return res.json({ analysis: resp.data.choices[0].message.content });
+    const analysis = await aiChat(SYSTEM_PROMPT, `${analysisPrompt}\n\n${context}`, 1500);
+    return res.json({ analysis });
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -323,8 +253,7 @@ router.post('/suggest-fix', requireAuth, async (req: AuthRequest, res: Response)
     SELECT * FROM build_logs WHERE deployment_id = ? AND level IN ('error', 'warn') ORDER BY id DESC LIMIT 30
   `).all(deploymentId) as any[];
 
-  const apiKey = getGroqKey();
-  if (!apiKey) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
+  if (!aiAvailable()) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
 
   const prompt = `Deployment "${dep.name}" has status "${dep.status}".
 Error/warning logs:
@@ -333,15 +262,10 @@ ${logs.map(l => `[${l.level}] ${l.message}`).join('\n') || 'No error logs found.
 Provide a concise fix recommendation with exact commands or config changes needed.`;
 
   try {
-    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: getModel(),
-      messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: prompt }],
-      max_tokens: 800,
-    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
-
-    return res.json({ suggestion: resp.data.choices[0].message.content });
+    const suggestion = await aiChat(SYSTEM_PROMPT, prompt, 800);
+    return res.json({ suggestion });
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -349,23 +273,17 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
   const { deploymentId } = _req.body;
   const logs = getDb().prepare('SELECT * FROM build_logs WHERE deployment_id = ? ORDER BY id DESC LIMIT 100').all(deploymentId) as any[];
 
-  const apiKey = getGroqKey();
-  if (!apiKey) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
+  if (!aiAvailable()) return res.status(400).json({ error: 'AI features are not configured on this server. Contact your administrator.' });
 
   const prompt = `Summarize these deployment logs in 3-5 bullet points, highlighting any issues:\n\n${
     logs.map(l => `[${l.level}] ${l.message}`).join('\n')
   }`;
 
   try {
-    const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-      model: getModel(),
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 500,
-    }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
-
-    return res.json({ summary: resp.data.choices[0].message.content });
+    const summary = await aiChat('You are a concise technical summarizer.', prompt, 500);
+    return res.json({ summary });
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -407,16 +325,10 @@ router.put('/anomalies/:id/resolve', requireAuth, (req, res: Response) => {
   res.json({ ok: true });
 });
 
-async function groqChat(systemPrompt: string, userPrompt: string, maxTokens = 1200): Promise<string> {
-  const apiKey = getGroqKey();
-  if (!apiKey) throw new Error('Groq API key not configured');
-  const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-    model: getModel(),
-    messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
-    max_tokens: maxTokens,
-    temperature: 0.5,
-  }, { headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' } });
-  return resp.data.choices[0].message.content as string;
+// Thin wrapper kept so the many call sites below didn't need individual edits
+// beyond the name — delegates to the shared AIClient.
+async function aiChatHelper(systemPrompt: string, userPrompt: string, maxTokens = 1200): Promise<string> {
+  return aiChat(systemPrompt, userPrompt, maxTokens);
 }
 
 router.post('/risk-score', requireAuth, async (req: AuthRequest, res: Response) => {
@@ -473,12 +385,12 @@ Respond ONLY with valid JSON (no markdown, no preamble):
 }`;
 
   try {
-    const raw = await groqChat('You are a JSON-only responder. Output only valid JSON.', prompt, 600);
+    const raw = await aiChatHelper('You are a JSON-only responder. Output only valid JSON.', prompt, 600);
     const clean = raw.replace(/```json|```/g, '').trim();
     const result = JSON.parse(clean);
     return res.json(result);
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -521,10 +433,10 @@ Provide a concise root cause analysis with:
 4. Prevention going forward`;
 
   try {
-    const analysis = await groqChat(SYSTEM_PROMPT, prompt, 900);
+    const analysis = await aiChatHelper(SYSTEM_PROMPT, prompt, 900);
     return res.json({ rootCause: analysis, anomaly, deployment: dep });
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -566,11 +478,11 @@ Respond ONLY with valid JSON:
 }`;
 
   try {
-    const raw = await groqChat('You are a JSON-only responder.', prompt, 700);
+    const raw = await aiChatHelper('You are a JSON-only responder.', prompt, 700);
     const clean = raw.replace(/```json|```/g, '').trim();
     return res.json(JSON.parse(clean));
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -610,10 +522,10 @@ Write a concise, professional incident report with these sections:
 ## Action Items`;
 
   try {
-    const report = await groqChat(SYSTEM_PROMPT, prompt, 1500);
+    const report = await aiChatHelper(SYSTEM_PROMPT, prompt, 1500);
     return res.json({ report, generatedAt: new Date().toISOString(), deployment: dep.name });
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -643,11 +555,11 @@ Respond ONLY with valid JSON:
 }`;
 
   try {
-    const raw = await groqChat('You are a cloud security expert. Respond only in JSON.', prompt, 800);
+    const raw = await aiChatHelper('You are a cloud security expert. Respond only in JSON.', prompt, 800);
     const clean = raw.replace(/```json|```/g, '').trim();
     return res.json(JSON.parse(clean));
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -696,10 +608,10 @@ Deployment B: ${depB.name} (${depB.status})${depB.source === 'cloud' ? ` [cloud:
 Provide: 1) Performance winner and why, 2) Resource efficiency comparison, 3) Config differences worth addressing, 4) Recommendation for which to promote to production.`;
 
   try {
-    const comparison = await groqChat(SYSTEM_PROMPT, prompt, 800);
+    const comparison = await aiChatHelper(SYSTEM_PROMPT, prompt, 800);
     return res.json({ comparison, deploymentA: depA.name, deploymentB: depB.name });
   } catch (err: any) {
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 
@@ -723,16 +635,16 @@ router.get('/platform-summary', requireAuth, async (_req, res: Response) => {
 Be direct, professional, and action-oriented. Mention if anything needs immediate attention.`;
 
   try {
-    const summary = await groqChat(SYSTEM_PROMPT, platformPrompt, 300);
+    const summary = await aiChatHelper(SYSTEM_PROMPT, platformPrompt, 300);
     return res.json({
       summary,
       stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, cloudFailedDeps, recentErrors },
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
-    const aiError = !getGroqKey()
+    const aiError = !aiAvailable()
       ? 'AI features are not configured on this server. Contact your administrator.'
-      : isGroqAuthError(err)
+      : isAIAuthError(err)
         ? 'AI features are misconfigured on this server (the configured key was rejected). Contact your administrator.'
         : (err?.response?.data?.error?.message || err?.message || 'AI summary failed');
     return res.json({
@@ -826,7 +738,7 @@ Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
 }`;
 
   try {
-    const raw = await groqChat(
+    const raw = await aiChatHelper(
       'You are a Docker and DevOps expert. You ONLY respond with valid JSON objects. No markdown, no code blocks, no explanation. Just raw JSON.',
       prompt,
       800
@@ -851,7 +763,7 @@ Respond ONLY with a valid JSON object, no markdown, no explanation, just JSON:
     if (err.message === 'AI returned invalid JSON' || err.message === 'AI response missing required fields') {
       return res.status(502).json({ error: err.message });
     }
-    return groqErrorResponse(res, err);
+    return aiErrorResponse(res, err);
   }
 });
 

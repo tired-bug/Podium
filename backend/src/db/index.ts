@@ -490,7 +490,10 @@ function applyDefaults() {
   const stmt = _local.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   const defaults: [string, string][] = [
     ['platform_name', 'Podium'],
-    ['groq_model', 'llama-3.3-70b-versatile'],
+    // Legacy key name kept for backward compatibility with existing installs;
+    // no longer read by the app — AI model selection now comes from the
+    // AI_MODEL / GEMINI_API_KEY env vars (see services/ai/AIClient.ts).
+    ['groq_model', 'gemini-2.5-flash'],
     ['anomaly_detection', 'true'],
     ['cpu_threshold', '90'],
     ['memory_threshold_mb', '900'],

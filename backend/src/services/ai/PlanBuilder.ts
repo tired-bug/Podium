@@ -12,7 +12,8 @@ const VERCEL_FRAMEWORK_MAP: Partial<Record<Framework, string>> = {
   sveltekit: 'sveltekit',
   angular: 'angular',
   nestjs: 'nestjs',
-  static: 'html',
+  // 'html' is not a valid Vercel framework slug — omit it so Vercel auto-detects
+  // (leaving this out of the map means the lookup below falls through to `null`)
 };
 
 // Maps our runtime to Render's runtime slug

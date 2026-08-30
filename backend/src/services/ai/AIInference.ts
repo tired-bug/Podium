@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { DetectionResult, Framework, Runtime, PackageManager, DeploymentType, RepoContext } from './types';
+import { aiAvailable, aiChat } from './AIClient';
 
 const VALID_FRAMEWORKS: Framework[] = [
   'nextjs', 'react', 'vite', 'angular', 'vue', 'nuxt', 'svelte', 'sveltekit',
@@ -22,16 +22,8 @@ const VALID_DEPLOY_TYPES: DeploymentType[] = ['static', 'ssr', 'api', 'fullstack
  * Never overrides fields the deterministic pipeline already resolved with confidence.
  */
 export class AIInference {
-  private apiKey: string | undefined;
-  private model: string;
-
-  constructor() {
-    this.apiKey = process.env.GROQ_API_KEY;
-    this.model = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-  }
-
   get available(): boolean {
-    return !!this.apiKey;
+    return aiAvailable();
   }
 
   /**
@@ -40,7 +32,7 @@ export class AIInference {
    * otherwise returns the original result unchanged.
    */
   async infer(ctx: RepoContext, partial: DetectionResult): Promise<DetectionResult> {
-    if (!this.apiKey) return partial;
+    if (!aiAvailable()) return partial;
 
     const fileList = ctx.files.map(f => f.path).slice(0, 400).join('\n');
     const configSnippets = Object.entries(ctx.configFiles)
@@ -76,21 +68,11 @@ Respond with ONLY valid JSON matching this exact shape (no markdown fences, no c
 Only fill fields you can justify from the given evidence. If genuinely undeterminable, keep the static analysis default rather than guessing wildly.`;
 
     try {
-      const resp = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        {
-          model: this.model,
-          messages: [
-            { role: 'system', content: 'You are a precise deployment configuration inference engine. Respond only with valid JSON.' },
-            { role: 'user', content: prompt },
-          ],
-          max_tokens: 700,
-          temperature: 0.1,
-        },
-        { headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' }, timeout: 25000 }
+      const raw = await aiChat(
+        'You are a precise deployment configuration inference engine. Respond only with valid JSON.',
+        prompt,
+        700
       );
-
-      const raw = resp.data.choices[0].message.content as string;
       const clean = raw.replace(/```json|```/g, '').trim();
       const inferred = JSON.parse(clean);
 

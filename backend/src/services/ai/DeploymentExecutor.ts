@@ -2,6 +2,7 @@ import { DeploymentPlan, Provider } from './types';
 import { providerManager } from '../../providers/ProviderManager';
 import { DeployOptions } from '../../providers/IProvider';
 import { getDb } from '../../db/index';
+import { aiAvailable, aiChat } from './AIClient';
 
 export interface ExecutionUpdate {
   type: 'log' | 'status' | 'url' | 'error' | 'done';
@@ -260,7 +261,7 @@ export class DeploymentExecutor {
     }
   }
 
-  /** Analyze deployment failure logs and suggest fixes using Groq */
+  /** Analyze deployment failure logs and suggest fixes using the configured AI provider */
   async analyzeFailure(cloudDeploymentId: string): Promise<{ rootCause: string; fixes: string[]; canRedeploy: boolean }> {
     const dep = getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(cloudDeploymentId) as any;
     if (!dep) throw new Error('Deployment not found');
@@ -269,36 +270,20 @@ export class DeploymentExecutor {
     const errorLogs = logs.filter(l => /error|fail|cannot|not found|exit/i.test(l.message)).slice(-20);
     const logText = errorLogs.map(l => l.message).join('\n') || 'No error logs available';
 
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) {
+    if (!aiAvailable()) {
       return {
-        rootCause: 'AI analysis not available (GROQ_API_KEY not configured)',
+        rootCause: 'AI analysis not available (AI provider API key not configured)',
         fixes: ['Check provider dashboard for detailed error logs', 'Verify build and start commands are correct'],
         canRedeploy: true,
       };
     }
 
-    const axios = require('axios');
     try {
-      const resp = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
-        model: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a deployment failure analyst. Respond ONLY with valid JSON.',
-          },
-          {
-            role: 'user',
-            content: `Deployment "${dep.name}" on ${dep.provider} failed.\nConfig: ${dep.config}\nError logs:\n${logText}\n\nRespond with JSON: { "rootCause": "string", "fixes": ["step1", "step2", ...], "canRedeploy": true/false }`,
-          },
-        ],
-        max_tokens: 600,
-        temperature: 0.3,
-      }, {
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      });
-
-      const raw = resp.data.choices[0].message.content as string;
+      const raw = await aiChat(
+        'You are a deployment failure analyst. Respond ONLY with valid JSON.',
+        `Deployment "${dep.name}" on ${dep.provider} failed.\nConfig: ${dep.config}\nError logs:\n${logText}\n\nRespond with JSON: { "rootCause": "string", "fixes": ["step1", "step2", ...], "canRedeploy": true/false }`,
+        600
+      );
       const clean = raw.replace(/```json|```/g, '').trim();
       return JSON.parse(clean);
     } catch {
