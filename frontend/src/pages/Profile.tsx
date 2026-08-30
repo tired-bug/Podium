@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Camera, Save, User, MapPin, Globe, Github, Briefcase,
   Building, Clock, Shield, Bell, Monitor, Trash2, LogOut,
-  Edit2, Key, Check, X, ChevronRight,
+  Edit2, Key, Check, X, ChevronRight, Flag, Terminal, LayoutGrid,
+  Lock, Plus, Copy, Cloud,
 } from 'lucide-react';
 import { Card, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Modal';
+import { Input, Select } from '../components/ui/Modal';
 import { useAuth } from '../contexts/AuthContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useToast } from '../contexts/ToastContext';
@@ -40,7 +41,7 @@ const GRADIENTS = [
   'linear-gradient(135deg,#14b8a6,#10b981)',
 ];
 
-type Tab = 'overview' | 'edit' | 'notifications' | 'security' | 'sessions';
+type Tab = 'account' | 'notifications' | 'feature-flags' | 'tokens' | 'ssh-keys' | 'apps' | 'security';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -306,12 +307,260 @@ function StatCard({ label, value, delay = 0 }: { label: string; value: string; d
   );
 }
 
+// ── Feature Flags tab ────────────────────────────────────────────────────
+
+function FeatureFlagsPanel() {
+  const { error: showError } = useToast();
+  const { user } = useAuth();
+  const [flags, setFlags] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try { const { data } = await api.get('/api/account/feature-flags'); setFlags(data); }
+    catch (err) { showError(parseApiError(err)); }
+    finally { setLoading(false); }
+  }, [showError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggle = async (key: string, enabled: boolean) => {
+    setFlags(f => f.map(fl => fl.key === key ? { ...fl, enabled: enabled ? 1 : 0 } : fl));
+    try { await api.put(`/api/account/feature-flags/${key}`, { enabled }); }
+    catch (err) { showError(parseApiError(err)); load(); }
+  };
+
+  const isAdmin = user?.role === 'admin';
+
+  return (
+    <Card style={{ animation: 'float-up 250ms ease-out' }}>
+      <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 4 }}>Feature Flags</div>
+      <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 20 }}>
+        {isAdmin ? 'Toggle experimental and in-progress features on this platform.' : 'Current state of experimental features. Only admins can change these.'}
+      </p>
+      {loading ? <Skeleton height={160} /> : flags.map((f, i) => (
+        <div key={f.key} className="settings-item" style={{ animation: `float-up 250ms ease-out ${i * 50}ms both` }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)' }}>{f.label}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>{f.description}</div>
+          </div>
+          <Toggle checked={!!f.enabled} onChange={v => isAdmin && toggle(f.key, v)} />
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+// ── API Tokens tab ───────────────────────────────────────────────────────
+
+function TokensPanel() {
+  const { success, error: showError } = useToast();
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [scopes, setScopes] = useState('read');
+  const [reveal, setReveal] = useState<any>(null);
+
+  const load = useCallback(async () => {
+    try { const { data } = await api.get('/api/account/tokens'); setTokens(data); }
+    catch (err) { showError(parseApiError(err)); }
+    finally { setLoading(false); }
+  }, [showError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async () => {
+    if (!name.trim()) { showError('Give the token a name'); return; }
+    setCreating(true);
+    try {
+      const { data } = await api.post('/api/account/tokens', { name: name.trim(), scopes });
+      setReveal(data); setName(''); load();
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setCreating(false); }
+  };
+
+  const handleRevoke = async (id: string) => {
+    if (!confirm('Revoke this token? Anything using it will stop working immediately.')) return;
+    try { await api.delete(`/api/account/tokens/${id}`); success('Token revoked'); load(); }
+    catch (err) { showError(parseApiError(err)); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card style={{ animation: 'float-up 250ms ease-out' }}>
+        <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 4 }}>New Personal Access Token</div>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 16 }}>Use tokens to authenticate API requests as yourself.</p>
+        {reveal ? (
+          <div style={{ padding: '12px 14px', background: 'var(--accent-green-dim)', border: '1px solid rgba(16,185,129,.3)', borderRadius: 'var(--r-md)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--accent-green)', fontWeight: 600 }}>Copy this token now — it won't be shown again.</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <code style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', fontSize: 12.5, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', overflowX: 'auto' }}>{reveal.token}</code>
+              <Button size="sm" icon={<Copy size={12} />} onClick={() => { navigator.clipboard.writeText(reveal.token); success('Copied'); }}>Copy</Button>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setReveal(null)} style={{ alignSelf: 'flex-start' }}>Done</Button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <Input label="Name" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. CI pipeline" wrapStyle={{ flex: 1, minWidth: 180 }} />
+            <Select label="Scope" value={scopes} onChange={e => setScopes(e.target.value)}
+              options={[{ value: 'read', label: 'Read only' }, { value: 'read_write', label: 'Read & write' }]} wrapStyle={{ minWidth: 160 }} />
+            <Button variant="primary" icon={<Plus size={13} />} loading={creating} onClick={handleCreate}>Generate token</Button>
+          </div>
+        )}
+      </Card>
+
+      <Card style={{ padding: 0, animation: 'float-up 250ms ease-out 60ms both' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Active Tokens</div>
+        {loading ? <div style={{ padding: 16 }}><Skeleton height={48} /></div> : tokens.length === 0 ? (
+          <div style={{ padding: '28px 18px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>No tokens yet</div>
+        ) : tokens.map((t, i) => (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 18px', borderBottom: i < tokens.length - 1 ? '1px solid var(--border-muted)' : 'none' }}>
+            <Key size={15} color="var(--text-muted)" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{t.token_prefix}… · {t.scopes} · {t.last_used_at ? `used ${timeAgo(t.last_used_at)}` : 'never used'}</div>
+            </div>
+            <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={() => handleRevoke(t.id)} style={{ color: 'var(--accent-red)' }}>Revoke</Button>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+// ── SSH Keys tab ─────────────────────────────────────────────────────────
+
+function SSHKeysPanel() {
+  const { success, error: showError } = useToast();
+  const [keys, setKeys] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState('');
+  const [pubKey, setPubKey] = useState('');
+
+  const load = useCallback(async () => {
+    try { const { data } = await api.get('/api/account/ssh-keys'); setKeys(data); }
+    catch (err) { showError(parseApiError(err)); }
+    finally { setLoading(false); }
+  }, [showError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleAdd = async () => {
+    if (!title.trim() || !pubKey.trim()) { showError('Title and public key are required'); return; }
+    setAdding(true);
+    try {
+      await api.post('/api/account/ssh-keys', { title: title.trim(), public_key: pubKey.trim() });
+      success('SSH key added'); setTitle(''); setPubKey(''); load();
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setAdding(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Remove this SSH key?')) return;
+    try { await api.delete(`/api/account/ssh-keys/${id}`); success('Key removed'); load(); }
+    catch (err) { showError(parseApiError(err)); }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card style={{ animation: 'float-up 250ms ease-out' }}>
+        <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 4 }}>New SSH Key</div>
+        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: 16 }}>Paste a public key (ssh-ed25519, ssh-rsa…) to use for git access.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Input label="Title" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Work laptop" />
+          <div>
+            <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Public key</label>
+            <textarea value={pubKey} onChange={e => setPubKey(e.target.value)} placeholder="ssh-ed25519 AAAA..." rows={3}
+              style={{ width: '100%', padding: '8px 12px', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', fontSize: 12.5, fontFamily: 'var(--font-mono)', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
+          </div>
+          <Button variant="primary" icon={<Plus size={13} />} loading={adding} onClick={handleAdd} style={{ alignSelf: 'flex-start' }}>Add key</Button>
+        </div>
+      </Card>
+
+      <Card style={{ padding: 0, animation: 'float-up 250ms ease-out 60ms both' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Your Keys</div>
+        {loading ? <div style={{ padding: 16 }}><Skeleton height={48} /></div> : keys.length === 0 ? (
+          <div style={{ padding: '28px 18px', textAlign: 'center', fontSize: 13, color: 'var(--text-muted)' }}>No SSH keys yet</div>
+        ) : keys.map((k, i) => (
+          <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 18px', borderBottom: i < keys.length - 1 ? '1px solid var(--border-muted)' : 'none' }}>
+            <Terminal size={15} color="var(--text-muted)" />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{k.title}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{k.key_type} · {k.fingerprint} · added {timeAgo(k.created_at)}</div>
+            </div>
+            <Button size="sm" variant="ghost" icon={<Trash2 size={13} />} onClick={() => handleDelete(k.id)} style={{ color: 'var(--accent-red)' }}>Remove</Button>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+}
+
+// ── Apps (connected integrations) tab ───────────────────────────────────
+
+function AppsPanel() {
+  const { success, error: showError } = useToast();
+  const [github, setGithub] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const load = useCallback(async () => {
+    try { const { data } = await api.get('/api/github/account'); setGithub(data); }
+    catch { setGithub(null); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const disconnect = async () => {
+    if (!confirm('Disconnect your GitHub account?')) return;
+    setDisconnecting(true);
+    try { await api.delete('/api/github/account'); success('GitHub disconnected'); load(); }
+    catch (err) { showError(parseApiError(err)); }
+    finally { setDisconnecting(false); }
+  };
+
+  return (
+    <Card style={{ padding: 0, animation: 'float-up 250ms ease-out' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 700 }}>Connected Apps</div>
+      {loading ? <div style={{ padding: 16 }}><Skeleton height={48} /></div> : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px' }}>
+          <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Github size={18} color="var(--text-primary)" />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>GitHub</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {github?.github_login ? <>Connected as @{github.github_login}</> : 'Not connected — link an account from the Deployments page to enable repo access'}
+            </div>
+          </div>
+          {github?.github_login ? (
+            <Button size="sm" variant="ghost" icon={<X size={13} />} loading={disconnecting} onClick={disconnect} style={{ color: 'var(--accent-red)' }}>Disconnect</Button>
+          ) : (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>Not connected</span>
+          )}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', borderTop: '1px solid var(--border-muted)' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'var(--bg-elevated)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Cloud size={18} color="var(--text-primary)" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Cloud Providers</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Manage AWS, GCP, and other provider connections from the Cloud page</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export default function Profile() {
   const { success, error: showError } = useToast();
   const { refresh: refreshProfile } = useProfile();
   const [data, setData]   = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab]     = useState<Tab>('overview');
+  const [tab, setTab]     = useState<Tab>('account');
   const [saving, setSaving] = useState(false);
   const [form, setForm]   = useState<Record<string, any>>({});
   const [sessions, setSessions] = useState<any[]>([]);
@@ -391,11 +640,13 @@ export default function Profile() {
   const initials = ((displayName || data.username || '?').slice(0, 2)).toUpperCase();
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'overview',      label: 'Overview',      icon: <User size={13} /> },
-    { id: 'edit',          label: 'Edit Profile',  icon: <Edit2 size={13} /> },
-    { id: 'notifications', label: 'Notifications', icon: <Bell size={13} /> },
-    { id: 'security',      label: 'Security',      icon: <Shield size={13} /> },
-    { id: 'sessions',      label: 'Sessions',      icon: <Monitor size={13} /> },
+    { id: 'account',       label: 'Account',       icon: <User size={15} /> },
+    { id: 'notifications', label: 'Notifications', icon: <Bell size={15} /> },
+    { id: 'feature-flags', label: 'Feature Flags', icon: <Flag size={15} /> },
+    { id: 'tokens',        label: 'Tokens',        icon: <Key size={15} /> },
+    { id: 'ssh-keys',      label: 'SSH Keys',      icon: <Terminal size={15} /> },
+    { id: 'apps',          label: 'Apps',          icon: <LayoutGrid size={15} /> },
+    { id: 'security',      label: 'Security',      icon: <Lock size={15} /> },
   ];
 
   return (
@@ -457,7 +708,7 @@ export default function Profile() {
             </div>
 
             <Button variant="secondary" size="sm" icon={<Edit2 size={13} />}
-              onClick={() => setTab('edit')}
+              onClick={() => setTab('account')}
               style={{ animation: 'float-up 300ms ease-out 200ms both' }}>
               Edit Profile
             </Button>
@@ -529,33 +780,39 @@ export default function Profile() {
       </div>
 
       {}
-      <div style={{
-        display: 'flex', gap: 6, flexWrap: 'wrap',
-        animation: 'float-up 300ms ease-out 250ms both',
-      }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '7px 16px', borderRadius: 'var(--r-pill)',
-              background: tab === t.id
-                ? 'linear-gradient(135deg,var(--accent-blue),var(--accent-purple))'
-                : 'var(--bg-card)',
-              color: tab === t.id ? '#fff' : 'var(--text-secondary)',
-              border: `1px solid ${tab === t.id ? 'transparent' : 'var(--border)'}`,
-              fontSize: '12px', fontWeight: tab === t.id ? 700 : 500,
-              cursor: 'pointer', transition: 'all 200ms cubic-bezier(0.25,0.46,0.45,0.94)',
-              fontFamily: 'var(--font-sans)',
-              boxShadow: tab === t.id ? 'var(--glow-blue)' : 'none',
-              transform: tab === t.id ? 'scale(1.03)' : 'scale(1)',
-            }}>
-            {t.icon}{t.label}
-          </button>
-        ))}
-      </div>
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', animation: 'float-up 300ms ease-out 250ms both' }}>
+        <div style={{ width: 200, flexShrink: 0 }}>
+          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-secondary)', margin: '0 0 18px 4px', letterSpacing: '-.02em' }}>
+            {TABS.find(t => t.id === tab)?.label}
+          </h1>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {TABS.map(t => {
+              const active = tab === t.id;
+              return (
+                <button key={t.id} onClick={() => setTab(t.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 14px', borderRadius: 'var(--r-lg)',
+                    background: active ? 'var(--bg-elevated)' : 'transparent',
+                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    border: 'none', textAlign: 'left', cursor: 'pointer',
+                    fontSize: 14, fontWeight: active ? 700 : 500,
+                    fontFamily: 'var(--font-sans)', transition: 'all 150ms', width: '100%',
+                  }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-glass-light)'; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span style={{ display: 'flex', color: active ? 'var(--accent-blue-2)' : 'var(--text-muted)' }}>{t.icon}</span>
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      {}
-      <TabPanel active={tab === 'overview'}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      <TabPanel active={tab === 'account'}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           {[
             {
@@ -603,8 +860,7 @@ export default function Profile() {
         </div>
       </TabPanel>
 
-      {}
-      <TabPanel active={tab === 'edit'}>
+      <TabPanel active={tab === 'account'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {}
           <Card style={{ animation: 'float-up 250ms ease-out' }}>
@@ -675,7 +931,6 @@ export default function Profile() {
         </div>
       </TabPanel>
 
-      {}
       <TabPanel active={tab === 'notifications'}>
         <Card style={{ animation: 'float-up 250ms ease-out' }}>
           <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 4 }}>Notification Preferences</div>
@@ -704,7 +959,22 @@ export default function Profile() {
         </Card>
       </TabPanel>
 
-      {}
+      <TabPanel active={tab === 'feature-flags'}>
+        <FeatureFlagsPanel />
+      </TabPanel>
+
+      <TabPanel active={tab === 'tokens'}>
+        <TokensPanel />
+      </TabPanel>
+
+      <TabPanel active={tab === 'ssh-keys'}>
+        <SSHKeysPanel />
+      </TabPanel>
+
+      <TabPanel active={tab === 'apps'}>
+        <AppsPanel />
+      </TabPanel>
+
       <TabPanel active={tab === 'security'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card style={{ animation: 'float-up 250ms ease-out' }}>
@@ -734,48 +1004,48 @@ export default function Profile() {
               Sign Out All Devices
             </Button>
           </Card>
+
+          <Card style={{ animation: 'float-up 250ms ease-out 140ms both' }}>
+            <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 16 }}>Active Sessions</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {sessions.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  Loading sessions...
+                </div>
+              ) : sessions.map((s, i) => (
+                <div key={s.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 16px', background: 'var(--bg-elevated)',
+                    borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
+                    animation: `float-up 250ms ease-out ${i * 60}ms both`,
+                  }}>
+                  <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                    <Monitor size={20} color="var(--text-muted)" />
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {s.device}
+                        {s.current && (
+                          <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: 'var(--r-pill)', background: 'var(--accent-green-dim)', color: 'var(--accent-green)' }}>
+                            Current
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>
+                        {s.ip} · Last active {timeAgo(s.lastActive)}
+                      </div>
+                    </div>
+                  </div>
+                  {!s.current && <Button size="sm" variant="danger">Revoke</Button>}
+                </div>
+              ))}
+            </div>
+          </Card>
         </div>
       </TabPanel>
 
-      {}
-      <TabPanel active={tab === 'sessions'}>
-        <Card style={{ animation: 'float-up 250ms ease-out' }}>
-          <div style={{ fontSize: '14px', fontWeight: 700, marginBottom: 16 }}>Active Sessions</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {sessions.length === 0 ? (
-              <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-                Loading sessions...
-              </div>
-            ) : sessions.map((s, i) => (
-              <div key={s.id}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '14px 16px', background: 'var(--bg-elevated)',
-                  borderRadius: 'var(--r-md)', border: '1px solid var(--border)',
-                  animation: `float-up 250ms ease-out ${i * 60}ms both`,
-                }}>
-                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-                  <Monitor size={20} color="var(--text-muted)" />
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {s.device}
-                      {s.current && (
-                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: 'var(--r-pill)', background: 'var(--accent-green-dim)', color: 'var(--accent-green)' }}>
-                          Current
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>
-                      {s.ip} · Last active {timeAgo(s.lastActive)}
-                    </div>
-                  </div>
-                </div>
-                {!s.current && <Button size="sm" variant="danger">Revoke</Button>}
-              </div>
-            ))}
-          </div>
-        </Card>
-      </TabPanel>
+        </div>
+      </div>
     </div>
   );
 }

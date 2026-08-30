@@ -449,6 +449,36 @@ function getSchemaSQL(): string {
       deployment_id TEXT NOT NULL,
       port TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      token_prefix TEXT NOT NULL,
+      scopes TEXT NOT NULL DEFAULT 'read',
+      last_used_at TEXT,
+      expires_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
+    CREATE TABLE IF NOT EXISTS ssh_keys (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      public_key TEXT NOT NULL UNIQUE,
+      fingerprint TEXT NOT NULL,
+      key_type TEXT,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_ssh_keys_user ON ssh_keys(user_id);
+    CREATE TABLE IF NOT EXISTS feature_flags (
+      key TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      description TEXT,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `;
 }
