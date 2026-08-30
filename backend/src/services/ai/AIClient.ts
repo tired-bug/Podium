@@ -14,7 +14,7 @@ import axios from 'axios';
  * did, swap AI_MODEL below — no other file needs to change.
  */
 
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-3.6-flash';
 
 function apiKey(): string | undefined {
   return process.env.AI_API_KEY || process.env.GEMINI_API_KEY;
@@ -104,6 +104,16 @@ export async function aiChatStream(
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
+
+  // gemini-3.6-flash (and later) reject requests whose last turn has role
+  // "model" — drop any trailing assistant message(s) defensively so a stray
+  // one in chat history doesn't hard-fail the call.
+  while (contents.length && contents[contents.length - 1].role === 'model') {
+    contents.pop();
+  }
+  if (!contents.length) {
+    throw new Error('No user turn to send to AI provider');
+  }
 
   let fullText = '';
 
