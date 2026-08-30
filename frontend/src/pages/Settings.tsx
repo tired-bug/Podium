@@ -487,9 +487,9 @@ export function SettingsPage() {
                   <Bot size={15} color="var(--accent-blue-2)" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>Groq AI is active</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>AI features are active</div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    AI features are powered by a Groq API key configured as a server environment variable (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>GROQ_API_KEY</code>). It is not visible or editable here for security reasons.
+                    AI features are powered by an API key configured as a server environment variable (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>GEMINI_API_KEY</code>). It is not visible or editable here for security reasons.
                   </div>
                 </div>
               </div>

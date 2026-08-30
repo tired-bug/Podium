@@ -407,7 +407,8 @@ router.post('/root-cause', requireAuth, async (req: AuthRequest, res: Response) 
     dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(anomaly.deployment_id) as any
        || getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(anomaly.deployment_id) as any;
   } else {
-    dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any;
+    dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any
+       || getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(deploymentId) as any;
     if (!dep) return res.status(404).json({ error: 'Deployment not found' });
     anomaly = getDb().prepare("SELECT * FROM anomalies WHERE deployment_id=? AND resolved=0 ORDER BY created_at DESC LIMIT 1").get(deploymentId) as any;
   }
@@ -418,7 +419,7 @@ router.post('/root-cause', requireAuth, async (req: AuthRequest, res: Response) 
   const prompt = `Anomaly: ${anomaly?.type || 'unknown'} — ${anomaly?.message || 'No anomaly data'}
 Severity: ${anomaly?.severity || 'unknown'}
 Deployment: ${dep?.name || 'unknown'} (status: ${dep?.status || 'unknown'})
-Image: ${dep?.image || dep?.docker_image || 'N/A'}
+Image: ${dep?.image || dep?.docker_image || dep?.repo_url || 'N/A'}
 
 Recent error logs:
 ${logs.filter((l: any) => l.level === 'error' || l.level === 'warn').map((l: any) => `[${l.level}] ${l.message}`).join('\n') || 'No error logs'}

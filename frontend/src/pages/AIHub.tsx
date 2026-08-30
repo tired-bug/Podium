@@ -2,14 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bot, FileText, AlertTriangle, RefreshCw, XCircle,
   Copy, Loader, Sparkles, Activity,
-  TrendingUp, Search, Globe,
+  TrendingUp, Search, Globe, Download,
   ExternalLink, Plug, Cloud, BarChart2,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { Modal } from '../components/ui/Modal';
 import { useToast } from '../contexts/ToastContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { copyToClipboard, timeAgo } from '../lib/utils';
+import { buildIncidentReportPdfPreview } from '../lib/incidentPdf';
 
 interface Deployment { id: string; name: string; status: string; }
 interface CloudDep {
@@ -320,19 +322,51 @@ function RootCauseTool({ deployments }: { deployments: Deployment[] }) {
 
 function IncidentTool({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
+  const [pdf, setPdf] = useState<{ url: string; filename: string; save: () => void; revoke: () => void } | null>(null);
+  const [pdfOpen, setPdfOpen] = useState(false);
   const { error: showError } = useToast();
   const tool = AI_TOOLS.find(t => t.id === 'incident')!;
-  const run = async () => { setLoading(true); try { const { data } = await api.post('/api/ai/incident-report', { deploymentId: depId }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
+  const run = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.post('/api/ai/incident-report', { deploymentId: depId });
+      setResult(data);
+      pdf?.revoke();
+      const built = buildIncidentReportPdfPreview({ deploymentName: data.deployment, generatedAt: data.generatedAt, reportText: data.report });
+      setPdf(built);
+      setPdfOpen(true);
+    } catch (e: any) { showError(e.response?.data?.error || e.message); }
+    setLoading(false);
+  };
+  useEffect(() => () => pdf?.revoke(), []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <ToolPanel tool={tool}>
       <DeploymentSelect value={depId} onChange={v => { setDepId(v); setResult(null); }} deployments={deployments} />
       <RunButton loading={loading} onClick={run} disabled={!depId} icon={<FileText size={13} />} label="Generate Report" loadingLabel="Generating…" accent={tool.accent} />
-      {result && (
-        <ResultCard title={`Incident — ${result.deployment}`} accent={tool.accent} onCopy={() => copyToClipboard(result.report)}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>Generated {new Date(result.generatedAt).toLocaleString()}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-wrap', maxHeight: 260, overflow: 'auto' }}>{result.report}</div>
-        </ResultCard>
+      {result && !pdfOpen && (
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)' }}>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Report for <strong style={{ color: 'var(--text-primary)' }}>{result.deployment}</strong> is ready</div>
+          <Button size="sm" variant="ghost" icon={<FileText size={12} />} onClick={() => setPdfOpen(true)}>View PDF</Button>
+        </div>
       )}
+      <Modal
+        open={pdfOpen && !!pdf}
+        onClose={() => setPdfOpen(false)}
+        title={result ? `Incident Report — ${result.deployment}` : 'Incident Report'}
+        width={760}
+        footer={
+          <>
+            <Button variant="ghost" icon={<Copy size={13} />} onClick={() => result && copyToClipboard(result.report)}>Copy Markdown</Button>
+            <Button variant="primary" icon={<Download size={13} />} onClick={() => pdf?.save()}>Download PDF</Button>
+          </>
+        }
+      >
+        {pdf && (
+          <div style={{ borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1px solid var(--border)', background: '#fff' }}>
+            <iframe title="Incident report PDF preview" src={pdf.url} style={{ width: '100%', height: '70vh', border: 'none', display: 'block' }} />
+          </div>
+        )}
+      </Modal>
     </ToolPanel>
   );
 }

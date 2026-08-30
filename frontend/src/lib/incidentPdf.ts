@@ -3,7 +3,7 @@ import { jsPDF } from 'jspdf';
 // Renders a markdown-flavored incident report into a clean, paginated PDF.
 // Only needs to handle the same subset of markdown the AI consistently
 // produces: #/##/### headers, "- " bullet lists, and plain paragraphs.
-export function downloadIncidentReportPdf(opts: {
+function buildIncidentReportPdf(opts: {
   deploymentName: string;
   generatedAt: string;
   reportText: string;
@@ -105,6 +105,36 @@ export function downloadIncidentReportPdf(opts: {
     }
   }
 
-  const safeName = deploymentName.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+  return doc;
+}
+
+export function downloadIncidentReportPdf(opts: {
+  deploymentName: string;
+  generatedAt: string;
+  reportText: string;
+}) {
+  const doc = buildIncidentReportPdf(opts);
+  const safeName = opts.deploymentName.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
   doc.save(`incident-report-${safeName}.pdf`);
+}
+
+// Builds the PDF and returns an object URL for inline preview (e.g. in a
+// modal <iframe>), plus a save() helper and the underlying filename. Caller
+// is responsible for revoking the URL (URL.revokeObjectURL) when done.
+export function buildIncidentReportPdfPreview(opts: {
+  deploymentName: string;
+  generatedAt: string;
+  reportText: string;
+}) {
+  const doc = buildIncidentReportPdf(opts);
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const safeName = opts.deploymentName.replace(/[^a-z0-9-_]+/gi, '-').toLowerCase();
+  const filename = `incident-report-${safeName}.pdf`;
+  return {
+    url,
+    filename,
+    save: () => doc.save(filename),
+    revoke: () => URL.revokeObjectURL(url),
+  };
 }

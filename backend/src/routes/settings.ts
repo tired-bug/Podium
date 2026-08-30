@@ -21,7 +21,7 @@ router.get('/', requireAuth, requireRole('admin'), (_req, res: Response) => {
       settings[r.key] = r.value;
     }
   }
-  settings.groq_key_configured = process.env.GROQ_API_KEY ? 'true' : 'false';
+  settings.groq_key_configured = (process.env.AI_API_KEY || process.env.GEMINI_API_KEY) ? 'true' : 'false';
   res.json(settings);
 });
 

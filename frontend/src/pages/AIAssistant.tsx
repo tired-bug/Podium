@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Send, Bot, User, Copy, CheckCircle, Trash2, Edit2, Zap, ChevronRight } from 'lucide-react';
+import { Plus, Send, Bot, User, Copy, CheckCircle, Trash2, Edit2, Zap, ChevronRight, Search, Cloud, HardDrive } from 'lucide-react';
 import { Card, EmptyState, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { useDeployments } from '../hooks/useDeployments';
@@ -20,6 +20,39 @@ interface Conversation {
   title: string;
   message_count: number;
   updated_at: string;
+}
+
+interface CombinedDeployment {
+  id: string;
+  name: string;
+  status: string;
+  source: 'local' | 'cloud';
+  provider?: string;
+}
+
+const STATUS_DOT: Record<string, string> = {
+  running: '#30d158', live: '#30d158', building: '#6366f1', deploying: '#22d3ee',
+  failed: '#ff453a', queued: '#ff9f0a', stopped: '#48484a', suspended: '#48484a', pending: '#ff9f0a',
+};
+
+// Local Docker deployments + cloud provider deployments (Render/Railway/Vercel/etc.),
+// merged so the assistant's deployment picker and Quick Actions can reach both —
+// not just what useDeployments() returns.
+function useAllDeployments() {
+  const { deployments: local } = useDeployments();
+  const [cloud, setCloud] = useState<CombinedDeployment[]>([]);
+
+  useEffect(() => {
+    api.get('/api/providers/deployments').then(({ data }) => {
+      setCloud((data || []).map((d: any) => ({ id: d.id, name: d.name, status: d.status, source: 'cloud' as const, provider: d.provider })));
+    }).catch(() => setCloud([]));
+  }, []);
+
+  const combined: CombinedDeployment[] = [
+    ...local.map(d => ({ id: d.id, name: d.name, status: d.status, source: 'local' as const })),
+    ...cloud,
+  ];
+  return combined;
 }
 
 function MarkdownContent({ content }: { content: string }) {
@@ -67,7 +100,7 @@ function CodeBlock({ content, onCopy }: { content: string; onCopy: () => void })
 }
 
 export default function AIAssistant() {
-  const { deployments } = useDeployments();
+  const deployments = useAllDeployments();
   const { success, error: showError } = useToast();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -81,6 +114,7 @@ export default function AIAssistant() {
   const [titleInput, setTitleInput] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeDepId, setAnalyzeDepId] = useState('');
+  const [depFilter, setDepFilter] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -227,6 +261,10 @@ export default function AIAssistant() {
     finally { setAnalyzing(false); }
   };
 
+  const filteredDeployments = depFilter
+    ? deployments.filter(d => d.name.toLowerCase().includes(depFilter.toLowerCase()))
+    : deployments;
+
   if (hasKey === false) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -235,11 +273,9 @@ export default function AIAssistant() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <Zap size={20} color="var(--accent-orange)" style={{ flexShrink: 0, marginTop: 2 }} />
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Groq API Key Required</div>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>AI API Key Required</div>
               <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: 12 }}>
-                To use the AI Assistant, you need a Groq API key. Get one free at{' '}
-                <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer">console.groq.com</a>{' '}
-                then add it in Settings → AI.
+                To use the AI Assistant, ask your administrator to configure an AI API key for this server, then add it in Settings → AI.
               </p>
               <Button variant="primary" onClick={() => window.location.href = '/settings'}>Go to Settings</Button>
             </div>
@@ -328,21 +364,49 @@ export default function AIAssistant() {
         </div>
 
         {}
-        <div style={{ padding: '12px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick Actions</div>
-          <select
-            value={analyzeDepId}
-            onChange={e => setAnalyzeDepId(e.target.value)}
-            style={{
-              width: '100%', padding: '6px 8px', marginBottom: 6,
-              background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-              border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-              fontSize: '12px', fontFamily: 'var(--font-sans)', outline: 'none',
-            }}
-          >
-            <option value="">Select deployment...</option>
-            {deployments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+        <div style={{ padding: '14px 12px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Analyze a deployment</div>
+          <div style={{ position: 'relative', marginBottom: 8 }}>
+            <Search size={12} color="var(--text-muted)" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)' }} />
+            <input
+              value={depFilter}
+              onChange={e => setDepFilter(e.target.value)}
+              placeholder="Search deployments…"
+              style={{
+                width: '100%', padding: '7px 8px 7px 26px',
+                background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+                fontSize: '12px', fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 168, overflowY: 'auto', marginBottom: 10 }}>
+            {filteredDeployments.length === 0 ? (
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '6px 2px' }}>No deployments found</div>
+            ) : filteredDeployments.map(d => {
+              const isSelected = analyzeDepId === d.id;
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => setAnalyzeDepId(d.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
+                    padding: '6px 8px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                    background: isSelected ? 'var(--accent-blue-dim)' : 'transparent',
+                    border: `1px solid ${isSelected ? 'var(--accent-blue)' : 'transparent'}`,
+                    fontFamily: 'var(--font-sans)', transition: 'all 120ms',
+                  }}
+                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: STATUS_DOT[d.status] || 'var(--text-muted)', flexShrink: 0 }} />
+                  {d.source === 'cloud' ? <Cloud size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} /> : <HardDrive size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
+                  <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: isSelected ? 'var(--accent-blue)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+                  <span style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', flexShrink: 0 }}>{d.status}</span>
+                </button>
+              );
+            })}
+          </div>
           <Button size="sm" fullWidth variant="secondary" onClick={handleAnalyze} loading={analyzing} disabled={!analyzeDepId} icon={<Bot size={12} />}>
             Analyze Deployment
           </Button>
