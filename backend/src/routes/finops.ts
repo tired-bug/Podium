@@ -165,6 +165,46 @@ function buildFinOpsData() {
     });
   }
 
+  // 6. Always surface something — if no cost/waste issues were found, fall back
+  // to proactive housekeeping/best-practice suggestions so the panel never reads as "unused".
+  if (recommendations.length === 0 && all.length > 0) {
+    const noMonitoring = providerSummaries.every(p => p.recentBuilds === 0);
+    if (noMonitoring) {
+      recommendations.push({
+        type: 'housekeeping',
+        severity: 'low',
+        title: 'No deploys in the last 30 days',
+        description: 'Nothing has redeployed recently. Confirm your CI/CD triggers are still wired up correctly, or archive services you no longer maintain.',
+        estimatedSaving: 0,
+      });
+    }
+    if (providerSummaries.length === 1) {
+      recommendations.push({
+        type: 'housekeeping',
+        severity: 'low',
+        title: 'Single-provider setup — consider a cost/uptime baseline',
+        description: `All services run on ${providerSummaries[0].provider}. Set a monthly cost alert threshold now, before usage grows, so a spike is caught early.`,
+        provider: providerSummaries[0].provider,
+        estimatedSaving: 0,
+      });
+    } else {
+      recommendations.push({
+        type: 'housekeeping',
+        severity: 'low',
+        title: 'Set spend alerts across providers',
+        description: `You're spread across ${providerSummaries.length} providers with no current waste detected. Configure a monthly budget alert per provider so cost growth is visible before it compounds.`,
+        estimatedSaving: 0,
+      });
+    }
+    recommendations.push({
+      type: 'housekeeping',
+      severity: 'low',
+      title: 'Nothing to optimize right now — establish a baseline instead',
+      description: `${totalActiveFromAll(all)} services are active and healthy. Revisit this panel after your next growth spike; free-tier limits (e.g. Render's 1 free service, Vercel's free hobby tier) are the most common source of surprise charges as usage increases.`,
+      estimatedSaving: 0,
+    });
+  }
+
   // ── Totals ───────────────────────────────────────────────────────────────
   const totalEstimatedCost = +providerSummaries.reduce((s, p) => s + p.estimatedMonthlyCost, 0).toFixed(2);
   const totalActive        = providerSummaries.reduce((s, p) => s + p.activeServices, 0);
@@ -187,6 +227,10 @@ function buildFinOpsData() {
     // Last 30-day build timeline (daily counts)
     buildTimeline: buildTimeline(all),
   };
+}
+
+function totalActiveFromAll(all: any[]): number {
+  return all.filter(d => ['active', 'live', 'running', 'ready'].includes(d.status)).length;
 }
 
 function buildTimeline(deployments: any[]) {

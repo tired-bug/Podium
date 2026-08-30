@@ -598,12 +598,22 @@ router.get('/platform-summary', requireAuth, async (_req, res: Response) => {
   const cloudFailedDeps = (db.prepare("SELECT COUNT(*) as c FROM cloud_deployments WHERE status='failed'").get() as any)?.c || 0;
   const recentErrors = (db.prepare("SELECT COUNT(*) as c FROM build_logs WHERE level='error' AND timestamp > datetime('now','-1 hour')").get() as any)?.c || 0;
 
-  const platformPrompt = `Generate a 3-sentence executive health summary for this DevOps platform:
-- Total deployments: ${totalDeps} (${runningDeps} running, ${failedDeps} failed)
-- Cloud deployments: ${cloudRunning} live, ${cloudFailedDeps} failed
-- Errors in last hour: ${recentErrors}
+  const hasFailure = failedDeps > 0 || cloudFailedDeps > 0 || recentErrors > 0;
 
-Be direct, professional, and action-oriented. Mention if anything needs immediate attention.`;
+  const platformPrompt = `Generate a 3-sentence executive health summary for this DevOps platform.
+
+These are two SEPARATE deployment systems — never merge them into one "total" claim, and never call the platform "clean" or say "no issues" if either system shows a failure:
+- Self-hosted deployments: ${totalDeps} total (${runningDeps} running, ${failedDeps} failed)
+- Cloud provider deployments: ${cloudRunning} live, ${cloudFailedDeps} failed
+- Build errors in last hour: ${recentErrors}
+
+Rules:
+1. If there is ANY failure (self-hosted or cloud) or recent error, sentence 1 MUST lead with that failure and what it means, not with a "clean"/"healthy"/"no issues" framing.
+2. Never state something is "clean" or "no issues" in one sentence if a failure is mentioned elsewhere — pick one framing.
+3. If ${totalDeps} is 0, say "no self-hosted deployments are configured" rather than implying that means the platform is healthy.
+4. ${hasFailure ? 'End with a concrete next action tied to the specific failure.' : 'It is safe to describe this as a clean baseline since there are no failures or recent errors.'}
+
+Be direct, professional, and action-oriented.`;
 
   try {
     const summary = await aiChatHelper(SYSTEM_PROMPT, platformPrompt, 300);

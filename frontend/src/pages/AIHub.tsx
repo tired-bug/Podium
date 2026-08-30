@@ -548,8 +548,8 @@ export default function AIHub() {
       <ReportsHistory refreshKey={reportsRefreshKey} />
 
       {/* Overview + Health */}
-      <OverviewPanel providers={providers} cloudDeps={cloudDeps} />
       <PlatformHealth cloudDeps={cloudDeps} />
+      <OverviewPanel providers={providers} cloudDeps={cloudDeps} />
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>

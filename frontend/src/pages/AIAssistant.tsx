@@ -139,13 +139,14 @@ export default function AIAssistant() {
     } catch {}
   };
 
-  const createConversation = async () => {
+  const createConversation = async (): Promise<string | undefined> => {
     try {
       const { data } = await api.post('/api/ai/conversations');
       setConversations(prev => [data, ...prev]);
       setMessages([]);
       setActiveConvId(data.id);
-    } catch (err) { showError(parseApiError(err)); }
+      return data.id;
+    } catch (err) { showError(parseApiError(err)); return undefined; }
   };
 
   const deleteConversation = async (id: string) => {
@@ -251,12 +252,23 @@ export default function AIAssistant() {
     setAnalyzing(true);
     try {
       const { data } = await api.post('/api/ai/analyze', { deploymentId: analyzeDepId });
-      if (!activeConvId) await createConversation();
+      let convId = activeConvId;
+      if (!convId) convId = await createConversation();
       const msg: Message = {
         id: Date.now().toString(), role: 'assistant',
         content: data.analysis, created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev, msg]);
+
+      // Give the conversation a tailored name instead of leaving it as "New Conversation"
+      const analyzedDep = deployments.find(d => d.id === analyzeDepId);
+      if (convId && analyzedDep) {
+        const tailoredTitle = `${analyzedDep.name} — ${analyzedDep.status === 'failed' ? 'build failure' : 'analysis'}`.slice(0, 60);
+        try {
+          await api.put(`/api/ai/conversations/${convId}/title`, { title: tailoredTitle });
+          setConversations(prev => prev.map(c => c.id === convId ? { ...c, title: tailoredTitle } : c));
+        } catch {}
+      }
     } catch (err) { showError(parseApiError(err)); }
     finally { setAnalyzing(false); }
   };

@@ -16,6 +16,10 @@ interface MetricChartProps {
     key: string;
     label: string;
     color: string;
+    /** Group areas under the same stackId so they sum visually instead of overlapping and washing each other out. */
+    stackId?: string;
+    /** When false, renders as a stroke-only line even in 'area' mode (no fill) — use for an overlay/total series drawn on top of stacked areas. */
+    fill?: boolean;
   }>;
   type?: 'line' | 'area';
   unit?: string;
@@ -108,8 +112,9 @@ export function MetricChart({
                 dataKey={line.key}
                 name={line.label}
                 stroke={line.color}
-                fill={line.color + '22'}
-                strokeWidth={1.5}
+                fill={line.fill === false ? 'transparent' : line.color + '33'}
+                strokeWidth={line.fill === false ? 2 : 1.5}
+                stackId={line.stackId}
                 dot={false}
                 activeDot={{ r: 4, fill: line.color }}
                 isAnimationActive={false}
