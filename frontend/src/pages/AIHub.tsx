@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Bot, Zap, Shield, FileText, DollarSign, GitCompare,
-  AlertTriangle, Cpu, RefreshCw, CheckCircle, XCircle,
+  Bot, FileText, AlertTriangle, RefreshCw, XCircle,
   Copy, Loader, Sparkles, Activity,
-  TrendingUp, Target, Search, ChevronRight, Globe,
-  ExternalLink, Plug, Cloud, ArrowRight, BarChart2,
+  TrendingUp, Search, Globe,
+  ExternalLink, Plug, Cloud, BarChart2,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../contexts/ToastContext';
@@ -33,14 +32,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ── AI Tool definitions for the navigation cards ──────────────────────────
 const AI_TOOLS = [
-  { id: 'risk',      icon: <Target size={18} />,    label: 'Risk Score',       desc: 'Pre-deploy risk assessment',           accent: '#a855f7', gradient: 'linear-gradient(135deg,#a855f7,#6366f1)' },
   { id: 'rootcause', icon: <Search size={18} />,    label: 'Root Cause',       desc: 'AI explains why deployments fail',     accent: '#f59e0b', gradient: 'linear-gradient(135deg,#f59e0b,#ef4444)' },
-  { id: 'optimize',  icon: <Cpu size={18} />,       label: 'Optimizer',        desc: 'Right-size resources automatically',   accent: '#14b8a6', gradient: 'linear-gradient(135deg,#14b8a6,#22d3ee)' },
-  { id: 'security',  icon: <Shield size={18} />,    label: 'Security Scan',    desc: 'GDPR, SOC2 & hardening review',       accent: '#ef4444', gradient: 'linear-gradient(135deg,#ef4444,#ec4899)' },
-  { id: 'deploy',    icon: <Sparkles size={18} />,  label: 'AI Deploy',        desc: 'Natural language → live deployment',  accent: '#6366f1', gradient: 'linear-gradient(135deg,#6366f1,#22d3ee)', route: '/ai/deploy' },
   { id: 'incident',  icon: <FileText size={18} />,  label: 'Incident Report',  desc: 'Auto-generate professional docs',      accent: '#a855f7', gradient: 'linear-gradient(135deg,#a855f7,#ec4899)' },
-  { id: 'cost',      icon: <DollarSign size={18} />,label: 'Cost Analysis',    desc: 'Estimated spend across providers',     accent: '#10b981', gradient: 'linear-gradient(135deg,#10b981,#14b8a6)' },
-  { id: 'compare',   icon: <GitCompare size={18} />,label: 'Compare',          desc: 'A/B performance & config comparison', accent: '#22d3ee', gradient: 'linear-gradient(135deg,#22d3ee,#6366f1)' },
 ];
 
 // ── Sub-components ────────────────────────────────────────────────────────
@@ -95,13 +88,6 @@ function DeploymentSelect({ value, onChange, deployments, placeholder = 'Select 
   );
 }
 
-const SEVERITY_COLOR: Record<string, string> = { low: '#10b981', medium: '#f59e0b', high: '#ef4444', critical: '#dc2626' };
-
-function SeverityBadge({ level }: { level: string }) {
-  const color = SEVERITY_COLOR[level?.toLowerCase()] || 'var(--text-muted)';
-  return <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}18`, borderRadius: 'var(--r-pill)', padding: '2px 8px', textTransform: 'uppercase', border: `1px solid ${color}33` }}>{level}</span>;
-}
-
 function ScoreRing({ score, max = 100, color, label }: { score: number; max?: number; color: string; label?: string }) {
   const pct = Math.min(100, (score / max) * 100);
   const r = 26, circ = 2 * Math.PI * r;
@@ -141,15 +127,14 @@ function RunButton({ loading, onClick, disabled, icon, label, loadingLabel, acce
 // ── Navigation Cards ──────────────────────────────────────────────────────
 
 function ToolNavCards({ activeToolId, onSelect }: { activeToolId: string | null; onSelect: (id: string) => void }) {
-  const navigate = useNavigate();
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 28 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 28 }}>
       {AI_TOOLS.map(tool => {
         const isActive = activeToolId === tool.id;
         return (
           <button
             key={tool.id}
-            onClick={() => tool.route ? navigate(tool.route) : onSelect(tool.id)}
+            onClick={() => onSelect(tool.id)}
             style={{
               padding: '14px 16px', borderRadius: 'var(--r-lg)', border: `1px solid ${isActive ? `${tool.accent}55` : 'var(--border)'}`,
               background: isActive ? `${tool.accent}12` : 'var(--bg-card)',
@@ -162,7 +147,6 @@ function ToolNavCards({ activeToolId, onSelect }: { activeToolId: string | null;
             {isActive && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: tool.gradient }} />}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
               <div style={{ color: tool.accent, display: 'flex', opacity: isActive ? 1 : 0.7 }}>{tool.icon}</div>
-              {tool.route && <ArrowRight size={10} color={tool.accent} style={{ marginLeft: 'auto', opacity: 0.6 }} />}
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: isActive ? tool.accent : 'var(--text-primary)', marginBottom: 2 }}>{tool.label}</div>
             <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.4 }}>{tool.desc}</div>
@@ -320,31 +304,6 @@ function PlatformHealth({ cloudDeps }: { cloudDeps: CloudDep[] }) {
 
 // ── Individual tool panels ────────────────────────────────────────────────
 
-function RiskTool({ deployments }: { deployments: Deployment[] }) {
-  const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
-  const { error: showError } = useToast();
-  const tool = AI_TOOLS.find(t => t.id === 'risk')!;
-  const run = async () => { const dep = deployments.find(d => d.id === depId); if (!dep) return; setLoading(true); try { const { data } = await api.post('/api/ai/risk-score', { deploymentId: dep.id }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
-  const rColor = result ? (SEVERITY_COLOR[result.level] || '#f59e0b') : tool.accent;
-  return (
-    <ToolPanel tool={tool}>
-      <DeploymentSelect value={depId} onChange={v => { setDepId(v); setResult(null); }} deployments={deployments} />
-      <RunButton loading={loading} onClick={run} disabled={!depId} icon={<Target size={13} />} label="Score Risk" loadingLabel="Analyzing…" accent={tool.accent} />
-      {result && (
-        <ResultCard title="Risk Assessment" accent={rColor} onCopy={() => copyToClipboard(JSON.stringify(result, null, 2))}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-            <ScoreRing score={result.score} color={rColor} label="Risk" />
-            <div><SeverityBadge level={result.level} /><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Risk Level</div></div>
-          </div>
-          {result.blockers?.length > 0 && <div style={{ marginBottom: 8, padding: '8px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--r-md)' }}><div style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', marginBottom: 4 }}>🚫 Blockers</div>{result.blockers.map((b: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#ef4444', padding: '1px 0' }}>• {b}</div>)}</div>}
-          {result.risks?.length > 0 && <div style={{ marginBottom: 8 }}><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.05em' }}>Risks</div>{result.risks.map((r: string, i: number) => <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '1px 0' }}>• {r}</div>)}</div>}
-          {result.recommendations?.length > 0 && <div><div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.05em' }}>Recommendations</div>{result.recommendations.map((r: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#10b981', padding: '1px 0' }}>✓ {r}</div>)}</div>}
-        </ResultCard>
-      )}
-    </ToolPanel>
-  );
-}
-
 function RootCauseTool({ deployments }: { deployments: Deployment[] }) {
   const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
   const { error: showError } = useToast();
@@ -355,99 +314,6 @@ function RootCauseTool({ deployments }: { deployments: Deployment[] }) {
       <DeploymentSelect value={depId} onChange={v => { setDepId(v); setResult(null); }} deployments={deployments} filter={d => ['failed', 'stopped', 'running'].includes(d.status)} />
       <RunButton loading={loading} onClick={run} disabled={!depId} icon={<Search size={13} />} label="Diagnose" loadingLabel="Diagnosing…" accent={tool.accent} />
       {result && <ResultCard title="Root Cause" accent={tool.accent} onCopy={() => copyToClipboard(result.rootCause)}><div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{result.rootCause}</div></ResultCard>}
-    </ToolPanel>
-  );
-}
-
-function OptimizeTool({ deployments }: { deployments: Deployment[] }) {
-  const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
-  const { error: showError } = useToast();
-  const tool = AI_TOOLS.find(t => t.id === 'optimize')!;
-  const run = async () => { setLoading(true); try { const { data } = await api.post('/api/ai/optimize-config', { deploymentId: depId }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
-  return (
-    <ToolPanel tool={tool}>
-      <DeploymentSelect value={depId} onChange={v => { setDepId(v); setResult(null); }} deployments={deployments} />
-      <RunButton loading={loading} onClick={run} disabled={!depId} icon={<Cpu size={13} />} label="Optimize" loadingLabel="Analyzing…" accent={tool.accent} />
-      {result && (
-        <ResultCard title="Optimization" accent={tool.accent} onCopy={() => copyToClipboard(JSON.stringify(result, null, 2))}>
-          {result.recommendations?.map((rec: any, i: number) => (
-            <div key={i} style={{ marginBottom: 8, padding: '10px 12px', background: 'rgba(20,184,166,0.06)', borderRadius: 'var(--r-md)', border: '1px solid rgba(20,184,166,0.15)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'center' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{rec.field?.replace(/_/g, ' ')}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{rec.current} <span style={{ color: tool.accent }}>→ {rec.suggested}</span></span>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{rec.reason}</div>
-            </div>
-          ))}
-          {result.estimatedSavings && <div style={{ fontSize: 12, color: '#10b981', marginTop: 6 }}>💰 {result.estimatedSavings}</div>}
-        </ResultCard>
-      )}
-    </ToolPanel>
-  );
-}
-
-function SecurityTool({ deployments }: { deployments: Deployment[] }) {
-  const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
-  const { error: showError } = useToast();
-  const tool = AI_TOOLS.find(t => t.id === 'security')!;
-  const run = async () => { setLoading(true); try { const { data } = await api.post('/api/ai/security-scan', { deploymentId: depId }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
-  const sColor = result ? (result.score > 70 ? '#10b981' : result.score > 40 ? '#f59e0b' : '#ef4444') : tool.accent;
-  return (
-    <ToolPanel tool={tool}>
-      <DeploymentSelect value={depId} onChange={v => { setDepId(v); setResult(null); }} deployments={deployments} />
-      <RunButton loading={loading} onClick={run} disabled={!depId} icon={<Shield size={13} />} label="Security Scan" loadingLabel="Scanning…" accent={tool.accent} />
-      {result && (
-        <ResultCard title="Security Report" accent={sColor} onCopy={() => copyToClipboard(JSON.stringify(result, null, 2))}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12 }}>
-            <ScoreRing score={result.score} color={sColor} label="Score" />
-            <div><SeverityBadge level={result.overallRisk} /><div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>Overall Risk</div></div>
-          </div>
-          {result.findings?.map((f: any, i: number) => (
-            <div key={i} style={{ marginBottom: 7, padding: '8px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', borderLeft: `3px solid ${SEVERITY_COLOR[f.severity] || 'var(--border)'}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}><SeverityBadge level={f.severity} /><span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{f.category}</span></div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 2 }}>{f.issue}</div>
-              <div style={{ fontSize: 11, color: '#10b981' }}>Fix: {f.fix}</div>
-            </div>
-          ))}
-          {result.passed?.length > 0 && <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>{result.passed.map((p: string, i: number) => <div key={i} style={{ fontSize: 12, color: '#10b981', display: 'flex', alignItems: 'center', gap: 5 }}><CheckCircle size={10} />{p}</div>)}</div>}
-        </ResultCard>
-      )}
-    </ToolPanel>
-  );
-}
-
-function DeployTool({ providers }: { providers: Provider[] }) {
-  const navigate = useNavigate();
-  const tool = AI_TOOLS.find(t => t.id === 'deploy')!;
-  const connected = providers.filter(p => p.connected);
-  return (
-    <ToolPanel tool={tool}>
-      {connected.length === 0 ? (
-        <div style={{ padding: '12px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 'var(--r-md)', fontSize: 12, color: '#f59e0b', textAlign: 'center' }}>
-          <AlertTriangle size={14} style={{ marginBottom: 6, display: 'block', margin: '0 auto 6px' }} />Connect a provider to enable AI Deploy
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
-          {connected.map(p => (
-            <span key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-secondary)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: '3px 9px' }}>
-              {PROVIDER_LOGOS[p.id]} {p.name}
-            </span>
-          ))}
-        </div>
-      )}
-      <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '8px 0' }}>
-        Describe your app in plain language — AI configures and deploys it to your connected provider automatically.
-      </p>
-      {['Node.js REST API with PostgreSQL on port 3000', 'Python FastAPI backend with Redis cache', 'Next.js app with SSR on port 3000'].map((ex, i) => (
-        <button key={i} onClick={() => navigate('/ai/deploy')} style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%', fontSize: 11, padding: '7px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', cursor: 'pointer', color: 'var(--text-secondary)', textAlign: 'left', marginBottom: 5, fontFamily: 'var(--font-sans)', transition: 'all 120ms' }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = tool.accent; e.currentTarget.style.color = 'var(--text-primary)'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}>
-          <ChevronRight size={11} color={tool.accent} />{ex}
-        </button>
-      ))}
-      <button onClick={() => navigate('/ai/deploy')} style={{ width: '100%', marginTop: 6, padding: '9px 14px', borderRadius: 'var(--r-md)', background: 'linear-gradient(135deg,#6366f1,#22d3ee)', border: 'none', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, fontFamily: 'var(--font-sans)' }}>
-        <Sparkles size={13} /> Open AI Deploy
-      </button>
     </ToolPanel>
   );
 }
@@ -467,70 +333,6 @@ function IncidentTool({ deployments }: { deployments: Deployment[] }) {
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-wrap', maxHeight: 260, overflow: 'auto' }}>{result.report}</div>
         </ResultCard>
       )}
-    </ToolPanel>
-  );
-}
-
-function CostTool({ cloudDeps, providers }: { cloudDeps: CloudDep[]; providers: Provider[] }) {
-  const [data, setData] = useState<any>(null); const [loading, setLoading] = useState(false);
-  const tool = AI_TOOLS.find(t => t.id === 'cost')!;
-  const load = async () => { setLoading(true); try { const { data: d } = await api.get('/api/ai/cost-analysis'); setData(d); } catch {} setLoading(false); };
-  const breakdown = providers.filter(p => p.connected).map(p => ({ name: p.name, id: p.id, count: cloudDeps.filter(d => d.provider === p.id).length, live: cloudDeps.filter(d => d.provider === p.id && d.status === 'live').length }));
-  return (
-    <ToolPanel tool={tool}>
-      {breakdown.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
-          {breakdown.map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', fontSize: 12 }}>
-              {PROVIDER_LOGOS[p.id] || <Globe size={12} />}
-              <span style={{ flex: 1, color: 'var(--text-secondary)', fontWeight: 600 }}>{p.name}</span>
-              <span style={{ color: tool.accent }}>{p.live} live</span>
-              <span style={{ color: 'var(--text-muted)' }}>/ {p.count} total</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <RunButton loading={loading} onClick={load} icon={<DollarSign size={13} />} label="Analyze Costs" loadingLabel="Loading…" accent={tool.accent} />
-      {data && (
-        <ResultCard title="Monthly Cost Estimate" accent={tool.accent}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 12 }}>
-            <span style={{ fontSize: 26, fontWeight: 800, color: tool.accent }}>${data.totalMonthlyEstimate}</span>
-            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>/mo</span>
-          </div>
-          {data.breakdown?.length > 0 ? data.breakdown.map((d: any, i: number) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border-muted)', fontSize: 13 }}>
-              <div><span style={{ fontWeight: 600 }}>{d.name}</span> <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>({d.provider})</span></div>
-              <div style={{ color: tool.accent, fontWeight: 700 }}>${d.estimatedMonthlyCost.toFixed(2)}</div>
-            </div>
-          )) : <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>No running cloud deployments</div>}
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>{data.note}</div>
-        </ResultCard>
-      )}
-    </ToolPanel>
-  );
-}
-
-function CompareTool({ deployments }: { deployments: Deployment[] }) {
-  const [depA, setDepA] = useState(''); const [depB, setDepB] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
-  const { error: showError } = useToast();
-  const tool = AI_TOOLS.find(t => t.id === 'compare')!;
-  const run = async () => { if (!depA || !depB || depA === depB) return; setLoading(true); try { const { data } = await api.post('/api/ai/compare-deployments', { deploymentIdA: depA, deploymentIdB: depB }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
-  const opts = deployments.map(d => ({ value: d.id, label: `${d.name} (${d.status})` }));
-  return (
-    <ToolPanel tool={tool}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        {(['A', 'B'] as const).map((label, idx) => {
-          const val = idx === 0 ? depA : depB; const other = idx === 0 ? depB : depA; const setter = idx === 0 ? setDepA : setDepB;
-          return (
-            <select key={label} value={val} onChange={e => { setter(e.target.value); setResult(null); }} style={{ padding: '9px 11px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', color: val ? 'var(--text-primary)' : 'var(--text-muted)', fontSize: 12, outline: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
-              <option value="">Deployment {label}</option>
-              {opts.filter(o => o.value !== other).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          );
-        })}
-      </div>
-      <RunButton loading={loading} onClick={run} disabled={!depA || !depB || depA === depB} icon={<GitCompare size={13} />} label="Compare" loadingLabel="Comparing…" accent={tool.accent} />
-      {result && <ResultCard title={`${result.deploymentA} vs ${result.deploymentB}`} accent={tool.accent} onCopy={() => copyToClipboard(result.comparison)}><div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{result.comparison}</div></ResultCard>}
     </ToolPanel>
   );
 }
@@ -567,14 +369,8 @@ export default function AIHub() {
 
   const renderActiveTool = () => {
     switch (activeTool) {
-      case 'risk':      return <RiskTool deployments={allDeps} />;
       case 'rootcause': return <RootCauseTool deployments={allDeps} />;
-      case 'optimize':  return <OptimizeTool deployments={allDeps} />;
-      case 'security':  return <SecurityTool deployments={allDeps} />;
-      case 'deploy':    return <DeployTool providers={providers} />;
       case 'incident':  return <IncidentTool deployments={allDeps} />;
-      case 'cost':      return <CostTool cloudDeps={cloudDeps} providers={providers} />;
-      case 'compare':   return <CompareTool deployments={allDeps} />;
       default:          return null;
     }
   };
@@ -589,7 +385,7 @@ export default function AIHub() {
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 800, color: 'var(--text-primary)', margin: 0, letterSpacing: '-.01em' }}>AI Intelligence Hub</h1>
           <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '3px 0 0' }}>
-            8 AI-powered DevOps tools — powered by Groq
+            AI-powered root cause analysis & incident reporting
           </p>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
