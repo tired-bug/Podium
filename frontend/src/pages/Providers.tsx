@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle, XCircle, Zap, Eye, EyeOff, Copy, Check,
-  ChevronRight, RefreshCw, Trash2, Globe,
+  ChevronRight, RefreshCw, Trash2, Globe, Settings2,
   Cpu, Database, Cloud, Server, ArrowRight, X,
 } from 'lucide-react';
 import { Card, SectionHeader, Badge, Spinner } from '../components/ui/Badge';
@@ -10,6 +10,7 @@ import { Input } from '../components/ui/Modal';
 import { useToast } from '../contexts/ToastContext';
 import { useRole } from '../hooks/useRole';
 import { parseApiError } from '../lib/utils';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 
 // ── Provider logos (SVG inline) ──────────────────────────────────────────────
@@ -377,6 +378,7 @@ function ProviderCard({
   onDisconnect: () => void;
 }) {
   const { can } = useRole();
+  const navigate = useNavigate();
   const [disconnecting, setDisconnecting] = useState(false);
   const { success, error: showError } = useToast();
 
@@ -444,6 +446,9 @@ function ProviderCard({
       <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
         {provider.connected ? (
           <>
+            <Button variant="secondary" size="sm" icon={<Settings2 size={12} />} onClick={() => navigate(`/cloud?provider=${provider.id}`)} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }}>
+              Manage
+            </Button>
             <Button variant="secondary" size="sm" icon={<RefreshCw size={12} />} onClick={onConnect} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }}>
               Reconfigure
             </Button>

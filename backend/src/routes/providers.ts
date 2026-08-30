@@ -114,6 +114,14 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
           WHERE id=?
         `).run(result.status, result.url || null, result.deploymentId, localId);
 
+        if (result.status === 'live' || result.status === 'building' || result.status === 'deploying') {
+          db.prepare(`
+            INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
+            VALUES (?, ?, 'initial deploy', ?, ?, ?, ?, ?, ?)
+          `).run(uuidv4(), localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
+            image || null, repoUrl || null, result.status, result.deploymentId || null, userId);
+        }
+
         console.log(`[providers] Deploy success localId=${localId} providerDepId=${result.deploymentId} status=${result.status}`);
       } catch (err: any) {
         const errMsg = err?.message || String(err);
@@ -204,6 +212,86 @@ router.get('/deployments/:id/logs', requireAuth, async (req: AuthRequest, res: R
     res.json([...saved, { time: new Date().toISOString(), message: `Log fetch error: ${e.message}`, level: 'error' }]);
   }
 });
+
+// GET /api/providers/deployments/:id/versions — deployment history for rollback
+router.get('/deployments/:id/versions', requireAuth, (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
+  const row = db.prepare('SELECT * FROM cloud_deployments WHERE id=?').get(req.params.id) as any;
+  if (!row) return res.status(404).json({ error: 'Deployment not found' });
+  if (!isAdmin && row.user_id && row.user_id !== userId) return res.status(403).json({ error: 'Forbidden' });
+
+  const versions = db.prepare('SELECT * FROM deployment_versions WHERE deployment_id=? ORDER BY created_at DESC').all(req.params.id) as any[];
+  res.json(versions.map(v => ({ ...v, config: (() => { try { return JSON.parse(v.config); } catch { return {}; } })() })));
+});
+
+// POST /api/providers/deployments/:id/redeploy — re-run with current config, snapshot a new version
+router.post('/deployments/:id/redeploy', requireAuth, requireRole('admin', 'developer'), async (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
+  const row = db.prepare('SELECT * FROM cloud_deployments WHERE id=?').get(req.params.id) as any;
+  if (!row) return res.status(404).json({ error: 'Deployment not found' });
+  if (!isAdmin && row.user_id && row.user_id !== userId) return res.status(403).json({ error: 'Forbidden' });
+
+  const cfg = (() => { try { return JSON.parse(row.config || '{}'); } catch { return {}; } })();
+  db.prepare("UPDATE cloud_deployments SET status='queued', provider_error=NULL, updated_at=datetime('now') WHERE id=?").run(row.id);
+  res.json({ ok: true, status: 'queued' });
+
+  try {
+    const creds = getCredentials(row.provider);
+    const result = await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: row.docker_image, repoUrl: row.repo_url, ...cfg }, row.id);
+    db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), provider_deployment_id=?, provider_error=NULL, updated_at=datetime('now') WHERE id=?`)
+      .run(result.status, result.url || null, result.deploymentId, row.id);
+    db.prepare(`
+      INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
+      VALUES (?, ?, 'redeploy', ?, ?, ?, ?, ?, ?)
+    `).run(uuidv4(), row.id, JSON.stringify(cfg), row.docker_image || null, row.repo_url || null, result.status, result.deploymentId || null, userId);
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    db.prepare(`UPDATE cloud_deployments SET status='failed', provider_error=?, updated_at=datetime('now') WHERE id=?`).run(errMsg, row.id);
+  }
+});
+
+// POST /api/providers/deployments/:id/rollback — redeploy at a prior version's config
+router.post('/deployments/:id/rollback', requireAuth, requireRole('admin', 'developer'), async (req: AuthRequest, res: Response) => {
+  const { version_id } = req.body || {};
+  if (!version_id) return res.status(400).json({ error: 'version_id is required' });
+
+  const db = getDb();
+  const userId = req.user!.sub;
+  const isAdmin = req.user!.role === 'admin';
+  const row = db.prepare('SELECT * FROM cloud_deployments WHERE id=?').get(req.params.id) as any;
+  if (!row) return res.status(404).json({ error: 'Deployment not found' });
+  if (!isAdmin && row.user_id && row.user_id !== userId) return res.status(403).json({ error: 'Forbidden' });
+
+  const version = db.prepare('SELECT * FROM deployment_versions WHERE id=? AND deployment_id=?').get(version_id, row.id) as any;
+  if (!version) return res.status(404).json({ error: 'Version not found' });
+
+  const cfg = (() => { try { return JSON.parse(version.config || '{}'); } catch { return {}; } })();
+  db.prepare("UPDATE cloud_deployments SET status='queued', provider_error=NULL, config=?, docker_image=?, repo_url=?, updated_at=datetime('now') WHERE id=?")
+    .run(JSON.stringify(cfg), version.docker_image || null, version.repo_url || null, row.id);
+  res.json({ ok: true, status: 'queued' });
+
+  try {
+    const creds = getCredentials(row.provider);
+    const result = await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: version.docker_image, repoUrl: version.repo_url, ...cfg }, row.id);
+    db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), provider_deployment_id=?, provider_error=NULL, updated_at=datetime('now') WHERE id=?`)
+      .run(result.status, result.url || null, result.deploymentId, row.id);
+    db.prepare(`
+      INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(uuidv4(), row.id, `rollback to ${timeAgoLabel(version.created_at)}`, JSON.stringify(cfg), version.docker_image || null, version.repo_url || null, result.status, result.deploymentId || null, userId);
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    db.prepare(`UPDATE cloud_deployments SET status='failed', provider_error=?, updated_at=datetime('now') WHERE id=?`).run(errMsg, row.id);
+  }
+});
+
+function timeAgoLabel(iso: string): string {
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
 
 // DELETE /api/providers/deployments/failed — purge all failed records owned by user
 // NOTE: This MUST be registered before DELETE /deployments/:id so Express does not

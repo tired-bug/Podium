@@ -479,7 +479,20 @@ function getSchemaSQL(): string {
       description TEXT,
       enabled INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
+    );
+    CREATE TABLE IF NOT EXISTS deployment_versions (
+      id TEXT PRIMARY KEY,
+      deployment_id TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT 'deploy',
+      config TEXT NOT NULL,
+      docker_image TEXT,
+      repo_url TEXT,
+      status TEXT NOT NULL DEFAULT 'live',
+      provider_deployment_id TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_deployment_versions ON deployment_versions(deployment_id, created_at)
   `;
 }
 

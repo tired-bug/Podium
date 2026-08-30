@@ -3,6 +3,7 @@ import {
   Plus, RefreshCw, Trash2, ExternalLink, Terminal, ChevronRight,
   Globe, GitBranch, Settings2, CheckCircle, Github,
   Eye, EyeOff, X, AlertTriangle, Play, ChevronDown, ChevronUp,
+  History, RotateCcw,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, SectionHeader, Skeleton, Spinner } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -11,7 +12,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useRole } from '../hooks/useRole';
 import { ViewerBanner } from '../components/ui/ViewerBanner';
 import { timeAgo, parseApiError } from '../lib/utils';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 
 interface CloudDep {
@@ -61,6 +62,10 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [logs, setLogs] = useState<any[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [rollingBack, setRollingBack] = useState<string | null>(null);
 
   const statusColor = STATUS_COLORS[dep.status] || 'var(--text-muted)';
 
@@ -90,12 +95,40 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
   const loadLogs = async () => {
     if (expanded) { setExpanded(false); return; }
     setExpanded(true);
+    setHistoryOpen(false);
     setLoadingLogs(true);
     try {
       const r = await api.get(`/api/providers/deployments/${dep.id}/logs`);
       setLogs(r.data || []);
     } catch {} finally {
       setLoadingLogs(false);
+    }
+  };
+
+  const loadHistory = async () => {
+    if (historyOpen) { setHistoryOpen(false); return; }
+    setHistoryOpen(true);
+    setExpanded(false);
+    setLoadingVersions(true);
+    try {
+      const r = await api.get(`/api/providers/deployments/${dep.id}/versions`);
+      setVersions(r.data || []);
+    } catch (e) { showError(parseApiError(e)); }
+    finally { setLoadingVersions(false); }
+  };
+
+  const handleRollback = async (versionId: string) => {
+    if (!confirm('Roll back to this version? This redeploys the app with that version\'s config.')) return;
+    setRollingBack(versionId);
+    try {
+      await api.post(`/api/providers/deployments/${dep.id}/rollback`, { version_id: versionId });
+      success('Rollback started');
+      setHistoryOpen(false);
+      onRefresh();
+    } catch (e) {
+      showError(parseApiError(e));
+    } finally {
+      setRollingBack(null);
     }
   };
 
@@ -125,6 +158,9 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
             <Button size="sm" variant="ghost" icon={<ExternalLink size={11} />} onClick={() => window.open(dep.url, '_blank')}>Open</Button>
           )}
           <Button size="sm" variant="ghost" icon={<Terminal size={11} />} loading={loadingLogs && !expanded} onClick={loadLogs}>Logs</Button>
+          {can.createDeployment && (
+            <Button size="sm" variant="ghost" icon={<History size={11} />} loading={loadingVersions && !historyOpen} onClick={loadHistory}>History</Button>
+          )}
           <Button size="sm" variant="ghost" icon={<RefreshCw size={11} />} loading={refreshing} onClick={refreshStatus} />
           {can.deleteDeployment && (
             <Button size="sm" variant="danger" icon={<Trash2 size={11} />} loading={deleting} onClick={handleDelete} />
@@ -153,6 +189,41 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
           )}
         </div>
       )}
+
+      {historyOpen && (
+        <div style={{ borderTop: '1px solid var(--border-muted)', background: 'var(--bg-primary)', padding: '12px 16px', maxHeight: 260, overflowY: 'auto' }}>
+          {loadingVersions ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Spinner size={14} color="var(--accent-blue)" />
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Loading version history…</span>
+            </div>
+          ) : versions.length === 0 ? (
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No deploy history yet — history is recorded from your next deploy onward.</span>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {versions.map((v, i) => (
+                <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', borderRadius: 'var(--r-md)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{v.label}</span>
+                      {i === 0 && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', padding: '1px 6px', borderRadius: 'var(--r-pill)', background: 'var(--accent-green-dim)' }}>Current</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                      {timeAgo(v.created_at)} · {v.status}
+                      {v.config?.branch && ` · ${v.config.branch}`}
+                    </div>
+                  </div>
+                  {i !== 0 && can.createDeployment && (
+                    <Button size="sm" variant="secondary" icon={<RotateCcw size={11} />} loading={rollingBack === v.id} onClick={() => handleRollback(v.id)}>
+                      Rollback
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -160,7 +231,7 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
 // ── Provider Card (clickable, expands to show deployments) ───────────────────
 
 function ProviderCard({
-  provider, deps, loading, onRefresh, onNewDeploy, onClearFailed, onClearAll,
+  provider, deps, loading, onRefresh, onNewDeploy, onClearFailed, onClearAll, defaultOpen,
 }: {
   provider: ProviderMeta;
   deps: CloudDep[];
@@ -169,9 +240,10 @@ function ProviderCard({
   onNewDeploy: () => void;
   onClearFailed: (providerId: string) => void;
   onClearAll: (providerId: string) => void;
+  defaultOpen?: boolean;
 }) {
   const { can } = useRole();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
 
   const live = deps.filter(d => d.status === 'live').length;
   const failed = deps.filter(d => d.status === 'failed').length;
@@ -783,6 +855,8 @@ function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
 export default function CloudDeployments() {
   const { can } = useRole();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const highlightProvider = searchParams.get('provider') || undefined;
   const [deps, setDeps] = useState<CloudDep[]>([]);
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -917,6 +991,7 @@ export default function CloudDeployments() {
               onNewDeploy={() => openWizard(p.id)}
               onClearFailed={clearFailed}
               onClearAll={clearAll}
+              defaultOpen={p.id === highlightProvider}
             />
           ))}
         </div>
