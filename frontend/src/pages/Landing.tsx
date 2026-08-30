@@ -20,7 +20,7 @@ const FEATURES = [
   {
     label: 'AIOps',
     title: 'Intelligence built into every workflow.',
-    body: 'LLaMA 3 70B reads your logs, detects anomalies, and fixes failures before your team notices them.',
+    body: 'AI reads your logs, diagnoses root causes, and drafts incident reports so your team can act faster.',
   },
   {
     label: 'FinOps',

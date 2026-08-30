@@ -571,7 +571,6 @@ export default function Profile() {
               title: 'Notification Preferences',
               rows: [
                 ['Deployment events', p.notification_deployments !== 0 ? 'On' : 'Off'],
-                ['Anomaly alerts',    p.notification_anomalies   !== 0 ? 'On' : 'Off'],
                 ['Team activity',     p.notification_team        !== 0 ? 'On' : 'Off'],
                 ['Email digest',      p.notification_email       !== 0 ? 'On' : 'Off'],
               ],
@@ -685,7 +684,6 @@ export default function Profile() {
           </p>
           {[
             { key: 'notification_deployments', label: 'Deployment events',  desc: 'Start, success, and failure alerts' },
-            { key: 'notification_anomalies',   label: 'Anomaly alerts',     desc: 'CPU and memory threshold breaches' },
             { key: 'notification_team',        label: 'Team activity',      desc: 'New members and role changes' },
             { key: 'notification_email',       label: 'Email notifications', desc: 'Critical alerts sent to your email' },
           ].map((item, i) => (

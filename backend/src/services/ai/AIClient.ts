@@ -4,20 +4,22 @@ import axios from 'axios';
  * Single point of contact with the LLM provider used across Podium
  * (repo inference, deployment-failure analysis, security/cost reports, etc).
  *
- * Why this exists: every call site used to hit Groq's endpoint directly,
- * so when a free-tier model got pulled we had to hunt through ~6 files.
- * Now a provider/model swap is a one-line env var change (or, worst case,
- * one new branch in callChat below) instead of a repo-wide find/replace.
+ * Why this exists: every call site used to hit each provider's endpoint
+ * directly, so a provider swap meant hunting through ~6 files. Now it's
+ * one file — a provider/model swap is a one-line env var change (or, worst
+ * case, one new branch in callChat below).
  *
- * Currently wired to Gemini's free tier (generateContent). If Gemini's
- * free tier ever gets discontinued for a given model the same way Groq's
- * did, swap AI_MODEL below — no other file needs to change.
+ * Currently wired to Groq's free tier (OpenAI-compatible chat completions),
+ * running openai/gpt-oss-120b — an intelligent open-weight model with a
+ * generous free rate limit and no quota surprises like Gemini's 20 req/day
+ * cap. If Groq's free tier ever changes for a given model, swap AI_MODEL
+ * below — no other file needs to change.
  */
 
-const DEFAULT_MODEL = 'gemini-3.6-flash';
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
 function apiKey(): string | undefined {
-  return process.env.AI_API_KEY || process.env.GEMINI_API_KEY;
+  return process.env.AI_API_KEY || process.env.GROQ_API_KEY;
 }
 
 function model(): string {
@@ -34,34 +36,34 @@ export function aiModelName(): string {
 
 export class AIAuthError extends Error {}
 
+const BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
 /**
  * Chat-style call: system prompt + user prompt in, raw text response out.
- * Mirrors the shape the old groqChat() helper had, so call sites barely change.
  */
 export async function aiChat(systemPrompt: string, userPrompt: string, maxTokens = 1200): Promise<string> {
   const key = apiKey();
-  if (!key) throw new Error('AI API key not configured (set GEMINI_API_KEY)');
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model()}:generateContent`;
+  if (!key) throw new Error('AI API key not configured (set GROQ_API_KEY)');
 
   try {
     const resp = await axios.post(
-      url,
+      BASE_URL,
       {
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-        generationConfig: {
-          maxOutputTokens: maxTokens,
-          temperature: 0.1,
-        },
+        model: model(),
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: maxTokens,
+        temperature: 0.1,
       },
       {
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
         timeout: 25000,
       }
     );
 
-    const text = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = resp.data?.choices?.[0]?.message?.content;
     if (typeof text !== 'string') {
       throw new Error('Unexpected response shape from AI provider');
     }
@@ -82,12 +84,8 @@ export function isAIAuthError(err: any): boolean {
 /**
  * Streaming chat call for the interactive AI Hub chat widget. Emits text
  * chunks as they arrive via onChunk; resolves with the full concatenated
- * text once the stream ends.
- *
- * Note: unlike Groq's OpenAI-style delta stream, Gemini's streamGenerateContent
- * sends a JSON array of full candidate objects over time — each chunk we parse
- * out is a whole "so far" text delta, so callers just get plain text pieces
- * and don't need to know about the underlying wire format.
+ * text once the stream ends. Groq's stream is an OpenAI-style SSE delta
+ * stream, so parsing is a straightforward `choices[0].delta.content` read.
  */
 export async function aiChatStream(
   systemPrompt: string,
@@ -96,36 +94,26 @@ export async function aiChatStream(
   maxTokens = 2048
 ): Promise<string> {
   const key = apiKey();
-  if (!key) throw new Error('AI API key not configured (set GEMINI_API_KEY)');
+  if (!key) throw new Error('AI API key not configured (set GROQ_API_KEY)');
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model()}:streamGenerateContent?alt=sse`;
-
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  // gemini-3.6-flash (and later) reject requests whose last turn has role
-  // "model" — drop any trailing assistant message(s) defensively so a stray
-  // one in chat history doesn't hard-fail the call.
-  while (contents.length && contents[contents.length - 1].role === 'model') {
-    contents.pop();
-  }
-  if (!contents.length) {
-    throw new Error('No user turn to send to AI provider');
-  }
+  const chatMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
+  ];
 
   let fullText = '';
 
   const response = await axios.post(
-    url,
+    BASE_URL,
     {
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents,
-      generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
+      model: model(),
+      messages: chatMessages,
+      max_tokens: maxTokens,
+      temperature: 0.7,
+      stream: true,
     },
     {
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       responseType: 'stream',
       timeout: 60000,
     }
@@ -150,9 +138,10 @@ export async function aiChatStream(
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith('data: ')) continue;
         const data = trimmed.slice(6);
+        if (data === '[DONE]') continue;
         try {
           const parsed = JSON.parse(data);
-          const piece = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+          const piece = parsed?.choices?.[0]?.delta?.content;
           if (piece) {
             fullText += piece;
             onChunk(piece);

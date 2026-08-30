@@ -241,7 +241,7 @@ async function syncFromTurso() {
   if (!_turso) return;
   const TABLES = [
     'users', 'invites', 'deployments', 'cloud_deployments',
-    'metrics', 'build_logs', 'ai_conversations', 'anomalies',
+    'metrics', 'build_logs', 'ai_conversations', 'ai_reports',
     'settings', 'github_repos', 'github_accounts',
     'user_profiles', 'notifications', 'domain_bindings',
   ];
@@ -376,16 +376,16 @@ function getSchemaSQL(): string {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE TABLE IF NOT EXISTS anomalies (
+    CREATE TABLE IF NOT EXISTS ai_reports (
       id TEXT PRIMARY KEY,
-      deployment_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
       type TEXT NOT NULL,
-      severity TEXT NOT NULL,
-      message TEXT NOT NULL,
-      resolved INTEGER NOT NULL DEFAULT 0,
-      resolved_at TEXT,
+      deployment_id TEXT NOT NULL,
+      deployment_name TEXT NOT NULL,
+      content TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE INDEX IF NOT EXISTS idx_ai_reports ON ai_reports(user_id, type, created_at);
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -492,11 +492,8 @@ function applyDefaults() {
     ['platform_name', 'Podium'],
     // Legacy key name kept for backward compatibility with existing installs;
     // no longer read by the app — AI model selection now comes from the
-    // AI_MODEL / GEMINI_API_KEY env vars (see services/ai/AIClient.ts).
-    ['groq_model', 'gemini-2.5-flash'],
-    ['anomaly_detection', 'true'],
-    ['cpu_threshold', '90'],
-    ['memory_threshold_mb', '900'],
+    // AI_MODEL / GROQ_API_KEY env vars (see services/ai/AIClient.ts).
+    ['groq_model', 'openai/gpt-oss-120b'],
     ['app_url', 'http://localhost:3000'],
     // SMTP settings removed — use environment variables SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM instead
     ['azure_resource_group', 'podium-rg'],

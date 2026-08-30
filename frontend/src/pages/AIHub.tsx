@@ -251,7 +251,7 @@ function PlatformHealth({ cloudDeps }: { cloudDeps: CloudDep[] }) {
   const s = data?.stats;
   const cloudLive = cloudDeps.filter(d => d.status === 'live').length;
   const cloudFailed = cloudDeps.filter(d => d.status === 'failed').length;
-  const healthScore = s ? Math.max(0, 100 - (s.failedDeps * 10) - (s.criticalAnomalies * 20) - (s.openAnomalies * 5) - Math.min(s.recentErrors * 2, 20)) : null;
+  const healthScore = s ? Math.max(0, 100 - (s.failedDeps * 10) - Math.min(s.recentErrors * 2, 20)) : null;
   const hColor = healthScore === null ? 'var(--text-muted)' : healthScore > 70 ? '#10b981' : healthScore > 40 ? '#f59e0b' : '#ef4444';
 
   return (
@@ -306,11 +306,16 @@ function PlatformHealth({ cloudDeps }: { cloudDeps: CloudDep[] }) {
 
 // ── Individual tool panels ────────────────────────────────────────────────
 
-function RootCauseTool({ deployments }: { deployments: Deployment[] }) {
+function RootCauseTool({ deployments, onSaved }: { deployments: Deployment[]; onSaved: () => void }) {
   const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
   const { error: showError } = useToast();
   const tool = AI_TOOLS.find(t => t.id === 'rootcause')!;
-  const run = async () => { setLoading(true); try { const { data } = await api.post('/api/ai/root-cause', { deploymentId: depId }); setResult(data); } catch (e: any) { showError(e.response?.data?.error || e.message); } setLoading(false); };
+  const run = async () => {
+    setLoading(true);
+    try { const { data } = await api.post('/api/ai/root-cause', { deploymentId: depId }); setResult(data); onSaved(); }
+    catch (e: any) { showError(e.response?.data?.error || e.message); }
+    setLoading(false);
+  };
   return (
     <ToolPanel tool={tool}>
       <DeploymentSelect value={depId} onChange={v => { setDepId(v); setResult(null); }} deployments={deployments} filter={d => ['failed', 'stopped', 'running'].includes(d.status)} />
@@ -320,7 +325,7 @@ function RootCauseTool({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
-function IncidentTool({ deployments }: { deployments: Deployment[] }) {
+function IncidentTool({ deployments, onSaved }: { deployments: Deployment[]; onSaved: () => void }) {
   const [depId, setDepId] = useState(''); const [result, setResult] = useState<any>(null); const [loading, setLoading] = useState(false);
   const [pdf, setPdf] = useState<{ url: string; filename: string; save: () => void; revoke: () => void } | null>(null);
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -335,6 +340,7 @@ function IncidentTool({ deployments }: { deployments: Deployment[] }) {
       const built = buildIncidentReportPdfPreview({ deploymentName: data.deployment, generatedAt: data.generatedAt, reportText: data.report });
       setPdf(built);
       setPdfOpen(true);
+      onSaved();
     } catch (e: any) { showError(e.response?.data?.error || e.message); }
     setLoading(false);
   };
@@ -371,6 +377,102 @@ function IncidentTool({ deployments }: { deployments: Deployment[] }) {
   );
 }
 
+// ── Reports history ─────────────────────────────────────────────────────────
+// Root-cause and incident reports are persisted server-side (ai_reports
+// table) so they survive a refresh — this panel is just a reader over them.
+
+function ReportsHistory({ refreshKey }: { refreshKey: number }) {
+  const [reports, setReports] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [active, setActive] = useState<any>(null);
+  const [pdf, setPdf] = useState<{ url: string; save: () => void; revoke: () => void } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { const { data } = await api.get('/api/ai/reports'); setReports(data); } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load, refreshKey]);
+  useEffect(() => () => pdf?.revoke(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const open = (r: any) => {
+    pdf?.revoke();
+    const built = buildIncidentReportPdfPreview({ deploymentName: r.deployment_name, generatedAt: r.created_at, reportText: r.content });
+    setPdf(built);
+    setActive(r);
+  };
+
+  const remove = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try { await api.delete(`/api/ai/reports/${id}`); setReports(rs => rs.filter(r => r.id !== id)); } catch {}
+  };
+
+  if (loading && reports.length === 0) return null;
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden', marginBottom: 28 }}>
+      <div style={{ height: 2, background: 'linear-gradient(90deg,#f59e0b,#a855f7)' }} />
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-muted)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <FileText size={15} color="var(--accent-blue)" />
+          <span style={{ fontSize: 13, fontWeight: 700 }}>Saved Reports</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{reports.length} saved</span>
+        </div>
+        <button onClick={load} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, padding: '4px 8px', borderRadius: 'var(--r-sm)', fontFamily: 'var(--font-sans)' }}>
+          <RefreshCw size={12} /> Refresh
+        </button>
+      </div>
+      <div style={{ padding: reports.length ? '10px 14px' : '20px' }}>
+        {reports.length === 0 ? (
+          <div style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)', padding: '16px 0' }}>
+            Root cause and incident reports you generate are saved here automatically.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {reports.map(r => {
+              const isIncident = r.type === 'incident';
+              const accent = isIncident ? '#a855f7' : '#f59e0b';
+              return (
+                <div key={r.id} onClick={() => open(r)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', cursor: 'pointer', borderLeft: `3px solid ${accent}` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: accent, textTransform: 'uppercase', letterSpacing: '.04em', flexShrink: 0, width: 78 }}>
+                    {isIncident ? 'Incident' : 'Root Cause'}
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.deployment_name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>{timeAgo(r.created_at)}</div>
+                  <button onClick={e => remove(r.id, e)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', flexShrink: 0, padding: 2 }}>
+                    <XCircle size={13} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <Modal
+        open={!!active && !!pdf}
+        onClose={() => setActive(null)}
+        title={active ? `${active.type === 'incident' ? 'Incident Report' : 'Root Cause'} — ${active.deployment_name}` : 'Report'}
+        width={760}
+        footer={
+          <>
+            <Button variant="ghost" icon={<Copy size={13} />} onClick={() => active && copyToClipboard(active.content)}>Copy Markdown</Button>
+            <Button variant="primary" icon={<Download size={13} />} onClick={() => pdf?.save()}>Download PDF</Button>
+          </>
+        }
+      >
+        {pdf && (
+          <div style={{ borderRadius: 'var(--r-md)', overflow: 'hidden', border: '1px solid var(--border)', background: '#fff' }}>
+            <iframe title="Report PDF preview" src={pdf.url} style={{ width: '100%', height: '70vh', border: 'none', display: 'block' }} />
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────
 
 export default function AIHub() {
@@ -380,6 +482,8 @@ export default function AIHub() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [reportsRefreshKey, setReportsRefreshKey] = useState(0);
+  const bumpReports = () => setReportsRefreshKey(k => k + 1);
 
   const load = useCallback(async () => {
     try {
@@ -403,8 +507,8 @@ export default function AIHub() {
 
   const renderActiveTool = () => {
     switch (activeTool) {
-      case 'rootcause': return <RootCauseTool deployments={allDeps} />;
-      case 'incident':  return <IncidentTool deployments={allDeps} />;
+      case 'rootcause': return <RootCauseTool deployments={allDeps} onSaved={bumpReports} />;
+      case 'incident':  return <IncidentTool deployments={allDeps} onSaved={bumpReports} />;
       default:          return null;
     }
   };
@@ -435,10 +539,13 @@ export default function AIHub() {
 
       {/* Active tool panel */}
       {activeTool && (
-        <div style={{ marginBottom: 24, animation: 'float-up 200ms ease-out' }}>
+        <div style={{ marginBottom: 28, animation: 'float-up 200ms ease-out' }}>
           {renderActiveTool()}
         </div>
       )}
+
+      {/* Saved reports (root cause + incident) */}
+      <ReportsHistory refreshKey={reportsRefreshKey} />
 
       {/* Overview + Health */}
       <OverviewPanel providers={providers} cloudDeps={cloudDeps} />

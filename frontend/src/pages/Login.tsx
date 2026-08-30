@@ -185,8 +185,8 @@ export default function LoginPage() {
           {/* Feature list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginTop: 48 }}>
             {[
-              { title: 'Real-time Metrics', desc: 'CPU, memory, and network with live anomaly detection' },
-              { title: 'AI Assistant', desc: 'Gemini powered — analyze logs, fix failures' },
+              { title: 'Real-time Metrics', desc: 'CPU, memory, and network at a glance' },
+              { title: 'AI Assistant', desc: 'Groq powered — analyze logs, fix failures' },
               { title: 'Role-based Access', desc: 'Admin, Developer, Viewer with invite-based onboarding' },
             ].map(f => (
               <div key={f.title} style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>

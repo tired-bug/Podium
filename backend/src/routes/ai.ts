@@ -97,7 +97,7 @@ You help DevOps engineers with:
 - Docker container management and troubleshooting
 - CI/CD pipeline optimization
 - Cloud deployments (AWS, Azure, Vercel)
-- Infrastructure monitoring and anomaly resolution
+- Infrastructure monitoring and incident resolution
 - Log analysis and debugging
 - Security hardening and best practices
 
@@ -106,7 +106,7 @@ When analyzing issues, provide step-by-step resolution plans.`;
 
 // Frontend polls this on mount to decide whether to show the
 // "AI API Key Required" empty state. Reflects the server-side
-// GEMINI_API_KEY env var — never returns the key itself.
+// GROQ_API_KEY env var — never returns the key itself.
 router.get('/model', requireAuth, (_req: AuthRequest, res: Response) => {
   res.json({ hasKey: aiAvailable(), model: aiModelName() });
 });
@@ -211,7 +211,6 @@ router.post('/analyze', requireAuth, async (req: AuthRequest, res: Response) => 
 
   const logs = getDb().prepare('SELECT * FROM build_logs WHERE deployment_id = ? ORDER BY id DESC LIMIT 50').all(deploymentId) as any[];
   const metrics = getDb().prepare('SELECT * FROM metrics WHERE deployment_id = ? ORDER BY timestamp DESC LIMIT 10').all(deploymentId) as any[];
-  const anomalies = getDb().prepare('SELECT * FROM anomalies WHERE deployment_id = ? AND resolved = 0').all(deploymentId) as any[];
 
   const context = `
 Deployment: ${dep.name} (${dep.status})${dep.source === 'cloud' ? ` [cloud: ${dep.provider}]` : ''}
@@ -224,8 +223,6 @@ ${logs.map(l => `[${l.level.toUpperCase()}] ${l.message}`).join('\n')}
 
 Recent Metrics:
 ${metrics.map(m => `CPU: ${m.cpu?.toFixed(1)}%, Memory: ${m.memory?.toFixed(0)}MB`).join('\n')}
-
-Active Anomalies: ${anomalies.length > 0 ? anomalies.map(a => a.message).join('; ') : 'None'}
 `;
 
   const analysisPrompt = prompt || `Analyze this deployment and provide:
@@ -285,44 +282,6 @@ router.post('/summarize-logs', requireAuth, async (_req, res: Response) => {
   } catch (err: any) {
     return aiErrorResponse(res, err);
   }
-});
-
-router.get('/anomalies', requireAuth, (_req, res: Response) => {
-  const rows = getDb().prepare(`
-    SELECT a.*,
-      COALESCE(d.name, cd.name) AS deployment_name,
-      CASE WHEN cd.id IS NOT NULL THEN cd.provider ELSE NULL END AS cloud_provider
-    FROM anomalies a
-    LEFT JOIN deployments    d  ON a.deployment_id = d.id
-    LEFT JOIN cloud_deployments cd ON a.deployment_id = cd.id
-    WHERE a.resolved = 0
-      AND (d.id IS NOT NULL OR cd.id IS NOT NULL)
-    ORDER BY a.created_at DESC
-  `).all() as any[];
-
-  // Parse JSON payload stored in message field (new format) while staying
-  // backward-compatible with legacy plain-string messages.
-  const anomalies = rows.map(row => {
-    let message = row.message;
-    let recommendation: string | null = null;
-    let provider: string | null = row.cloud_provider || null;
-    try {
-      const parsed = JSON.parse(row.message);
-      if (parsed && typeof parsed === 'object' && parsed.message) {
-        message        = parsed.message;
-        recommendation = parsed.recommendation || null;
-        provider       = parsed.provider || provider;
-      }
-    } catch { /* legacy plain string — keep as-is */ }
-    return { ...row, message, recommendation, provider };
-  });
-
-  res.json(anomalies);
-});
-
-router.put('/anomalies/:id/resolve', requireAuth, (req, res: Response) => {
-  getDb().prepare("UPDATE anomalies SET resolved = 1, resolved_at = datetime('now') WHERE id = ?").run(req.params.id);
-  res.json({ ok: true });
 });
 
 // Thin wrapper kept so the many call sites below didn't need individual edits
@@ -395,30 +354,17 @@ Respond ONLY with valid JSON (no markdown, no preamble):
 });
 
 router.post('/root-cause', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { anomalyId, deploymentId } = req.body;
-  if (!anomalyId && !deploymentId) return res.status(400).json({ error: 'anomalyId or deploymentId required' });
+  const { deploymentId } = req.body;
+  if (!deploymentId) return res.status(400).json({ error: 'deploymentId required' });
 
-  let anomaly: any = null;
-  let dep: any = null;
+  const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any
+           || getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(deploymentId) as any;
+  if (!dep) return res.status(404).json({ error: 'Deployment not found' });
 
-  if (anomalyId) {
-    anomaly = getDb().prepare('SELECT * FROM anomalies WHERE id=?').get(anomalyId) as any;
-    if (!anomaly) return res.status(404).json({ error: 'Anomaly not found' });
-    dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(anomaly.deployment_id) as any
-       || getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(anomaly.deployment_id) as any;
-  } else {
-    dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any
-       || getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(deploymentId) as any;
-    if (!dep) return res.status(404).json({ error: 'Deployment not found' });
-    anomaly = getDb().prepare("SELECT * FROM anomalies WHERE deployment_id=? AND resolved=0 ORDER BY created_at DESC LIMIT 1").get(deploymentId) as any;
-  }
+  const logs = getDb().prepare("SELECT level, message FROM build_logs WHERE deployment_id=? ORDER BY id DESC LIMIT 40").all(deploymentId) as any[];
+  const metrics = getDb().prepare("SELECT cpu, memory FROM metrics WHERE deployment_id=? ORDER BY timestamp DESC LIMIT 10").all(deploymentId) as any[];
 
-  const logs = getDb().prepare("SELECT level, message FROM build_logs WHERE deployment_id=? ORDER BY id DESC LIMIT 40").all(anomaly?.deployment_id || deploymentId) as any[];
-  const metrics = getDb().prepare("SELECT cpu, memory FROM metrics WHERE deployment_id=? ORDER BY timestamp DESC LIMIT 10").all(anomaly?.deployment_id || deploymentId) as any[];
-
-  const prompt = `Anomaly: ${anomaly?.type || 'unknown'} — ${anomaly?.message || 'No anomaly data'}
-Severity: ${anomaly?.severity || 'unknown'}
-Deployment: ${dep?.name || 'unknown'} (status: ${dep?.status || 'unknown'})
+  const prompt = `Deployment: ${dep?.name || 'unknown'} (status: ${dep?.status || 'unknown'})
 Image: ${dep?.image || dep?.docker_image || dep?.repo_url || 'N/A'}
 
 Recent error logs:
@@ -435,7 +381,12 @@ Provide a concise root cause analysis with:
 
   try {
     const analysis = await aiChatHelper(SYSTEM_PROMPT, prompt, 900);
-    return res.json({ rootCause: analysis, anomaly, deployment: dep });
+    const reportId = uuidv4();
+    getDb().prepare(`
+      INSERT INTO ai_reports (id, user_id, type, deployment_id, deployment_name, content)
+      VALUES (?, ?, 'root_cause', ?, ?, ?)
+    `).run(reportId, req.user!.sub, deploymentId, dep.name, analysis);
+    return res.json({ id: reportId, rootCause: analysis, deployment: dep, generatedAt: new Date().toISOString() });
   } catch (err: any) {
     return aiErrorResponse(res, err);
   }
@@ -488,14 +439,11 @@ Respond ONLY with valid JSON:
 });
 
 router.post('/incident-report', requireAuth, async (req: AuthRequest, res: Response) => {
-  const { deploymentId, anomalyIds = [] } = req.body;
+  const { deploymentId } = req.body;
   const dep = getDb().prepare('SELECT * FROM deployments WHERE id=?').get(deploymentId) as any
            || getDb().prepare('SELECT * FROM cloud_deployments WHERE id=?').get(deploymentId) as any;
   if (!dep) return res.status(404).json({ error: 'Deployment not found' });
 
-  const anomalies = anomalyIds.length > 0
-    ? getDb().prepare(`SELECT * FROM anomalies WHERE id IN (${anomalyIds.map(() => '?').join(',')}) ORDER BY created_at ASC`).all(...anomalyIds) as any[]
-    : getDb().prepare("SELECT * FROM anomalies WHERE deployment_id=? ORDER BY created_at ASC LIMIT 10").all(dep.id) as any[];
   const logs = getDb().prepare("SELECT level, message, timestamp FROM build_logs WHERE deployment_id=? ORDER BY id DESC LIMIT 50").all(dep.id) as any[];
 
   const prompt = `Generate a professional incident report for a DevOps team at a company.
@@ -505,9 +453,6 @@ Incident Summary:
 - Status: ${dep.status}
 - Image/Source: ${dep.image || dep.docker_image || dep.repo_url || 'N/A'}
 - Report time: ${new Date().toISOString()}
-
-Anomalies (${anomalies.length}):
-${anomalies.map((a: any) => `[${a.severity.toUpperCase()}] ${a.type}: ${a.message} at ${a.created_at}`).join('\n') || 'No anomalies'}
 
 Recent logs (last 50):
 ${logs.map((l: any) => `[${l.level}] ${l.message}`).join('\n') || 'No logs'}
@@ -524,10 +469,38 @@ Write a concise, professional incident report with these sections:
 
   try {
     const report = await aiChatHelper(SYSTEM_PROMPT, prompt, 1500);
-    return res.json({ report, generatedAt: new Date().toISOString(), deployment: dep.name });
+    const reportId = uuidv4();
+    getDb().prepare(`
+      INSERT INTO ai_reports (id, user_id, type, deployment_id, deployment_name, content)
+      VALUES (?, ?, 'incident', ?, ?, ?)
+    `).run(reportId, req.user!.sub, deploymentId, dep.name, report);
+    return res.json({ id: reportId, report, generatedAt: new Date().toISOString(), deployment: dep.name });
   } catch (err: any) {
     return aiErrorResponse(res, err);
   }
+});
+
+// ── Saved reports (root-cause + incident) ──────────────────────────────────
+// Persisted so a report survives navigation/refresh instead of living only
+// in the tool panel's local state.
+
+router.get('/reports', requireAuth, (req: AuthRequest, res: Response) => {
+  const { type } = req.query as { type?: string };
+  const rows = type
+    ? getDb().prepare('SELECT * FROM ai_reports WHERE user_id=? AND type=? ORDER BY created_at DESC LIMIT 50').all(req.user!.sub, type)
+    : getDb().prepare('SELECT * FROM ai_reports WHERE user_id=? ORDER BY created_at DESC LIMIT 50').all(req.user!.sub);
+  res.json(rows);
+});
+
+router.get('/reports/:id', requireAuth, (req: AuthRequest, res: Response) => {
+  const row = getDb().prepare('SELECT * FROM ai_reports WHERE id=? AND user_id=?').get(req.params.id, req.user!.sub) as any;
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  res.json(row);
+});
+
+router.delete('/reports/:id', requireAuth, (req: AuthRequest, res: Response) => {
+  getDb().prepare('DELETE FROM ai_reports WHERE id=? AND user_id=?').run(req.params.id, req.user!.sub);
+  res.json({ ok: true });
 });
 
 router.post('/security-scan', requireAuth, async (req: AuthRequest, res: Response) => {
@@ -621,8 +594,6 @@ router.get('/platform-summary', requireAuth, async (_req, res: Response) => {
   const totalDeps = (db.prepare("SELECT COUNT(*) as c FROM deployments").get() as any)?.c || 0;
   const runningDeps = (db.prepare("SELECT COUNT(*) as c FROM deployments WHERE status='running'").get() as any)?.c || 0;
   const failedDeps = (db.prepare("SELECT COUNT(*) as c FROM deployments WHERE status='failed'").get() as any)?.c || 0;
-  const openAnomalies = (db.prepare("SELECT COUNT(*) as c FROM anomalies WHERE resolved=0").get() as any)?.c || 0;
-  const criticalAnomalies = (db.prepare("SELECT COUNT(*) as c FROM anomalies WHERE resolved=0 AND severity='critical'").get() as any)?.c || 0;
   const cloudRunning = (db.prepare("SELECT COUNT(*) as c FROM cloud_deployments WHERE status='live'").get() as any)?.c || 0;
   const cloudFailedDeps = (db.prepare("SELECT COUNT(*) as c FROM cloud_deployments WHERE status='failed'").get() as any)?.c || 0;
   const recentErrors = (db.prepare("SELECT COUNT(*) as c FROM build_logs WHERE level='error' AND timestamp > datetime('now','-1 hour')").get() as any)?.c || 0;
@@ -630,7 +601,6 @@ router.get('/platform-summary', requireAuth, async (_req, res: Response) => {
   const platformPrompt = `Generate a 3-sentence executive health summary for this DevOps platform:
 - Total deployments: ${totalDeps} (${runningDeps} running, ${failedDeps} failed)
 - Cloud deployments: ${cloudRunning} live, ${cloudFailedDeps} failed
-- Open anomalies: ${openAnomalies} (${criticalAnomalies} critical)
 - Errors in last hour: ${recentErrors}
 
 Be direct, professional, and action-oriented. Mention if anything needs immediate attention.`;
@@ -639,7 +609,7 @@ Be direct, professional, and action-oriented. Mention if anything needs immediat
     const summary = await aiChatHelper(SYSTEM_PROMPT, platformPrompt, 300);
     return res.json({
       summary,
-      stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, cloudFailedDeps, recentErrors },
+      stats: { totalDeps, runningDeps, failedDeps, cloudRunning, cloudFailedDeps, recentErrors },
       generatedAt: new Date().toISOString(),
     });
   } catch (err: any) {
@@ -651,7 +621,7 @@ Be direct, professional, and action-oriented. Mention if anything needs immediat
     return res.json({
       summary: null,
       aiError,
-      stats: { totalDeps, runningDeps, failedDeps, openAnomalies, criticalAnomalies, cloudRunning, cloudFailedDeps, recentErrors },
+      stats: { totalDeps, runningDeps, failedDeps, cloudRunning, cloudFailedDeps, recentErrors },
       generatedAt: new Date().toISOString(),
     });
   }

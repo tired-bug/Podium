@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Settings as SettingsIcon, Bot, Shield, Info, Bell,
   Eye, EyeOff, Save, RefreshCw, CheckCircle,
-  Cpu, Database, Clock, Server, Key, AlertTriangle, Users,
+  Cpu, Database, Clock, Server, Key, Users,
   Globe, Zap, ChevronRight, Lock, Activity, BarChart2,
   ToggleLeft, ToggleRight,
 } from 'lucide-react';
@@ -84,7 +84,7 @@ type TabId = 'general' | 'ai' | 'security' | 'team' | 'about';
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode; description: string }[] = [
   { id: 'general',  label: 'General',   icon: <Globe size={15} />,       description: 'Platform basics' },
-  { id: 'ai',       label: 'AI',        icon: <Bot size={15} />,         description: 'Anomaly detection' },
+  { id: 'ai',       label: 'AI',        icon: <Bot size={15} />,         description: 'Model & provider' },
   { id: 'security', label: 'Security',  icon: <Lock size={15} />,        description: 'Auth & access control' },
   { id: 'team',     label: 'Team',      icon: <Users size={15} />,       description: 'Members & invites' },
   { id: 'about',    label: 'System',    icon: <Server size={15} />,      description: 'Health & status' },
@@ -136,105 +136,6 @@ function Section({ title, description, children, accent = 'var(--accent-blue)' }
         {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.5 }}>{description}</div>}
       </div>
       <div style={{ padding: '18px 20px' }}>{children}</div>
-    </div>
-  );
-}
-
-// ── AI Anomalies ──────────────────────────────────────────────────────────
-
-export function AIAnomalies() {
-  const { success, error: showError } = useToast();
-  const [anomalies, setAnomalies] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [resolving, setResolving] = useState<string | null>(null);
-  const [filter, setFilter] = useState('all');
-
-  const fetch = useCallback(async () => {
-    try { const { data } = await api.get('/api/ai/anomalies'); setAnomalies(data); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { fetch(); const id = setInterval(fetch, 15000); return () => clearInterval(id); }, [fetch]);
-
-  const handleResolve = async (id: string) => {
-    setResolving(id);
-    try {
-      await api.put(`/api/ai/anomalies/${id}/resolve`);
-      setAnomalies(prev => prev.filter(a => a.id !== id));
-      success('Anomaly resolved');
-    } catch (err) { showError(parseApiError(err)); }
-    finally { setResolving(null); }
-  };
-
-  const filtered = filter === 'all' ? anomalies : anomalies.filter(a => a.severity === filter);
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <SectionHeader title="Anomalies" subtitle={`${anomalies.length} active`}
-        action={
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button icon={<RefreshCw size={13} />} size="sm" onClick={fetch}>Refresh</Button>
-            {anomalies.length > 0 && (
-              <Button variant="success" size="sm" icon={<CheckCircle size={13} />}
-                onClick={() => anomalies.forEach(a => handleResolve(a.id))}>
-                Resolve All
-              </Button>
-            )}
-          </div>
-        }
-      />
-      <div style={{ display: 'flex', gap: 6 }}>
-        {['all', 'critical', 'warning'].map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            style={{
-              padding: '4px 12px', borderRadius: 'var(--r-pill)',
-              background: filter === f ? 'var(--gradient-brand)' : 'var(--bg-card)',
-              color: filter === f ? '#fff' : 'var(--text-secondary)',
-              border: `1px solid ${filter === f ? 'transparent' : 'var(--border)'}`,
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)',
-              textTransform: 'capitalize',
-            }}>{f === 'all' ? `All (${anomalies.length})` : f}
-          </button>
-        ))}
-      </div>
-      {loading ? <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{[1, 2].map(i => <Card key={i}><div className="skeleton" style={{ height: 60 }} /></Card>)}</div>
-        : filtered.length === 0 ? (
-          <Card style={{ textAlign: 'center', padding: 48 }}>
-            <CheckCircle size={40} color="var(--accent-green)" style={{ margin: '0 auto 12px' }} />
-            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>All systems healthy</div>
-            <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: 4 }}>No active anomalies detected</div>
-          </Card>
-        ) : filtered.map(a => (
-          <Card key={a.id} style={{ borderLeft: `3px solid ${a.severity === 'critical' ? 'var(--accent-red)' : 'var(--accent-orange)'}` }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <AlertTriangle size={18} color={a.severity === 'critical' ? 'var(--accent-red)' : 'var(--accent-orange)'} style={{ flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 700 }}>{a.deployment_name}</span>
-                    <Badge variant="severity" value={a.severity}>{a.severity}</Badge>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{a.type?.replace(/_/g, ' ')}</span>
-                    {a.provider && (
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--bg-elevated)', padding: '1px 6px', borderRadius: 'var(--r-pill)', border: '1px solid var(--border)' }}>
-                        {a.provider}
-                      </span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{a.message}</div>
-                  {a.recommendation && (
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 6, padding: '6px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-sm)', borderLeft: '2px solid var(--accent-blue)' }}>
-                      <strong style={{ color: 'var(--accent-blue)' }}>Recommendation: </strong>{a.recommendation}
-                    </div>
-                  )}
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>Detected {timeAgo(a.created_at)}</div>
-                </div>
-              </div>
-              <Button size="sm" variant="success" icon={<CheckCircle size={12} />}
-                loading={resolving === a.id} onClick={() => handleResolve(a.id)}>Resolve</Button>
-            </div>
-          </Card>
-        ))
-      }
     </div>
   );
 }
@@ -489,26 +390,16 @@ export function SettingsPage() {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>AI features are active</div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    AI features are powered by an API key configured as a server environment variable (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>GEMINI_API_KEY</code>). It is not visible or editable here for security reasons.
+                    AI features are powered by an API key configured as a server environment variable (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>GROQ_API_KEY</code>). It is not visible or editable here for security reasons.
                   </div>
                 </div>
               </div>
 
-              <Section title="Anomaly Detection" description="Automatically detect cloud deployment issues and create alerts" accent="linear-gradient(90deg,#f59e0b,#ef4444)">
-                <div>
-                  <ToggleRow
-                    label="Enable anomaly detection"
-                    description="Monitor cloud deployments for failures, build spikes, outages, and unusual activity"
-                    checked={local.anomaly_detection === 'true'}
-                    onChange={v => update('anomaly_detection', v ? 'true' : 'false')}
-                    accent="#f59e0b"
-                  />
-                  <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                      <strong style={{ color: 'var(--text-primary)' }}>Detected patterns:</strong>{' '}
-                      repeated build failures · stuck builds (&gt;30 min) · deployment outages · build duration spikes · unusual deploy frequency · provider health degradation
-                    </div>
-                  </div>
+              <Section title="Model" description="Which AI provider and model Podium's AI tools call" accent="linear-gradient(90deg,#6366f1,#a855f7)">
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  Root cause analysis, incident reports, and the AI assistant chat run on <strong style={{ color: 'var(--text-primary)' }}>Groq</strong>'s free tier
+                  (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>openai/gpt-oss-120b</code>).
+                  Change the model via the <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>AI_MODEL</code> env var on the server.
                 </div>
               </Section>
             </div>
@@ -564,7 +455,7 @@ export function SettingsPage() {
                 { name: 'API Server', status: 'operational', icon: <Activity size={13} /> },
                 { name: 'Database', status: 'operational', icon: <Database size={13} /> },
                 { name: 'Metrics Collection', status: 'operational', icon: <BarChart2 size={13} /> },
-                { name: 'Anomaly Detection', status: local.anomaly_detection === 'true' ? 'operational' : 'disabled', icon: <AlertTriangle size={13} /> },
+                { name: 'AI (Groq)', status: 'operational', icon: <Bot size={13} /> },
               ];
               return (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

@@ -23,7 +23,6 @@ import providersRouter from './routes/providers';
 import finopsRouter from './routes/finops';
 import aiDeployRouter from './routes/ai-deploy';
 import { startSyncService } from './services/SyncService';
-import { startAnomalyDetection } from './services/AnomalyDetectionService';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000');
@@ -87,7 +86,6 @@ async function bootstrap() {
   ensureDeploymentUserIdColumn();
 
   startSyncService();
-  startAnomalyDetection();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[podium] Backend on http://0.0.0.0:${PORT}`);
   });

@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Rocket, CheckCircle,
+  Rocket, FileText,
   TrendingUp, TrendingDown, RefreshCw,
-  Activity, Zap,
+  Activity, Zap, Search,
 } from 'lucide-react';
 import { Card, Badge, EmptyState } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { MetricChart } from '../components/charts/MetricChart';
-import { useToast } from '../contexts/ToastContext';
-import { timeAgo, parseApiError } from '../lib/utils';
+import { timeAgo } from '../lib/utils';
 import api from '../lib/api';
 
 function StatCard({
@@ -70,37 +69,33 @@ function StatCard({
   );
 }
 
-function AnomalyRow({ anomaly, onResolve, resolving }: {
-  anomaly: any; onResolve: (id: string) => void; resolving: boolean;
-}) {
-  const color = anomaly.severity === 'critical' ? 'var(--accent-red)' : 'var(--accent-orange)';
+function ReportRow({ report, onOpen }: { report: any; onOpen: (r: any) => void }) {
+  const isIncident = report.type === 'incident';
+  const color = isIncident ? '#a855f7' : '#f59e0b';
   return (
-    <div style={{
-      padding: '10px 12px', borderRadius: 'var(--r-md)',
-      background: 'var(--bg-elevated)',
-      borderLeft: `3px solid ${color}`,
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
-      animation: 'float-up 250ms ease-out both',
-      transition: 'all 200ms',
-    }}>
+    <div
+      onClick={() => onOpen(report)}
+      style={{
+        padding: '10px 12px', borderRadius: 'var(--r-md)',
+        background: 'var(--bg-elevated)',
+        borderLeft: `3px solid ${color}`,
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
+        animation: 'float-up 250ms ease-out both',
+        cursor: 'pointer', transition: 'all 200ms',
+      }}
+    >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{anomaly.deployment_name}</span>
-          <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r-pill)', background: color + '20', color }}>{anomaly.severity}</span>
-          {anomaly.provider && (
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--bg-card)', border: '1px solid var(--border)', padding: '1px 5px', borderRadius: 'var(--r-pill)' }}>{anomaly.provider}</span>
-          )}
-          {anomaly.type && (
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{anomaly.type.replace(/_/g, ' ')}</span>
-          )}
+          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)' }}>{report.deployment_name}</span>
+          <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: 'var(--r-pill)', background: color + '20', color }}>
+            {isIncident ? 'Incident' : 'Root Cause'}
+          </span>
         </div>
-        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{anomaly.message}</div>
-        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 3 }}>{timeAgo(anomaly.created_at)}</div>
+        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {report.content.replace(/[#*_`]/g, '').slice(0, 90)}
+        </div>
+        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 3 }}>{timeAgo(report.created_at)}</div>
       </div>
-      <Button size="sm" variant="success" loading={resolving} onClick={() => onResolve(anomaly.id)}
-        style={{ flexShrink: 0, fontSize: '11px' }}>
-        Resolve
-      </Button>
     </div>
   );
 }
@@ -108,18 +103,16 @@ function AnomalyRow({ anomaly, onResolve, resolving }: {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [loading,    setLoading]    = useState(true);
-  const [anomalies,  setAnomalies]  = useState<any[]>([]);
+  const [reports,    setReports]    = useState<any[]>([]);
   const [cloudDeps,  setCloudDeps]  = useState<any[]>([]);
   const [metrics,    setMetrics]    = useState<any[]>([]);
-  const [resolving,  setResolving]  = useState<string | null>(null);
-  const { success, error: showError } = useToast();
 
   const fetchAll = useCallback(async () => {
-    const [anomRes, cloudRes] = await Promise.allSettled([
-      api.get('/api/ai/anomalies'),
+    const [reportsRes, cloudRes] = await Promise.allSettled([
+      api.get('/api/ai/reports'),
       api.get('/api/cloud'),
     ]);
-    if (anomRes.status === 'fulfilled') setAnomalies(anomRes.value.data);
+    if (reportsRes.status === 'fulfilled') setReports(reportsRes.value.data);
     if (cloudRes.status === 'fulfilled') setCloudDeps(cloudRes.value.data);
 
     const days = Array.from({ length: 7 }, (_, i) => ({
@@ -131,16 +124,6 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
-
-  const handleResolve = async (id: string) => {
-    setResolving(id);
-    try {
-      await api.put(`/api/ai/anomalies/${id}/resolve`);
-      setAnomalies(a => a.filter(x => x.id !== id));
-      success('Anomaly resolved');
-    } catch (err) { showError(parseApiError(err)); }
-    finally { setResolving(null); }
-  };
 
   // "Total Deployments" counts every deployment on the platform. Real deploys
   // all go through the cloud provider engine now (see /api/cloud), so that's
@@ -188,30 +171,30 @@ export default function Dashboard() {
         {}
         <Card style={{ display: 'flex', flexDirection: 'column', animation: 'float-up 350ms ease-out 300ms both' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700 }}>Active Anomalies</div>
-            {anomalies.length > 0 && (
-              <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--r-pill)', background: 'var(--accent-red-dim)', color: 'var(--accent-red)' }}>
-                {anomalies.length}
+            <div style={{ fontSize: '14px', fontWeight: 700 }}>Recent AI Reports</div>
+            {reports.length > 0 && (
+              <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--r-pill)', background: 'var(--accent-blue-dim)', color: 'var(--accent-blue-2)' }}>
+                {reports.length}
               </span>
             )}
           </div>
-          {anomalies.length === 0 ? (
+          {reports.length === 0 ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '12px 0' }}>
-              <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--accent-green-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircle size={22} color="var(--accent-green)" />
+              <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--accent-blue-dim)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <FileText size={20} color="var(--accent-blue-2)" />
               </div>
-              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>All systems healthy</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center' }}>No reports generated yet</div>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, overflowY: 'auto', maxHeight: 220, flex: 1 }}>
-              {anomalies.slice(0, 4).map(a => (
-                <AnomalyRow key={a.id} anomaly={a} onResolve={handleResolve} resolving={resolving === a.id} />
+              {reports.slice(0, 4).map(r => (
+                <ReportRow key={r.id} report={r} onOpen={() => navigate('/ai/hub')} />
               ))}
             </div>
           )}
-          {anomalies.length > 0 && (
-            <Button size="sm" variant="ghost" fullWidth onClick={() => navigate('/ai/anomalies')} style={{ marginTop: 10 }}>
-              View all anomalies
+          {reports.length > 0 && (
+            <Button size="sm" variant="ghost" fullWidth icon={<Search size={12} />} onClick={() => navigate('/ai/hub')} style={{ marginTop: 10 }}>
+              Open AI Hub
             </Button>
           )}
         </Card>

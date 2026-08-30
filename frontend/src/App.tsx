@@ -18,7 +18,6 @@ const Logs         = lazy(() => import('./pages/Logs'));
 const Metrics      = lazy(() => import('./pages/Metrics'));
 const AIAssistant  = lazy(() => import('./pages/AIAssistant'));
 const AIHub        = lazy(() => import('./pages/AIHub'));
-const AIAnomalies  = lazy(() => import('./pages/Settings').then(m => ({ default: m.AIAnomalies })));
 const Team         = lazy(() => import('./pages/Settings').then(m => ({ default: m.Team })));
 const SettingsPage = lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
 const Profile      = lazy(() => import('./pages/Profile'));
@@ -42,7 +41,6 @@ const PROTECTED_ROUTES = [
   { path: '/metrics',         el: <Metrics /> },
   { path: '/ai',              el: <AIAssistant /> },
   { path: '/ai/hub',          el: <AIHub /> },
-  { path: '/ai/anomalies',    el: <AIAnomalies /> },
   { path: '/team',            el: <Team /> },
   { path: '/settings',        el: <SettingsPage /> },
   { path: '/profile',         el: <Profile /> },
