@@ -46,6 +46,33 @@ async function fetchCommitSha(repoUrl?: string | null, branch?: string | null): 
   }
 }
 
+// Every deployment version needs some short identifying code shown in the
+// UI, even when there's no git repo to pull a commit SHA from (e.g. docker
+// image deploys) — falls back to a slice of the version's own id.
+function codeForVersion(commitSha: string | null, versionId: string): string {
+  return commitSha || versionId.slice(0, 7);
+}
+
+// Deployment history timestamps must reflect the user's chosen timezone
+// (Profile > Timezone), not the server's local/UTC time.
+function getUserTimezone(userId: string): string {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT timezone FROM user_profiles WHERE user_id=?').get(userId) as any;
+    return row?.timezone || 'Africa/Tunis';
+  } catch {
+    return 'Africa/Tunis';
+  }
+}
+
+function timeAgoLabel(iso: string, timezone?: string): string {
+  try {
+    return new Date(iso).toLocaleString('en-US', { timeZone: timezone || 'Africa/Tunis' });
+  } catch {
+    return iso;
+  }
+}
+
 // ─── Ensure user_id column exists on cloud_deployments ────────────────────────
 // Called at startup from index.ts — safe to call multiple times.
 // Uses PRAGMA table_info so ALTER TABLE is never executed when the column
@@ -138,12 +165,13 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
         // deploy still needs to show up in history so later successful
         // redeploys have something to roll back *from*, and so the config
         // that failed isn't silently lost.
+        const initialVersionId = uuidv4();
         const initialCommitSha = await fetchCommitSha(repoUrl, branch);
         db.prepare(`
           INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by, commit_sha)
           VALUES (?, ?, 'initial deploy', ?, ?, ?, ?, ?, ?, ?)
-        `).run(uuidv4(), localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
-          image || null, repoUrl || null, result.status, result.deploymentId || null, userId, initialCommitSha);
+        `).run(initialVersionId, localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
+          image || null, repoUrl || null, result.status, result.deploymentId || null, userId, codeForVersion(initialCommitSha, initialVersionId));
 
         console.log(`[providers] Deploy success localId=${localId} providerDepId=${result.deploymentId} status=${result.status}`);
       } catch (err: any) {
@@ -159,11 +187,12 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
         // Still record the version so the config isn't lost — this deploy
         // never got a provider_deployment_id, but a later successful
         // redeploy can still exist alongside it in history.
+        const failedInitialVersionId = uuidv4();
         db.prepare(`
-          INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
-          VALUES (?, ?, 'initial deploy', ?, ?, ?, 'failed', NULL, ?)
-        `).run(uuidv4(), localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
-          image || null, repoUrl || null, userId);
+          INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by, commit_sha)
+          VALUES (?, ?, 'initial deploy', ?, ?, ?, 'failed', NULL, ?, ?)
+        `).run(failedInitialVersionId, localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
+          image || null, repoUrl || null, userId, codeForVersion(null, failedInitialVersionId));
       }
     })();
 
@@ -278,19 +307,21 @@ router.post('/deployments/:id/redeploy', requireAuth, requireRole('admin', 'deve
       : await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: row.docker_image, repoUrl: row.repo_url, ...cfg }, row.id);
     db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), provider_deployment_id=?, provider_error=NULL, updated_at=datetime('now') WHERE id=?`)
       .run(result.status, result.url || null, result.deploymentId, row.id);
+    const redeployVersionId = uuidv4();
     const redeployCommitSha = await fetchCommitSha(row.repo_url, cfg.branch);
     db.prepare(`
       INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by, commit_sha)
       VALUES (?, ?, 'redeploy', ?, ?, ?, ?, ?, ?, ?)
-    `).run(uuidv4(), row.id, JSON.stringify(cfg), row.docker_image || null, row.repo_url || null, result.status, result.deploymentId || null, userId, redeployCommitSha);
+    `).run(redeployVersionId, row.id, JSON.stringify(cfg), row.docker_image || null, row.repo_url || null, result.status, result.deploymentId || null, userId, codeForVersion(redeployCommitSha, redeployVersionId));
   } catch (err: any) {
     const errMsg = err?.message || String(err);
     db.prepare(`UPDATE cloud_deployments SET status='failed', provider_error=?, updated_at=datetime('now') WHERE id=?`).run(errMsg, row.id);
+    const failedRedeployVersionId = uuidv4();
     const redeployCommitSha = await fetchCommitSha(row.repo_url, cfg.branch).catch(() => null);
     db.prepare(`
       INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by, commit_sha)
       VALUES (?, ?, 'redeploy', ?, ?, ?, 'failed', NULL, ?, ?)
-    `).run(uuidv4(), row.id, JSON.stringify(cfg), row.docker_image || null, row.repo_url || null, userId, redeployCommitSha);
+    `).run(failedRedeployVersionId, row.id, JSON.stringify(cfg), row.docker_image || null, row.repo_url || null, userId, codeForVersion(redeployCommitSha, failedRedeployVersionId));
   }
 });
 router.post('/deployments/:id/rollback', requireAuth, requireRole('admin', 'developer'), async (req: AuthRequest, res: Response) => {
@@ -319,23 +350,23 @@ router.post('/deployments/:id/rollback', requireAuth, requireRole('admin', 'deve
       : await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: version.docker_image, repoUrl: version.repo_url, ...cfg }, row.id);
     db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), provider_deployment_id=?, provider_error=NULL, updated_at=datetime('now') WHERE id=?`)
       .run(result.status, result.url || null, result.deploymentId, row.id);
+    const rollbackVersionId = uuidv4();
+    const rollbackTz = getUserTimezone(userId);
     db.prepare(`
       INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by, commit_sha)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(uuidv4(), row.id, `rollback to ${timeAgoLabel(version.created_at)}`, JSON.stringify(cfg), version.docker_image || null, version.repo_url || null, result.status, result.deploymentId || null, userId, version.commit_sha || null);
+    `).run(rollbackVersionId, row.id, `rollback to ${timeAgoLabel(version.created_at, rollbackTz)}`, JSON.stringify(cfg), version.docker_image || null, version.repo_url || null, result.status, result.deploymentId || null, userId, codeForVersion(version.commit_sha || null, rollbackVersionId));
   } catch (err: any) {
     const errMsg = err?.message || String(err);
     db.prepare(`UPDATE cloud_deployments SET status='failed', provider_error=?, updated_at=datetime('now') WHERE id=?`).run(errMsg, row.id);
+    const failedRollbackVersionId = uuidv4();
+    const rollbackTz = getUserTimezone(userId);
     db.prepare(`
       INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by, commit_sha)
       VALUES (?, ?, ?, ?, ?, ?, 'failed', NULL, ?, ?)
-    `).run(uuidv4(), row.id, `rollback to ${timeAgoLabel(version.created_at)}`, JSON.stringify(cfg), version.docker_image || null, version.repo_url || null, userId, version.commit_sha || null);
+    `).run(failedRollbackVersionId, row.id, `rollback to ${timeAgoLabel(version.created_at, rollbackTz)}`, JSON.stringify(cfg), version.docker_image || null, version.repo_url || null, userId, codeForVersion(version.commit_sha || null, failedRollbackVersionId));
   }
 });
-
-function timeAgoLabel(iso: string): string {
-  try { return new Date(iso).toLocaleString(); } catch { return iso; }
-}
 
 // DELETE /api/providers/deployments/failed — purge all failed records owned by user
 // NOTE: This MUST be registered before DELETE /deployments/:id so Express does not
