@@ -35,7 +35,7 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
     ]},
   { section: 'Settings',
     items: [
-      { to: '/profile?tab=account',       icon: <User size={14} />,       label: 'Settings' },
+      { to: '/profile?tab=account',       icon: <User size={14} />,       label: 'Profile' },
       { to: '/profile?tab=notifications', icon: <Bell size={14} />,       label: 'Notifications' },
       { to: '/profile?tab=feature-flags', icon: <Flag size={14} />,       label: 'Feature Flags' },
       { to: '/profile?tab=tokens',        icon: <Key size={14} />,        label: 'Tokens' },

@@ -113,16 +113,16 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
   };
 
   const handleRedeploy = async () => {
-    if (!confirm(`Redeploy "${dep.name}" with its current configuration?`)) return;
+    if (!confirm(`Deploy the latest commit for "${dep.name}" with its current configuration?`)) return;
     setRedeploying(true);
     try {
       await api.post(`/api/providers/deployments/${dep.id}/redeploy`);
       onRefresh();
       const result = await pollUntilSettled();
       if (result.status === 'failed') {
-        showError(result.error ? `Redeploy failed: ${result.error}` : 'Redeploy failed');
+        showError(result.error ? `Deploy failed: ${result.error}` : 'Deploy failed');
       } else {
-        success('Redeploy complete');
+        success('Deploy complete');
       }
     } catch (e) {
       showError(parseApiError(e));
@@ -206,7 +206,7 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
             <Button size="sm" variant="ghost" icon={<History size={11} />} loading={loadingVersions && !historyOpen} onClick={loadHistory}>Rollback</Button>
           )}
           {can.createDeployment && (
-            <Button size="sm" variant="ghost" icon={<Play size={11} />} loading={redeploying} onClick={handleRedeploy}>Redeploy</Button>
+            <Button size="sm" variant="ghost" icon={<Play size={11} />} loading={redeploying} onClick={handleRedeploy}>Deploy Latest Commit</Button>
           )}
           <Button size="sm" variant="ghost" icon={<RefreshCw size={11} />} loading={refreshing} onClick={refreshStatus} />
           {can.deleteDeployment && (
@@ -250,13 +250,18 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {versions.length === 1 && (
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 2 }}>
-                  Only the current version is recorded — nothing earlier to roll back to yet. Redeploy or make another change to build up history.
+                  Only the current version is recorded — nothing earlier to roll back to yet. Deploy the latest commit or make another change to build up history.
                 </span>
               )}
               {versions.map((v, i) => (
                 <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', borderRadius: 'var(--r-md)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {v.commit_sha && (
+                        <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--accent-blue)', padding: '1px 7px', borderRadius: 'var(--r-pill)', background: 'var(--accent-blue-dim, rgba(59,130,246,0.12))' }}>
+                          {v.commit_sha}
+                        </span>
+                      )}
                       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{v.label}</span>
                       {i === 0 && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-green)', padding: '1px 6px', borderRadius: 'var(--r-pill)', background: 'var(--accent-green-dim)' }}>Current</span>}
                     </div>

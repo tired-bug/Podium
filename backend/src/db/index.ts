@@ -226,6 +226,9 @@ async function applyMigrationsToTurso() {
     `ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
     // GitHub account PAT table
     `CREATE TABLE IF NOT EXISTS github_accounts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, token TEXT NOT NULL, github_login TEXT NOT NULL, github_name TEXT, avatar_url TEXT, scopes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Short commit SHA recorded per deployment version so rollback/redeploy
+    // targets can be identified by code instead of a generic label.
+    `ALTER TABLE deployment_versions ADD COLUMN commit_sha TEXT`,
   ];
 
   for (const sql of migrations) {
@@ -247,6 +250,7 @@ async function syncFromTurso() {
     'metrics', 'build_logs', 'ai_conversations', 'ai_reports',
     'settings', 'github_repos', 'github_accounts',
     'user_profiles', 'notifications', 'domain_bindings',
+    'deployment_versions',
   ];
 
   for (const table of TABLES) {
@@ -525,6 +529,9 @@ function applyMigrations() {
     `ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
     // GitHub account PAT table (idempotent CREATE)
     `CREATE TABLE IF NOT EXISTS github_accounts (id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, token TEXT NOT NULL, github_login TEXT NOT NULL, github_name TEXT, avatar_url TEXT, scopes TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')))`,
+    // Short commit SHA recorded per deployment version so rollback/redeploy
+    // targets can be identified by code instead of a generic label.
+    `ALTER TABLE deployment_versions ADD COLUMN commit_sha TEXT`,
   ];
   for (const sql of migrations) {
     try {
