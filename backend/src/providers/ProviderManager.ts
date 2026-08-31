@@ -88,6 +88,19 @@ class ProviderManager {
     return this.get(id).deploy(credentials, opts, deploymentId);
   }
 
+  /**
+   * Redeploy an existing provider deployment in place when the provider
+   * supports it (avoids "name already in use" conflicts from creating a
+   * duplicate resource). Falls back to a fresh deploy() otherwise.
+   */
+  async redeployExisting(id: string, credentials: Record<string, string>, providerDeploymentId: string, opts: DeployOptions): Promise<DeployResult> {
+    const provider = this.get(id);
+    if (provider.redeploy) {
+      return provider.redeploy(credentials, providerDeploymentId, opts);
+    }
+    return provider.deploy(credentials, opts, providerDeploymentId);
+  }
+
   async getStatus(id: string, credentials: Record<string, string>, deploymentId: string): Promise<ProviderStatus> {
     return this.get(id).getStatus(credentials, deploymentId);
   }

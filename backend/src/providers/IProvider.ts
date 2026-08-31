@@ -60,6 +60,12 @@ export interface IProvider {
   /** Trigger a deployment */
   deploy(credentials: Record<string, string>, options: DeployOptions, deploymentId: string): Promise<DeployResult>;
 
+  /** Trigger a deploy of an already-existing service/project rather than
+   *  creating a new one. Providers that don't support this (or don't need
+   *  it, e.g. because every deploy is already a new immutable snapshot)
+   *  can omit it — callers fall back to deploy(). */
+  redeploy?(credentials: Record<string, string>, deploymentId: string, options: DeployOptions): Promise<DeployResult>;
+
   /** Get current deployment status */
   getStatus(credentials: Record<string, string>, deploymentId: string): Promise<ProviderStatus>;
 

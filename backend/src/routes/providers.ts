@@ -241,7 +241,9 @@ router.post('/deployments/:id/redeploy', requireAuth, requireRole('admin', 'deve
 
   try {
     const creds = getCredentials(row.provider);
-    const result = await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: row.docker_image, repoUrl: row.repo_url, ...cfg }, row.id);
+    const result = row.provider_deployment_id
+      ? await providerManager.redeployExisting(row.provider, creds, row.provider_deployment_id, { name: row.name, region: row.region, image: row.docker_image, repoUrl: row.repo_url, ...cfg })
+      : await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: row.docker_image, repoUrl: row.repo_url, ...cfg }, row.id);
     db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), provider_deployment_id=?, provider_error=NULL, updated_at=datetime('now') WHERE id=?`)
       .run(result.status, result.url || null, result.deploymentId, row.id);
     db.prepare(`
@@ -276,7 +278,9 @@ router.post('/deployments/:id/rollback', requireAuth, requireRole('admin', 'deve
 
   try {
     const creds = getCredentials(row.provider);
-    const result = await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: version.docker_image, repoUrl: version.repo_url, ...cfg }, row.id);
+    const result = row.provider_deployment_id
+      ? await providerManager.redeployExisting(row.provider, creds, row.provider_deployment_id, { name: row.name, region: row.region, image: version.docker_image, repoUrl: version.repo_url, ...cfg })
+      : await providerManager.deploy(row.provider, creds, { name: row.name, region: row.region, image: version.docker_image, repoUrl: version.repo_url, ...cfg }, row.id);
     db.prepare(`UPDATE cloud_deployments SET status=?, url=COALESCE(?,url), provider_deployment_id=?, provider_error=NULL, updated_at=datetime('now') WHERE id=?`)
       .run(result.status, result.url || null, result.deploymentId, row.id);
     db.prepare(`

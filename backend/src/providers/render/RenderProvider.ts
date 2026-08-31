@@ -143,6 +143,35 @@ export class RenderProvider implements IProvider {
     return { deploymentId: serviceId, url, status: 'building' };
   }
 
+  /**
+   * Redeploy: trigger a fresh deploy of the EXISTING service instead of
+   * creating a new one. Calling `deploy()` again for a redeploy/rollback
+   * would try to create a service with the same name, which Render rejects
+   * with "name already in use" since the original service is still there.
+   */
+  async redeploy(creds: Record<string, string>, serviceId: string, opts: DeployOptions): Promise<DeployResult> {
+    const c = this.client(creds.render_api_key);
+    console.log(`[render] Redeploying existing serviceId=${serviceId}`);
+
+    // Sync env vars onto the existing service first, if provided, so a
+    // rollback to an older version's config actually takes effect.
+    if (opts.envVars && Object.keys(opts.envVars).length > 0) {
+      const envVars = Object.entries(opts.envVars).map(([key, value]) => ({ key, value }));
+      await c.put(`/services/${serviceId}/env-vars`, envVars).catch((e: any) => {
+        console.error(`[render] Failed to sync env vars on redeploy: ${e?.response?.data?.message || e.message}`);
+      });
+    }
+
+    const r = await c.post(`/services/${serviceId}/deploys`, {}).catch((e: any) => {
+      const msg = e?.response?.data?.message || e.message || 'Render redeploy failed';
+      console.error(`[render] Redeploy failed serviceId=${serviceId}: ${msg}`);
+      throw new Error(msg);
+    });
+
+    console.log(`[render] Redeploy triggered serviceId=${serviceId} deployId=${r.data?.id}`);
+    return { deploymentId: serviceId, status: 'building' };
+  }
+
   async getStatus(creds: Record<string, string>, deploymentId: string): Promise<ProviderStatus> {
     console.log(`[render] getStatus serviceId=${deploymentId}`);
 

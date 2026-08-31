@@ -151,6 +151,9 @@ export class VercelProvider implements IProvider {
     const teamId = creds.vercel_team_id || undefined;
     const params = teamId ? `?teamId=${teamId}` : '';
     const branch = opts.branch || 'main';
+    // 'other' is a Podium-only placeholder meaning "no specific framework" —
+    // Vercel's API rejects it outright since it's not in their framework enum.
+    const framework = opts.framework && opts.framework !== 'other' ? opts.framework : undefined;
 
     // Build deployment payload
     const envVars = opts.envVars || {};
@@ -168,7 +171,7 @@ export class VercelProvider implements IProvider {
       console.log(`[vercel] Uploaded ${fileRefs.length} files to Vercel`);
 
       // Ensure project exists (created from Podium, no repo linkage needed)
-      await this.ensureProject(creds.vercel_token, teamId, opts.name, opts.framework, opts.rootDirectory, opts.buildCommand, opts.outputDirectory);
+      await this.ensureProject(creds.vercel_token, teamId, opts.name, framework, opts.rootDirectory, opts.buildCommand, opts.outputDirectory);
 
       payload = {
         name: opts.name,
@@ -178,7 +181,7 @@ export class VercelProvider implements IProvider {
       };
       if (opts.buildCommand) payload.buildCommand = opts.buildCommand;
       if (opts.outputDirectory) payload.outputDirectory = opts.outputDirectory;
-      if (opts.framework) payload.framework = opts.framework;
+      if (framework) payload.framework = framework;
       // NOTE: rootDirectory is a *project* setting (set via ensureProject above),
       // not a valid field on the deployment payload itself — the Vercel API
       // rejects POST /v13/deployments with "should NOT have additional
