@@ -8,7 +8,7 @@ import {
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Card, Badge, EmptyState } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { MetricChart } from '../components/charts/MetricChart';
+import { MetricBarChart } from '../components/charts/MetricChart';
 import { timeAgo } from '../lib/utils';
 import api from '../lib/api';
 
@@ -187,26 +187,21 @@ export default function Dashboard() {
   const [loading,    setLoading]    = useState(true);
   const [reports,    setReports]    = useState<any[]>([]);
   const [cloudDeps,  setCloudDeps]  = useState<any[]>([]);
-  const [metrics,    setMetrics]    = useState<any[]>([]);
+  const [buildTimeline, setBuildTimeline] = useState<Array<{ date: string; count: number }>>([]);
 
   const fetchAll = useCallback(async () => {
-    const [reportsRes, cloudRes] = await Promise.allSettled([
+    const [reportsRes, cloudRes, finopsRes] = await Promise.allSettled([
       api.get('/api/ai/reports'),
       api.get('/api/cloud'),
+      api.get('/api/finops'),
     ]);
     if (reportsRes.status === 'fulfilled') setReports(reportsRes.value.data);
     if (cloudRes.status === 'fulfilled') setCloudDeps(cloudRes.value.data);
-
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      d.setHours(0, 0, 0, 0);
-      return {
-        timestamp: d.getTime(),
-        successRate: 82 + Math.random() * 18,
-      };
-    });
-    setMetrics(days);
+    if (finopsRes.status === 'fulfilled') {
+      // Last 14 days is plenty for an at-a-glance dashboard card (FinOps has the full 30-day view).
+      const timeline = finopsRes.value.data?.buildTimeline || [];
+      setBuildTimeline(timeline.slice(-14));
+    }
     setLoading(false);
   }, []);
 
@@ -253,38 +248,44 @@ export default function Dashboard() {
         <Card style={{ animation: 'float-up 350ms ease-out 240ms both', position: 'relative', overflow: 'hidden' }}>
           <div style={{
             position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(48,209,88,0.18) 0%, transparent 70%)',
+            background: 'radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)',
             pointerEvents: 'none',
           }} />
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, position: 'relative' }}>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 700 }}>Deployment Health</div>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Last 7 days</span>
+              <div style={{ fontSize: '14px', fontWeight: 700 }}>Deploy Activity</div>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Last 14 days</span>
             </div>
-            {metrics.length > 0 && (() => {
-              const last = metrics[metrics.length - 1].successRate;
-              const prev = metrics.length > 1 ? metrics[metrics.length - 2].successRate : last;
-              const delta = last - prev;
-              const up = delta >= 0;
+            {buildTimeline.length > 0 && (() => {
+              const total = buildTimeline.reduce((s, d) => s + d.count, 0);
+              const lastWeek = buildTimeline.slice(-7).reduce((s, d) => s + d.count, 0);
               return (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--accent-green)', lineHeight: 1, fontFamily: 'var(--font-mono)', textShadow: '0 0 16px rgba(48,209,88,0.5)' }}>
-                    {last.toFixed(1)}%
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--accent-blue)', lineHeight: 1, fontFamily: 'var(--font-mono)', textShadow: '0 0 16px rgba(99,102,241,0.5)' }}>
+                    {total}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 3, fontSize: '11px', fontWeight: 700, color: up ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                    {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-                    {Math.abs(delta).toFixed(1)}pt vs prior day
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginTop: 3 }}>
+                    {lastWeek} in the last 7 days
                   </div>
                 </div>
               );
             })()}
           </div>
-          <div style={{ filter: 'drop-shadow(0 0 6px rgba(48,209,88,0.35))', position: 'relative' }}>
-            <MetricChart
-              data={metrics}
-              lines={[{ key: 'successRate', label: 'Success Rate', color: 'var(--accent-green)' }]}
-              type="area" unit="%" height={190} yDomain={[0, 100]} animate
-            />
+          <div style={{ filter: 'drop-shadow(0 0 6px rgba(99,102,241,0.35))', position: 'relative' }}>
+            {buildTimeline.length > 0 ? (
+              <MetricBarChart
+                data={buildTimeline}
+                dataKey="count"
+                labelKey="date"
+                color="var(--accent-blue)"
+                unit=" deploys"
+                height={190}
+              />
+            ) : (
+              <div style={{ height: 190, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                No deploy activity yet
+              </div>
+            )}
           </div>
         </Card>
 

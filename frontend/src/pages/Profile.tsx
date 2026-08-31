@@ -924,37 +924,12 @@ export default function Profile() {
       </div>
 
       {}
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', animation: 'float-up 300ms ease-out 250ms both' }}>
-        <div style={{ width: 200, flexShrink: 0 }}>
-          <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-secondary)', margin: '0 0 18px 4px', letterSpacing: '-.02em' }}>
-            {TABS.find(t => t.id === tab)?.label}
-          </h1>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {TABS.map(t => {
-              const active = tab === t.id;
-              return (
-                <button key={t.id} onClick={() => setTab(t.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 12,
-                    padding: '10px 14px', borderRadius: 'var(--r-lg)',
-                    background: active ? 'var(--bg-elevated)' : 'transparent',
-                    color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    border: 'none', textAlign: 'left', cursor: 'pointer',
-                    fontSize: 14, fontWeight: active ? 700 : 500,
-                    fontFamily: 'var(--font-sans)', transition: 'all 150ms', width: '100%',
-                  }}
-                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-glass-light)'; }}
-                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <span style={{ display: 'flex', color: active ? 'var(--accent-blue-2)' : 'var(--text-muted)' }}>{t.icon}</span>
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+      <div style={{ animation: 'float-up 300ms ease-out 250ms both' }}>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-secondary)', margin: '0 0 18px 4px', letterSpacing: '-.02em' }}>
+          {TABS.find(t => t.id === tab)?.label}
+        </h1>
 
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       <TabPanel active={tab === 'account'}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
