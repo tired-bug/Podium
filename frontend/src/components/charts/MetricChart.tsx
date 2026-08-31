@@ -26,6 +26,8 @@ interface MetricChartProps {
   height?: number;
   title?: string;
   yDomain?: [number | 'auto', number | 'auto'];
+  /** Animate the chart in on mount/update and show data-point dots. Off by default for live-polling dashboards where re-animating every refresh is distracting. */
+  animate?: boolean;
 }
 
 const CustomTooltip = ({ active, payload, label, unit, isDate, rawLabel }: any) => {
@@ -56,7 +58,7 @@ const CustomTooltip = ({ active, payload, label, unit, isDate, rawLabel }: any) 
 };
 
 export function MetricChart({
-  data, lines, type = 'line', unit = '', height = 200, title, yDomain,
+  data, lines, type = 'line', unit = '', height = 200, title, yDomain, animate = false,
 }: MetricChartProps) {
   const ChartComponent = type === 'area' ? AreaChart : LineChart;
 
@@ -117,9 +119,11 @@ export function MetricChart({
                 fill={line.fill === false ? 'transparent' : line.color + '33'}
                 strokeWidth={line.fill === false ? 2 : 1.5}
                 stackId={line.stackId}
-                dot={false}
-                activeDot={{ r: 4, fill: line.color }}
-                isAnimationActive={false}
+                dot={animate ? { r: 3, fill: line.color, strokeWidth: 0 } : false}
+                activeDot={{ r: 5, fill: line.color }}
+                isAnimationActive={animate}
+                animationDuration={900}
+                animationEasing="ease-out"
               />
             ) : (
               <Line
@@ -128,10 +132,12 @@ export function MetricChart({
                 dataKey={line.key}
                 name={line.label}
                 stroke={line.color}
-                strokeWidth={1.5}
-                dot={false}
-                activeDot={{ r: 4, fill: line.color }}
-                isAnimationActive={false}
+                strokeWidth={2}
+                dot={animate ? { r: 3, fill: line.color, strokeWidth: 0 } : false}
+                activeDot={{ r: 5, fill: line.color }}
+                isAnimationActive={animate}
+                animationDuration={900}
+                animationEasing="ease-out"
               />
             )
           ))}
@@ -142,7 +148,7 @@ export function MetricChart({
 }
 
 export function MetricBarChart({
-  data, dataKey = 'count', labelKey = 'date', color = 'var(--accent)', unit = '', height = 160,
+  data, dataKey = 'count', labelKey = 'date', color = 'var(--accent)', unit = '', height = 160, animate = true,
 }: {
   data: Array<Record<string, any>>;
   dataKey?: string;
@@ -150,6 +156,7 @@ export function MetricBarChart({
   color?: string;
   unit?: string;
   height?: number;
+  animate?: boolean;
 }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -170,7 +177,14 @@ export function MetricBarChart({
           tickFormatter={v => `${v}${unit}`}
         />
         <Tooltip content={<CustomTooltip unit={unit} rawLabel />} cursor={{ fill: 'var(--bg-hover)' }} />
-        <Bar dataKey={dataKey} fill={color} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+        <Bar
+          dataKey={dataKey}
+          fill={color}
+          radius={[4, 4, 0, 0]}
+          isAnimationActive={animate}
+          animationDuration={700}
+          animationEasing="ease-out"
+        />
       </BarChart>
     </ResponsiveContainer>
   );

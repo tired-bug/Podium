@@ -251,8 +251,9 @@ function ProviderSection({ metrics, expanded, onToggle }: {
                 ]}
                 type="line"
                 unit=""
-                height={180}
+                height={200}
                 yDomain={[0, 'auto']}
+                animate
               />
             </div>
           )}
