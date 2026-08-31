@@ -216,9 +216,9 @@ export default function Dashboard() {
   const providerCount     = new Set(cloudDeps.map(d => d.provider)).size;
 
   const statCards = [
-    { label: 'Total Deployments', value: totalDeployments, icon: <Rocket size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', onClick: () => navigate('/cloud') },
-    { label: 'Live', value: liveDeployments, icon: <CheckCircle2 size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#30d158,#22d3ee)', onClick: () => navigate('/cloud') },
-    { label: 'Failed', value: failedDeployments, icon: <XCircle size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#ff453a,#f59e0b)', onClick: () => navigate('/cloud') },
+    { label: 'Total Deployments', value: totalDeployments, icon: <Rocket size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#6366f1,#a855f7)', onClick: () => navigate('/providers') },
+    { label: 'Live', value: liveDeployments, icon: <CheckCircle2 size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#30d158,#22d3ee)', onClick: () => navigate('/providers') },
+    { label: 'Failed', value: failedDeployments, icon: <XCircle size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#ff453a,#f59e0b)', onClick: () => navigate('/providers') },
     { label: 'Providers', value: providerCount, icon: <Cloud size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#a855f7,#ec4899)', onClick: () => navigate('/providers') },
     { label: 'AI Reports', value: reports.length, icon: <FileText size={20} color="#fff" />, gradient: 'linear-gradient(135deg,#f59e0b,#ec4899)', onClick: () => navigate('/ai/hub') },
   ];
@@ -309,7 +309,7 @@ export default function Dashboard() {
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{cloudDeps.length} total</div>
             </div>
           </div>
-          <Button size="sm" variant="ghost" onClick={() => navigate('/cloud')}>View all →</Button>
+          <Button size="sm" variant="ghost" onClick={() => navigate('/providers')}>View all →</Button>
         </div>
 
         {loading ? (
@@ -319,7 +319,7 @@ export default function Dashboard() {
         ) : cloudDeps.length === 0 ? (
           <EmptyState icon="🚀" title="No deployments yet"
             description="Deploy your first project to get started."
-            action={<Button variant="primary" size="sm" onClick={() => navigate('/cloud')}>New Deployment</Button>}
+            action={<Button variant="primary" size="sm" onClick={() => navigate('/providers')}>New Deployment</Button>}
           />
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -338,7 +338,7 @@ export default function Dashboard() {
                   .map((d, i) => (
                   <tr
                     key={d.id}
-                    onClick={() => navigate('/cloud')}
+                    onClick={() => navigate('/providers')}
                     style={{
                       borderTop: '1px solid var(--border-muted)',
                       cursor: 'pointer', transition: 'background 120ms',

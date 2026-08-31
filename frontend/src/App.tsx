@@ -18,7 +18,6 @@ const Logs         = lazy(() => import('./pages/Logs'));
 const Metrics      = lazy(() => import('./pages/Metrics'));
 const AIAssistant  = lazy(() => import('./pages/AIAssistant'));
 const AIHub        = lazy(() => import('./pages/AIHub'));
-const Team         = lazy(() => import('./pages/Team'));
 const Profile      = lazy(() => import('./pages/Profile'));
 const Providers    = lazy(() => import('./pages/Providers'));
 const CloudDeploys = lazy(() => import('./pages/CloudDeployments'));
@@ -40,10 +39,8 @@ const PROTECTED_ROUTES = [
   { path: '/metrics',         el: <Metrics /> },
   { path: '/ai',              el: <AIAssistant /> },
   { path: '/ai/hub',          el: <AIHub /> },
-  { path: '/team',            el: <Team /> },
   { path: '/profile',         el: <Profile /> },
   { path: '/providers',       el: <Providers /> },
-  { path: '/cloud',           el: <CloudDeploys /> },
   { path: '/cloud/:providerId', el: <CloudDeploys /> },
   { path: '/finops',          el: <FinOps /> },
   { path: '/ai/deploy',       el: <AIDeploy /> },
@@ -62,12 +59,16 @@ export default function App() {
                   <Route path="/" element={<Landing />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Navigate to="/login" replace />} />
-                  {/* Legacy deployment routes — redirect to /cloud */}
-                  <Route path="/deployments" element={<Navigate to="/cloud" replace />} />
-                  <Route path="/deployments/:id" element={<Navigate to="/cloud" replace />} />
-                  <Route path="/deploy" element={<Navigate to="/cloud" replace />} />
+                  {/* Legacy deployment routes — providers is the entry point; pick a provider to manage its deployments */}
+                  <Route path="/deployments" element={<Navigate to="/providers" replace />} />
+                  <Route path="/deployments/:id" element={<Navigate to="/providers" replace />} />
+                  <Route path="/deploy" element={<Navigate to="/providers" replace />} />
+                  {/* There is no generic /cloud overview route — deployments are always managed per-provider */}
+                  <Route path="/cloud" element={<Navigate to="/providers" replace />} />
                   {/* Legacy standalone settings page — merged into Profile/Settings */}
                   <Route path="/settings" element={<Navigate to="/profile" replace />} />
+                  {/* Team is now a tab inside Settings */}
+                  <Route path="/team" element={<Navigate to="/profile?tab=team" replace />} />
                   {/* Auth flows */}
                   <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />

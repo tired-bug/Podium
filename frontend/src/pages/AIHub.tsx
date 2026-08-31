@@ -181,7 +181,7 @@ function OverviewPanel({ providers, cloudDeps }: { providers: Provider[]; cloudD
             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Live across {connected.length} connected provider{connected.length !== 1 ? 's' : ''}</div>
           </div>
         </div>
-        <Button size="sm" variant="ghost" icon={<ExternalLink size={12} />} onClick={() => navigate('/cloud')}>Manage</Button>
+        <Button size="sm" variant="ghost" icon={<ExternalLink size={12} />} onClick={() => navigate('/providers')}>Manage</Button>
       </div>
       <div style={{ padding: '16px 20px' }}>
         {connected.length === 0 ? (

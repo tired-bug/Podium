@@ -13,6 +13,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useProfile } from '../contexts/ProfileContext';
 import { useToast } from '../contexts/ToastContext';
 import { timeAgo, parseApiError } from '../lib/utils';
+import { useSearchParams } from 'react-router-dom';
+import Team from './Team';
 import api from '../lib/api';
 
 const TIMEZONES = [
@@ -42,7 +44,7 @@ const GRADIENTS = [
   'linear-gradient(135deg,#14b8a6,#10b981)',
 ];
 
-type Tab = 'account' | 'notifications' | 'feature-flags' | 'tokens' | 'ssh-keys' | 'apps' | 'security' | 'platform' | 'ai' | 'system';
+type Tab = 'account' | 'notifications' | 'feature-flags' | 'tokens' | 'ssh-keys' | 'apps' | 'security' | 'platform' | 'ai' | 'system' | 'team';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -601,7 +603,7 @@ function AppsPanel() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Cloud Providers</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Manage AWS, GCP, and other provider connections from the Cloud page</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Manage AWS, GCP, and other provider connections from the Providers page</div>
         </div>
       </div>
     </Card>
@@ -614,7 +616,13 @@ export default function Profile() {
   const { refresh: refreshProfile } = useProfile();
   const [data, setData]   = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab]     = useState<Tab>('account');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = (searchParams.get('tab') as Tab) || 'account';
+  const [tab, setTabState] = useState<Tab>(initialTab);
+  const setTab = (t: Tab) => {
+    setTabState(t);
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', t); return next; }, { replace: true });
+  };
   const [saving, setSaving] = useState(false);
   const [form, setForm]   = useState<Record<string, any>>({});
   const [sessions, setSessions] = useState<any[]>([]);
@@ -771,6 +779,7 @@ export default function Profile() {
     { id: 'apps',          label: 'Apps',          icon: <LayoutGrid size={15} /> },
     { id: 'security',      label: 'Security',      icon: <Lock size={15} /> },
     ...(isAdmin ? [
+      { id: 'team'     as Tab, label: 'Team',     icon: <Users size={15} /> },
       { id: 'platform' as Tab, label: 'Platform', icon: <Globe size={15} /> },
       { id: 'ai'       as Tab, label: 'AI',       icon: <Bot size={15} /> },
       { id: 'system'   as Tab, label: 'System',   icon: <Server size={15} /> },
@@ -1235,6 +1244,12 @@ export default function Profile() {
           </Card>
         </div>
       </TabPanel>
+
+      {isAdmin && (
+        <TabPanel active={tab === 'team'}>
+          <Team />
+        </TabPanel>
+      )}
 
       {isAdmin && (
         <TabPanel active={tab === 'platform'}>

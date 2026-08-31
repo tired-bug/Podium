@@ -35,9 +35,6 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
   { section: 'Settings',
     items: [
       { to: '/profile', icon: <User size={14} />, label: 'Settings' },
-      ...(isAdmin ? [
-        { to: '/team', icon: <Users size={14} />, label: 'Team' },
-      ] : []),
     ]},
 ];
 

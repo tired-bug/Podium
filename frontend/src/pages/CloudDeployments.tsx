@@ -93,13 +93,37 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
     }
   };
 
+  // Redeploy/rollback both respond immediately with status 'queued' while the
+  // actual provider call runs in the background. Poll status until it settles
+  // so failures (e.g. invalid region, provider validation errors) surface in
+  // the UI instead of silently leaving the row stuck on "queued".
+  const pollUntilSettled = async (): Promise<{ status: string; error?: string }> => {
+    for (let i = 0; i < 15; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const r = await api.get(`/api/providers/deployments/${dep.id}/status`);
+        onRefresh();
+        if (r.data.status && r.data.status !== 'queued' && r.data.status !== 'deploying' && r.data.status !== 'building') {
+          return { status: r.data.status, error: r.data.error };
+        }
+      } catch { /* keep polling */ }
+    }
+    onRefresh();
+    return { status: 'unknown' };
+  };
+
   const handleRedeploy = async () => {
     if (!confirm(`Redeploy "${dep.name}" with its current configuration?`)) return;
     setRedeploying(true);
     try {
       await api.post(`/api/providers/deployments/${dep.id}/redeploy`);
-      success('Redeploy started');
       onRefresh();
+      const result = await pollUntilSettled();
+      if (result.status === 'failed') {
+        showError(result.error ? `Redeploy failed: ${result.error}` : 'Redeploy failed');
+      } else {
+        success('Redeploy complete');
+      }
     } catch (e) {
       showError(parseApiError(e));
     } finally {
@@ -137,9 +161,14 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
     setRollingBack(versionId);
     try {
       await api.post(`/api/providers/deployments/${dep.id}/rollback`, { version_id: versionId });
-      success('Rollback started');
       setHistoryOpen(false);
       onRefresh();
+      const result = await pollUntilSettled();
+      if (result.status === 'failed') {
+        showError(result.error ? `Rollback failed: ${result.error}` : 'Rollback failed');
+      } else {
+        success('Rollback complete');
+      }
     } catch (e) {
       showError(parseApiError(e));
     } finally {
@@ -980,7 +1009,7 @@ export default function CloudDeployments() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
         <ViewerBanner page="Cloud Deployments" />
         <div>
-          <button onClick={() => navigate('/cloud')} style={{
+          <button onClick={() => navigate('/providers')} style={{
             display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
             cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: 0, marginBottom: 10,
             fontFamily: 'var(--font-sans)',
@@ -1021,7 +1050,7 @@ export default function CloudDeployments() {
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', height: 200 }} />
         ) : !provider ? (
           <EmptyState icon="🔌" title="Provider not found" description="This provider doesn't exist or isn't connected."
-            action={<Button variant="primary" icon={<ArrowLeft size={14} />} onClick={() => navigate('/cloud')}>Back to Cloud Deployments</Button>} />
+            action={<Button variant="primary" icon={<ArrowLeft size={14} />} onClick={() => navigate('/providers')}>Back to Providers</Button>} />
         ) : !provider.connected ? (
           <EmptyState icon="🔌" title={`${provider.name} isn't connected`} description="Connect this provider to start managing deployments."
             action={<Button variant="primary" icon={<Globe size={14} />} onClick={() => navigate('/providers')}>Connect Provider</Button>} />

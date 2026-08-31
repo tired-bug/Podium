@@ -446,7 +446,7 @@ function ProviderCard({
       <div style={{ display: 'flex', gap: 8, marginTop: 'auto' }}>
         {provider.connected ? (
           <>
-            <Button variant="secondary" size="sm" icon={<Settings2 size={12} />} onClick={() => navigate(`/cloud?provider=${provider.id}`)} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }}>
+            <Button variant="secondary" size="sm" icon={<Settings2 size={12} />} onClick={() => navigate(`/cloud/${provider.id}`)} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }}>
               Manage
             </Button>
             <Button variant="secondary" size="sm" icon={<RefreshCw size={12} />} onClick={onConnect} style={{ flex: '1 1 0', flexShrink: 1, minWidth: 0 }}>
