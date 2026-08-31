@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Send, Bot, User, Copy, CheckCircle, Trash2, Edit2, Zap, ChevronRight, Search, Cloud, HardDrive, RotateCcw } from 'lucide-react';
+import { Plus, Send, Bot, User, Copy, CheckCircle, Trash2, Edit2, Zap, ChevronRight, Search, Cloud, HardDrive, RotateCcw, History } from 'lucide-react';
 import { Card, EmptyState, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { Modal } from '../components/ui/Modal';
 import { useDeployments } from '../hooks/useDeployments';
 import { API_BASE_URL } from '../lib/api';
 import { useToast } from '../contexts/ToastContext';
@@ -115,6 +116,8 @@ export default function AIAssistant() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeDepId, setAnalyzeDepId] = useState('');
   const [depFilter, setDepFilter] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -298,133 +301,151 @@ export default function AIAssistant() {
     );
   }
 
+  const activeConv = conversations.find(c => c.id === activeConvId);
+
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - var(--topbar-height) - var(--titlebar-height) - 48px)', gap: 0, margin: -24, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - var(--topbar-height) - var(--titlebar-height) - 48px)', margin: -24, overflow: 'hidden' }}>
       {}
       <div style={{
-        width: 260, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
-        background: 'var(--bg-secondary)', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px',
+        borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', flexShrink: 0,
       }}>
-        <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid var(--border-muted)', flexShrink: 0 }}>
-          <Button variant="primary" fullWidth icon={<Plus size={13} />} size="sm" onClick={createConversation}>
-            New Chat
-          </Button>
+        <div style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Bot size={14} color="#fff" />
         </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 8px' }}>
-          {convLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 4px' }}>
-              {[1, 2, 3].map(i => <Skeleton key={i} height={48} />)}
-            </div>
-          ) : conversations.length === 0 ? (
-            <div style={{ padding: '24px 8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-              No conversations yet
-            </div>
-          ) : conversations.map(conv => (
-            <div
-              key={conv.id}
-              style={{
-                padding: '8px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer', marginBottom: 2,
-                background: activeConvId === conv.id ? 'var(--accent-blue-dim)' : 'transparent',
-                border: `1px solid ${activeConvId === conv.id ? 'var(--accent-blue)' : 'transparent'}`,
-                transition: 'all 120ms',
-              }}
-              onClick={() => loadConversation(conv.id)}
-              onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-              onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}
-            >
-              {editingTitle === conv.id ? (
-                <input
-                  value={titleInput}
-                  onChange={e => setTitleInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') updateTitle(conv.id); if (e.key === 'Escape') setEditingTitle(null); }}
-                  onBlur={() => updateTitle(conv.id)}
-                  autoFocus
-                  style={{
-                    width: '100%', background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-                    border: '1px solid var(--accent-blue)', borderRadius: 4, padding: '2px 6px', fontSize: '12px',
-                    fontFamily: 'var(--font-sans)', outline: 'none',
-                  }}
-                  onClick={e => e.stopPropagation()}
-                />
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '12px', fontWeight: 500, color: activeConvId === conv.id ? 'var(--accent-blue)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {conv.title}
-                    </div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 2 }}>
-                      {conv.message_count} messages · {timeAgo(conv.updated_at)}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 2, flexShrink: 0, opacity: 0 }}
-                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '0'}
-                  >
-                    <button onClick={e => { e.stopPropagation(); setEditingTitle(conv.id); setTitleInput(conv.title); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}>
-                      <Edit2 size={11} />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); deleteConversation(conv.id); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-red)', padding: 2, display: 'flex' }}>
-                      <Trash2 size={11} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {activeConv ? activeConv.title : 'Podium AI'}
         </div>
-
-        {}
-        <div style={{ padding: '14px 12px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Analyze a deployment</div>
-          <div style={{ position: 'relative', marginBottom: 8 }}>
-            <Search size={12} color="var(--text-muted)" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              value={depFilter}
-              onChange={e => setDepFilter(e.target.value)}
-              placeholder="Search deployments…"
-              style={{
-                width: '100%', padding: '7px 8px 7px 26px',
-                background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
-                border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-                fontSize: '12px', fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box',
-              }}
-            />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 168, overflowY: 'auto', marginBottom: 10 }}>
-            {filteredDeployments.length === 0 ? (
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '6px 2px' }}>No deployments found</div>
-            ) : filteredDeployments.map(d => {
-              const isSelected = analyzeDepId === d.id;
-              return (
-                <button
-                  key={d.id}
-                  onClick={() => setAnalyzeDepId(d.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
-                    padding: '6px 8px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                    background: isSelected ? 'var(--accent-blue-dim)' : 'transparent',
-                    border: `1px solid ${isSelected ? 'var(--accent-blue)' : 'transparent'}`,
-                    fontFamily: 'var(--font-sans)', transition: 'all 120ms',
-                  }}
-                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
-                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
-                >
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: STATUS_DOT[d.status] || 'var(--text-muted)', flexShrink: 0 }} />
-                  {d.source === 'cloud' ? <Cloud size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} /> : <HardDrive size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
-                  <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: isSelected ? 'var(--accent-blue)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
-                  <span style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', flexShrink: 0 }}>{d.status}</span>
-                </button>
-              );
-            })}
-          </div>
-          <Button size="sm" fullWidth variant="secondary" onClick={handleAnalyze} loading={analyzing} disabled={!analyzeDepId} icon={<Bot size={12} />}>
-            Analyze Deployment
-          </Button>
-        </div>
+        <Button variant="secondary" size="sm" icon={<History size={13} />} onClick={() => setHistoryOpen(true)}>
+          History{conversations.length > 0 ? ` (${conversations.length})` : ''}
+        </Button>
+        <Button variant="secondary" size="sm" icon={<Search size={13} />} onClick={() => setAnalyzeOpen(true)}>
+          Analyze Deployment
+        </Button>
+        <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={createConversation}>
+          New Chat
+        </Button>
       </div>
+
+      {}
+      <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title="Chat History" width={440}>
+        {convLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {[1, 2, 3].map(i => <Skeleton key={i} height={48} />)}
+          </div>
+        ) : conversations.length === 0 ? (
+          <div style={{ padding: '24px 8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+            No conversations yet
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '55vh', overflowY: 'auto' }}>
+            {conversations.map(conv => (
+              <div
+                key={conv.id}
+                style={{
+                  padding: '8px 10px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                  background: activeConvId === conv.id ? 'var(--accent-blue-dim)' : 'transparent',
+                  border: `1px solid ${activeConvId === conv.id ? 'var(--accent-blue)' : 'var(--border-muted)'}`,
+                  transition: 'all 120ms',
+                }}
+                onClick={() => { loadConversation(conv.id); setHistoryOpen(false); }}
+                onMouseEnter={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                onMouseLeave={e => { if (activeConvId !== conv.id) e.currentTarget.style.background = 'transparent'; }}
+              >
+                {editingTitle === conv.id ? (
+                  <input
+                    value={titleInput}
+                    onChange={e => setTitleInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') updateTitle(conv.id); if (e.key === 'Escape') setEditingTitle(null); }}
+                    onBlur={() => updateTitle(conv.id)}
+                    autoFocus
+                    style={{
+                      width: '100%', background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+                      border: '1px solid var(--accent-blue)', borderRadius: 4, padding: '2px 6px', fontSize: '12px',
+                      fontFamily: 'var(--font-sans)', outline: 'none',
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 500, color: activeConvId === conv.id ? 'var(--accent-blue)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {conv.title}
+                      </div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: 2 }}>
+                        {conv.message_count} messages · {timeAgo(conv.updated_at)}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                      <button onClick={e => { e.stopPropagation(); setEditingTitle(conv.id); setTitleInput(conv.title); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, display: 'flex' }}>
+                        <Edit2 size={11} />
+                      </button>
+                      <button onClick={e => { e.stopPropagation(); deleteConversation(conv.id); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent-red)', padding: 2, display: 'flex' }}>
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
+
+      {}
+      <Modal open={analyzeOpen} onClose={() => setAnalyzeOpen(false)} title="Analyze a Deployment" width={440}>
+        <div style={{ position: 'relative', marginBottom: 10 }}>
+          <Search size={12} color="var(--text-muted)" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)' }} />
+          <input
+            value={depFilter}
+            onChange={e => setDepFilter(e.target.value)}
+            placeholder="Search deployments…"
+            autoFocus
+            style={{
+              width: '100%', padding: '7px 8px 7px 26px',
+              background: 'var(--bg-tertiary)', color: 'var(--text-primary)',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+              fontSize: '12px', fontFamily: 'var(--font-sans)', outline: 'none', boxSizing: 'border-box',
+            }}
+          />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: '40vh', overflowY: 'auto', marginBottom: 12 }}>
+          {filteredDeployments.length === 0 ? (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '6px 2px' }}>No deployments found</div>
+          ) : filteredDeployments.map(d => {
+            const isSelected = analyzeDepId === d.id;
+            return (
+              <button
+                key={d.id}
+                onClick={() => setAnalyzeDepId(d.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
+                  padding: '6px 8px', borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                  background: isSelected ? 'var(--accent-blue-dim)' : 'transparent',
+                  border: `1px solid ${isSelected ? 'var(--accent-blue)' : 'transparent'}`,
+                  fontFamily: 'var(--font-sans)', transition: 'all 120ms',
+                }}
+                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: STATUS_DOT[d.status] || 'var(--text-muted)', flexShrink: 0 }} />
+                {d.source === 'cloud' ? <Cloud size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} /> : <HardDrive size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
+                <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: isSelected ? 'var(--accent-blue)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+                <span style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', flexShrink: 0 }}>{d.status}</span>
+              </button>
+            );
+          })}
+        </div>
+        <Button
+          size="sm" fullWidth variant="primary" icon={<Bot size={12} />}
+          loading={analyzing} disabled={!analyzeDepId}
+          onClick={() => { handleAnalyze(); setAnalyzeOpen(false); }}
+        >
+          Analyze Deployment
+        </Button>
+      </Modal>
 
       {}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

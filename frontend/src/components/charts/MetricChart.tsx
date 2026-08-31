@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  ResponsiveContainer, LineChart, Line, AreaChart, Area,
+  ResponsiveContainer, LineChart, Line, AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 import { formatDate } from '../../lib/utils';
@@ -28,11 +28,13 @@ interface MetricChartProps {
   yDomain?: [number | 'auto', number | 'auto'];
 }
 
-const CustomTooltip = ({ active, payload, label, unit, isDate }: any) => {
+const CustomTooltip = ({ active, payload, label, unit, isDate, rawLabel }: any) => {
   if (!active || !payload?.length) return null;
-  const displayLabel = isDate
-    ? new Date(label).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    : formatDate(label, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const displayLabel = rawLabel
+    ? label
+    : isDate
+      ? new Date(label).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      : formatDate(label, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--border)',
@@ -136,6 +138,41 @@ export function MetricChart({
         </ChartComponent>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+export function MetricBarChart({
+  data, dataKey = 'count', labelKey = 'date', color = 'var(--accent)', unit = '', height = 160,
+}: {
+  data: Array<Record<string, any>>;
+  dataKey?: string;
+  labelKey?: string;
+  color?: string;
+  unit?: string;
+  height?: number;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <BarChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-muted)" vertical={false} />
+        <XAxis
+          dataKey={labelKey}
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+          tickLine={false}
+          axisLine={{ stroke: 'var(--border)' }}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+          tickLine={false}
+          axisLine={false}
+          allowDecimals={false}
+          tickFormatter={v => `${v}${unit}`}
+        />
+        <Tooltip content={<CustomTooltip unit={unit} rawLabel />} cursor={{ fill: 'var(--bg-hover)' }} />
+        <Bar dataKey={dataKey} fill={color} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+      </BarChart>
+    </ResponsiveContainer>
   );
 }
 

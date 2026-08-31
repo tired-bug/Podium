@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, EmptyState, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { MetricBarChart } from '../components/charts/MetricChart';
 import api from '../lib/api';
 import { parseApiError } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
@@ -255,28 +256,6 @@ function RecommendationCard({ r, index }: { r: Recommendation; index: number }) 
   );
 }
 
-function MiniBarChart({ data }: { data: BuildPoint[] }) {
-  if (!data.length) return null;
-  const max = Math.max(...data.map(d => d.count), 1);
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 48, padding: '0 4px' }}>
-      {data.map((d, i) => (
-        <div
-          key={d.date}
-          title={`${d.date}: ${d.count} deploys`}
-          style={{
-            flex: 1, background: d.count > 0 ? 'var(--accent)' : 'var(--bg-elevated)',
-            borderRadius: '2px 2px 0 0',
-            height: `${Math.max(2, (d.count / max) * 100)}%`,
-            opacity: 0.7 + (i / data.length) * 0.3,
-            transition: 'height 400ms ease',
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 // ISO-week key like "2026-W35"
 function isoWeekKey(d: Date) {
   const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -457,17 +436,14 @@ export default function FinOps() {
                 {data.buildTimeline.length > 0 ? (() => {
                   const aggregated = aggregateTimeline(data.buildTimeline, granularity);
                   return (
-                    <div>
-                      <MiniBarChart data={aggregated} />
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {aggregated[0]?.date}
-                        </span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-                          {aggregated[aggregated.length - 1]?.date}
-                        </span>
-                      </div>
-                    </div>
+                    <MetricBarChart
+                      data={aggregated}
+                      dataKey="count"
+                      labelKey="date"
+                      color="var(--accent)"
+                      unit=" deploys"
+                      height={180}
+                    />
                   );
                 })() : (
                   <EmptyState icon={<BarChart2 size={22} />} title="No deploys yet" />

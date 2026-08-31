@@ -85,10 +85,14 @@ export default function Logs() {
     return () => clearInterval(interval);
   }, [deploymentId, level]);
 
+  const lastNewestIdRef = useRef<number | null>(null);
   useEffect(() => {
-    if (autoScroll && logsEndRef.current) {
+    const newestId = logs.length ? logs[logs.length - 1].id : null;
+    const hasNewLog = newestId !== null && newestId !== lastNewestIdRef.current;
+    if (autoScroll && hasNewLog && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
+    lastNewestIdRef.current = newestId;
   }, [logs, autoScroll]);
 
   const handleScroll = () => {
@@ -213,8 +217,8 @@ export default function Logs() {
                   borderRadius: 3, background: lc.bg, marginBottom: 1,
                   alignItems: 'flex-start',
                 }}>
-                  <span style={{ color: 'var(--text-muted)', flexShrink: 0, fontSize: '11px', paddingTop: 1 }}>
-                    {new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  <span style={{ color: 'var(--text-muted)', flexShrink: 0, fontSize: '11px', paddingTop: 1, width: 130 }}>
+                    {new Date(log.timestamp).toLocaleString('en-US', { hour12: false, month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                   <span style={{ color: lc.text, flexShrink: 0, width: 44, fontSize: '11px', fontWeight: 700, paddingTop: 1 }}>
                     {(log.level || 'INFO').toUpperCase().slice(0, 5)}

@@ -245,13 +245,13 @@ function ProviderSection({ metrics, expanded, onToggle }: {
               <MetricChart
                 data={trendData}
                 lines={[
-                  { key: 'successful', label: 'Successful', color: 'var(--accent-green)', stackId: 'deploys' },
-                  { key: 'failed', label: 'Failed', color: 'var(--accent-red)', stackId: 'deploys' },
-                  { key: 'total', label: 'Total', color, fill: false },
+                  { key: 'total', label: 'Total', color },
+                  { key: 'successful', label: 'Successful', color: 'var(--accent-green)' },
+                  { key: 'failed', label: 'Failed', color: 'var(--accent-red)' },
                 ]}
-                type="area"
+                type="line"
                 unit=""
-                height={160}
+                height={180}
                 yDomain={[0, 'auto']}
               />
             </div>
