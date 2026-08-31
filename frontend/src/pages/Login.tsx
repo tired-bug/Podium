@@ -76,6 +76,8 @@ export default function LoginPage() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [needsTotp, setNeedsTotp] = useState(false);
 
   const [suUser, setSuUser] = useState('');
   const [suEmail, setSuEmail] = useState('');
@@ -93,14 +95,20 @@ export default function LoginPage() {
     if (!username) errs.username = 'Required';
     if (!password) errs.password = 'Required';
     if (Object.keys(errs).length) { setErrors(errs); return; }
+    if (needsTotp && !totpCode) { setErrors({ totpCode: 'Required' }); return; }
     setLoading(true);
     try {
-      const { data } = await api.post('/api/auth/login', { username, password });
+      const { data } = await api.post('/api/auth/login', { username, password, totpCode: needsTotp ? totpCode : undefined });
       login(data.token, data.user);
       success(`User authenticated — welcome back, ${data.user.username}`);
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
-      showError(parseApiError(err));
+      if (err?.response?.data?.requiresTotp) {
+        setNeedsTotp(true);
+        if (needsTotp) showError('Invalid 2FA code');
+      } else {
+        showError(parseApiError(err));
+      }
     }
     finally { setLoading(false); }
   };
@@ -246,10 +254,15 @@ export default function LoginPage() {
               <p style={{ fontSize: '13px', color: 'rgba(245,245,247,0.35)', marginTop: 4 }}>Sign in to your workspace</p>
             </div>
             <AuthInput label="Username or email" placeholder="your-username" value={username}
-              onChange={e => setUsername(e.target.value)} error={errors.username} autoComplete="username" />
+              onChange={e => setUsername(e.target.value)} error={errors.username} autoComplete="username" disabled={needsTotp} />
             <AuthInput label="Password" type={showPw ? 'text' : 'password'} placeholder="••••••••"
               value={password} onChange={e => setPassword(e.target.value)}
-              error={errors.password} iconRight={eyeBtn} autoComplete="current-password" />
+              error={errors.password} iconRight={eyeBtn} autoComplete="current-password" disabled={needsTotp} />
+            {needsTotp && (
+              <AuthInput label="Two-factor code" placeholder="6-digit code" value={totpCode}
+                onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                error={errors.totpCode} autoComplete="one-time-code" />
+            )}
             <div style={{ textAlign: 'right', marginTop: -6 }}>
               <span onClick={() => navigate('/forgot-password')} style={{ fontSize: '12px', color: '#818cf8', cursor: 'pointer' }}>Forgot password?</span>
             </div>

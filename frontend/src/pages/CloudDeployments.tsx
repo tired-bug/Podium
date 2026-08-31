@@ -3,7 +3,7 @@ import {
   Plus, RefreshCw, Trash2, ExternalLink, Terminal, ChevronRight,
   Globe, GitBranch, Settings2, CheckCircle, Github,
   Eye, EyeOff, X, AlertTriangle, Play, ChevronDown, ChevronUp,
-  History, RotateCcw,
+  History, RotateCcw, ArrowLeft,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, SectionHeader, Skeleton, Spinner } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -12,7 +12,7 @@ import { useToast } from '../contexts/ToastContext';
 import { useRole } from '../hooks/useRole';
 import { ViewerBanner } from '../components/ui/ViewerBanner';
 import { timeAgo, parseApiError } from '../lib/utils';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import api from '../lib/api';
 
 interface CloudDep {
@@ -66,6 +66,7 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [versions, setVersions] = useState<any[]>([]);
   const [rollingBack, setRollingBack] = useState<string | null>(null);
+  const [redeploying, setRedeploying] = useState(false);
 
   const statusColor = STATUS_COLORS[dep.status] || 'var(--text-muted)';
 
@@ -89,6 +90,20 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
       onRefresh();
     } catch {} finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleRedeploy = async () => {
+    if (!confirm(`Redeploy "${dep.name}" with its current configuration?`)) return;
+    setRedeploying(true);
+    try {
+      await api.post(`/api/providers/deployments/${dep.id}/redeploy`);
+      success('Redeploy started');
+      onRefresh();
+    } catch (e) {
+      showError(parseApiError(e));
+    } finally {
+      setRedeploying(false);
     }
   };
 
@@ -159,7 +174,10 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
           )}
           <Button size="sm" variant="ghost" icon={<Terminal size={11} />} loading={loadingLogs && !expanded} onClick={loadLogs}>Logs</Button>
           {can.createDeployment && (
-            <Button size="sm" variant="ghost" icon={<History size={11} />} loading={loadingVersions && !historyOpen} onClick={loadHistory}>History</Button>
+            <Button size="sm" variant="ghost" icon={<History size={11} />} loading={loadingVersions && !historyOpen} onClick={loadHistory}>Rollback</Button>
+          )}
+          {can.createDeployment && (
+            <Button size="sm" variant="ghost" icon={<Play size={11} />} loading={redeploying} onClick={handleRedeploy}>Redeploy</Button>
           )}
           <Button size="sm" variant="ghost" icon={<RefreshCw size={11} />} loading={refreshing} onClick={refreshStatus} />
           {can.deleteDeployment && (
@@ -231,7 +249,7 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
 // ── Provider Card (clickable, expands to show deployments) ───────────────────
 
 function ProviderCard({
-  provider, deps, loading, onRefresh, onNewDeploy, onClearFailed, onClearAll, defaultOpen,
+  provider, deps, loading, onRefresh, onNewDeploy, onClearFailed, onClearAll, defaultOpen, onManage, standalone,
 }: {
   provider: ProviderMeta;
   deps: CloudDep[];
@@ -241,9 +259,11 @@ function ProviderCard({
   onClearFailed: (providerId: string) => void;
   onClearAll: (providerId: string) => void;
   defaultOpen?: boolean;
+  onManage?: () => void;
+  standalone?: boolean;
 }) {
   const { can } = useRole();
-  const [open, setOpen] = useState(!!defaultOpen);
+  const [open, setOpen] = useState(!!defaultOpen || !!standalone);
 
   const live = deps.filter(d => d.status === 'live').length;
   const failed = deps.filter(d => d.status === 'failed').length;
@@ -264,14 +284,20 @@ function ProviderCard({
       boxShadow: open ? '0 0 0 1px rgba(99,102,241,0.1) inset' : provider.connected ? '0 0 0 1px rgba(16,185,129,0.06) inset' : 'var(--shadow-card)',
     }}>
       {/* Card header — always visible, click to toggle */}
-      <button
-        onClick={() => provider.connected && setOpen(o => !o)}
+      <div
         style={{
           width: '100%', display: 'flex', alignItems: 'center', gap: 16,
-          padding: 20, background: 'none', border: 'none', cursor: provider.connected ? 'pointer' : 'default',
-          textAlign: 'left', fontFamily: 'var(--font-sans)',
+          padding: 20, fontFamily: 'var(--font-sans)',
         }}
       >
+        <button
+          onClick={() => provider.connected && setOpen(o => !o)}
+          style={{
+            flex: 1, display: 'flex', alignItems: 'center', gap: 16,
+            background: 'none', border: 'none', cursor: provider.connected ? 'pointer' : 'default',
+            textAlign: 'left', fontFamily: 'var(--font-sans)', padding: 0, minWidth: 0,
+          }}
+        >
         {/* Top green strip when connected */}
         {provider.connected && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'var(--gradient-green)', pointerEvents: 'none' }} />
@@ -299,15 +325,22 @@ function ProviderCard({
           )}
         </div>
 
-        {provider.connected && (
+        {provider.connected && !standalone && (
           <div style={{ color: 'var(--text-muted)', flexShrink: 0 }}>
             {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
         )}
-      </button>
+        </button>
+
+        {provider.connected && !standalone && onManage && (
+          <Button size="sm" variant="ghost" icon={<Settings2 size={12} />} onClick={onManage} style={{ flexShrink: 0 }}>
+            Manage
+          </Button>
+        )}
+      </div>
 
       {/* Expanded deployments panel */}
-      {open && provider.connected && (
+      {(open || standalone) && provider.connected && (
         <div style={{ borderTop: '1px solid var(--border-muted)', padding: '16px 20px 20px' }}>
           {/* Panel toolbar */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
@@ -855,6 +888,7 @@ function DeployWizard({ providers, initialProvider, onClose, onDeployed }: {
 export default function CloudDeployments() {
   const { can } = useRole();
   const navigate = useNavigate();
+  const { providerId } = useParams<{ providerId?: string }>();
   const [searchParams] = useSearchParams();
   const highlightProvider = searchParams.get('provider') || undefined;
   const [deps, setDeps] = useState<CloudDep[]>([]);
@@ -911,8 +945,8 @@ export default function CloudDeployments() {
     } catch (e) { showError(parseApiError(e)); }
   };
 
-  const openWizard = (providerId?: string) => {
-    setWizardProvider(providerId);
+  const openWizard = (forProviderId?: string) => {
+    setWizardProvider(forProviderId);
     setWizardOpen(true);
   };
 
@@ -927,6 +961,94 @@ export default function CloudDeployments() {
     { label: 'Building', value: totalBuilding, color: 'var(--accent-cyan)' },
     { label: 'Failed', value: totalFailed, color: 'var(--accent-red)' },
   ];
+
+  // ── Single-provider management route (/cloud/:providerId) ──────────────
+  if (providerId) {
+    const provider = providers.find(p => p.id === providerId);
+    const providerDeps = deps.filter(d => d.provider === providerId);
+    const pLive = providerDeps.filter(d => d.status === 'live').length;
+    const pFailed = providerDeps.filter(d => d.status === 'failed').length;
+    const pBuilding = providerDeps.filter(d => d.status === 'building' || d.status === 'deploying').length;
+    const pStats = [
+      { label: 'Total', value: providerDeps.length, color: 'var(--accent-blue)' },
+      { label: 'Live', value: pLive, color: 'var(--accent-green)' },
+      { label: 'Building', value: pBuilding, color: 'var(--accent-cyan)' },
+      { label: 'Failed', value: pFailed, color: 'var(--accent-red)' },
+    ];
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <ViewerBanner page="Cloud Deployments" />
+        <div>
+          <button onClick={() => navigate('/cloud')} style={{
+            display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+            cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12, padding: 0, marginBottom: 10,
+            fontFamily: 'var(--font-sans)',
+          }}>
+            <ArrowLeft size={12} /> All providers
+          </button>
+          <SectionHeader
+            title={provider ? `${provider.name} Deployments` : 'Provider'}
+            subtitle={provider ? `Manage deployments on ${provider.name} only` : 'Loading provider…'}
+            action={
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Button size="sm" icon={<RefreshCw size={13} />} onClick={load}>Refresh</Button>
+                {can.createDeployment && provider?.connected && (
+                  <Button variant="primary" size="sm" icon={<Plus size={13} />} onClick={() => openWizard(provider.id)}>
+                    New Deployment
+                  </Button>
+                )}
+              </div>
+            }
+          />
+        </div>
+
+        {!loading && provider && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            {pStats.map(s => (
+              <Card key={s.label} style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
+                <div>
+                  <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1 }}>{s.value}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 2 }}>{s.label}</div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', height: 200 }} />
+        ) : !provider ? (
+          <EmptyState icon="🔌" title="Provider not found" description="This provider doesn't exist or isn't connected."
+            action={<Button variant="primary" icon={<ArrowLeft size={14} />} onClick={() => navigate('/cloud')}>Back to Cloud Deployments</Button>} />
+        ) : !provider.connected ? (
+          <EmptyState icon="🔌" title={`${provider.name} isn't connected`} description="Connect this provider to start managing deployments."
+            action={<Button variant="primary" icon={<Globe size={14} />} onClick={() => navigate('/providers')}>Connect Provider</Button>} />
+        ) : (
+          <ProviderCard
+            provider={provider}
+            deps={providerDeps}
+            loading={false}
+            onRefresh={load}
+            onNewDeploy={() => openWizard(provider.id)}
+            onClearFailed={clearFailed}
+            onClearAll={clearAll}
+            standalone
+          />
+        )}
+
+        {wizardOpen && (
+          <DeployWizard
+            providers={providers}
+            initialProvider={wizardProvider}
+            onClose={() => { setWizardOpen(false); setWizardProvider(undefined); }}
+            onDeployed={load}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -992,6 +1114,7 @@ export default function CloudDeployments() {
               onClearFailed={clearFailed}
               onClearAll={clearAll}
               defaultOpen={p.id === highlightProvider}
+              onManage={() => navigate(`/cloud/${p.id}`)}
             />
           ))}
         </div>

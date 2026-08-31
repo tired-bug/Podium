@@ -5,6 +5,7 @@ import { getDb } from '../db/index';
 import { signToken, hashPassword, comparePassword, requireAuth, requireRole, AuthRequest } from '../auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
 import { createNotification } from './notifications';
+import { generateSecret, generateTotp, verifyTotp, otpauthUrl } from '../utils/totp';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ function generateToken(): string {
 
 // ── Login ─────────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, totpCode } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
   }
@@ -29,6 +30,15 @@ router.post('/login', async (req, res) => {
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
   // Email verification requirement removed — all new signups are auto-verified and auto-logged-in.
+
+  if (user.totp_enabled) {
+    if (!totpCode) {
+      return res.status(401).json({ error: '2FA code required', requiresTotp: true });
+    }
+    if (!verifyTotp(user.totp_secret, String(totpCode))) {
+      return res.status(401).json({ error: 'Invalid 2FA code', requiresTotp: true });
+    }
+  }
 
   getDb()
     .prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?")
@@ -283,6 +293,47 @@ router.put('/password', requireAuth, async (req: AuthRequest, res: Response) => 
   const hash = await hashPassword(newPassword);
   getDb().prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.user!.sub);
   return res.json({ ok: true });
+});
+
+// ── Two-factor authentication (TOTP) ────────────────────────────────────────
+
+// GET current 2FA status for the logged-in user
+router.get('/2fa', requireAuth, (req: AuthRequest, res: Response) => {
+  const user = getDb().prepare('SELECT totp_enabled FROM users WHERE id = ?').get(req.user!.sub) as any;
+  return res.json({ enabled: !!user?.totp_enabled });
+});
+
+// Start setup: generate a new secret (not yet enabled until verified)
+router.post('/2fa/setup', requireAuth, (req: AuthRequest, res: Response) => {
+  const user = getDb().prepare('SELECT * FROM users WHERE id = ?').get(req.user!.sub) as any;
+  if (user.totp_enabled) return res.status(400).json({ error: '2FA is already enabled' });
+
+  const secret = generateSecret();
+  getDb().prepare('UPDATE users SET totp_secret = ? WHERE id = ?').run(secret, req.user!.sub);
+  return res.json({ secret, otpauthUrl: otpauthUrl(secret, user.email || user.username) });
+});
+
+// Confirm setup with a code from the authenticator app — enables 2FA
+router.post('/2fa/verify', requireAuth, (req: AuthRequest, res: Response) => {
+  const { code } = req.body;
+  const user = getDb().prepare('SELECT * FROM users WHERE id = ?').get(req.user!.sub) as any;
+  if (!user.totp_secret) return res.status(400).json({ error: 'Run setup first' });
+  if (!code || !verifyTotp(user.totp_secret, String(code))) {
+    return res.status(400).json({ error: 'Invalid code — check your authenticator app and try again' });
+  }
+  getDb().prepare('UPDATE users SET totp_enabled = 1 WHERE id = ?').run(req.user!.sub);
+  return res.json({ ok: true, enabled: true });
+});
+
+// Disable 2FA (requires current password to confirm)
+router.post('/2fa/disable', requireAuth, async (req: AuthRequest, res: Response) => {
+  const { password } = req.body;
+  const user = getDb().prepare('SELECT * FROM users WHERE id = ?').get(req.user!.sub) as any;
+  if (!password || !(await comparePassword(password, user.password_hash))) {
+    return res.status(400).json({ error: 'Incorrect password' });
+  }
+  getDb().prepare('UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?').run(req.user!.sub);
+  return res.json({ ok: true, enabled: false });
 });
 
 export default router;

@@ -18,8 +18,7 @@ const Logs         = lazy(() => import('./pages/Logs'));
 const Metrics      = lazy(() => import('./pages/Metrics'));
 const AIAssistant  = lazy(() => import('./pages/AIAssistant'));
 const AIHub        = lazy(() => import('./pages/AIHub'));
-const Team         = lazy(() => import('./pages/Settings').then(m => ({ default: m.Team })));
-const SettingsPage = lazy(() => import('./pages/Settings').then(m => ({ default: m.SettingsPage })));
+const Team         = lazy(() => import('./pages/Team'));
 const Profile      = lazy(() => import('./pages/Profile'));
 const Providers    = lazy(() => import('./pages/Providers'));
 const CloudDeploys = lazy(() => import('./pages/CloudDeployments'));
@@ -42,10 +41,10 @@ const PROTECTED_ROUTES = [
   { path: '/ai',              el: <AIAssistant /> },
   { path: '/ai/hub',          el: <AIHub /> },
   { path: '/team',            el: <Team /> },
-  { path: '/settings',        el: <SettingsPage /> },
   { path: '/profile',         el: <Profile /> },
   { path: '/providers',       el: <Providers /> },
   { path: '/cloud',           el: <CloudDeploys /> },
+  { path: '/cloud/:providerId', el: <CloudDeploys /> },
   { path: '/finops',          el: <FinOps /> },
   { path: '/ai/deploy',       el: <AIDeploy /> },
 ];
@@ -67,6 +66,8 @@ export default function App() {
                   <Route path="/deployments" element={<Navigate to="/cloud" replace />} />
                   <Route path="/deployments/:id" element={<Navigate to="/cloud" replace />} />
                   <Route path="/deploy" element={<Navigate to="/cloud" replace />} />
+                  {/* Legacy standalone settings page — merged into Profile/Settings */}
+                  <Route path="/settings" element={<Navigate to="/profile" replace />} />
                   {/* Auth flows */}
                   <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />

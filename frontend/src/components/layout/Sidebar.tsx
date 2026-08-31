@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Github, ScrollText, BarChart2,
-  Bot, Users, Settings, ChevronLeft, ChevronRight,
+  Bot, Users, ChevronLeft, ChevronRight,
   Zap, User, Plug, DollarSign, Cpu,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
@@ -32,12 +32,11 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
         { to: '/ai/hub', icon: <Zap size={14} />,  label: 'AI Hub' },
       ] : []),
     ]},
-  { section: 'Account',
+  { section: 'Settings',
     items: [
-      { to: '/profile', icon: <User size={14} />, label: 'Profile' },
+      { to: '/profile', icon: <User size={14} />, label: 'Settings' },
       ...(isAdmin ? [
-        { to: '/team',     icon: <Users size={14} />,    label: 'Team' },
-        { to: '/settings', icon: <Settings size={14} />, label: 'Settings' },
+        { to: '/team', icon: <Users size={14} />, label: 'Team' },
       ] : []),
     ]},
 ];

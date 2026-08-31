@@ -3,7 +3,8 @@ import {
   Camera, Save, User, MapPin, Globe, Github, Briefcase,
   Building, Clock, Shield, Bell, Monitor, Trash2, LogOut,
   Edit2, Key, Check, X, ChevronRight, Flag, Terminal, LayoutGrid,
-  Lock, Plus, Copy, Cloud,
+  Lock, Plus, Copy, Cloud, ShieldCheck, Smartphone, Bot, Server,
+  RefreshCw, Database, Cpu, Activity, BarChart2, Zap, Users, Eye, EyeOff,
 } from 'lucide-react';
 import { Card, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
@@ -41,7 +42,7 @@ const GRADIENTS = [
   'linear-gradient(135deg,#14b8a6,#10b981)',
 ];
 
-type Tab = 'account' | 'notifications' | 'feature-flags' | 'tokens' | 'ssh-keys' | 'apps' | 'security';
+type Tab = 'account' | 'notifications' | 'feature-flags' | 'tokens' | 'ssh-keys' | 'apps' | 'security' | 'platform' | 'ai' | 'system';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -49,6 +50,58 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
       <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
       <span className="toggle-slider" />
     </label>
+  );
+}
+
+function ToggleRow({ label, description, checked, onChange }: {
+  label: string; description?: string; checked: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '12px 0', borderBottom: '1px solid var(--border-muted)' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}</div>
+        {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.5 }}>{description}</div>}
+      </div>
+      <Toggle checked={checked} onChange={onChange} />
+    </div>
+  );
+}
+
+function PlatformSection({ title, description, children }: {
+  title: string; description?: string; children: React.ReactNode;
+}) {
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-muted)' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{title}</div>
+        {description && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.5 }}>{description}</div>}
+      </div>
+      <div style={{ padding: '18px 20px' }}>{children}</div>
+    </Card>
+  );
+}
+
+function MaskedInput({ settingKey, label, placeholder, hint, local, update }: {
+  settingKey: string; label: string; placeholder: string;
+  hint?: string; local: Record<string, string>; update: (k: string, v: string) => void;
+}) {
+  const [show, setShow] = useState(false);
+  const isMasked = local[settingKey] === '***masked***';
+  return (
+    <Input
+      label={label}
+      type={show ? 'text' : 'password'}
+      value={isMasked ? '' : (local[settingKey] || '')}
+      onChange={e => update(settingKey, e.target.value)}
+      placeholder={isMasked ? '••••• (leave empty to keep current)' : placeholder}
+      hint={hint}
+      iconRight={
+        <button type="button" onClick={() => setShow(v => !v)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}>
+          {show ? <EyeOff size={14} /> : <Eye size={14} />}
+        </button>
+      }
+    />
   );
 }
 
@@ -557,6 +610,7 @@ function AppsPanel() {
 
 export default function Profile() {
   const { success, error: showError } = useToast();
+  const { isAdmin } = useAuth();
   const { refresh: refreshProfile } = useProfile();
   const [data, setData]   = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -567,6 +621,16 @@ export default function Profile() {
   const [pwForm, setPwForm] = useState({ current: '', newPw: '', confirm: '' });
   const [pwLoading, setPwLoading] = useState(false);
   const [pwSuccess, setPwSuccess] = useState(false);
+  const [twoFaEnabled, setTwoFaEnabled] = useState(false);
+  const [twoFaSetup, setTwoFaSetup] = useState<{ secret: string; otpauthUrl: string } | null>(null);
+  const [twoFaCode, setTwoFaCode] = useState('');
+  const [twoFaLoading, setTwoFaLoading] = useState(false);
+  const [disablePw, setDisablePw] = useState('');
+  const [disablingTwoFa, setDisablingTwoFa] = useState(false);
+  const [platformSettings, setPlatformSettings] = useState<Record<string, string>>({});
+  const [platformLocal, setPlatformLocal] = useState<Record<string, string>>({});
+  const [platformSaving, setPlatformSaving] = useState(false);
+  const [health, setHealth] = useState<any>(null);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -598,6 +662,65 @@ export default function Profile() {
   useEffect(() => {
     api.get('/api/profile/sessions').then(r => setSessions(r.data)).catch(() => setSessions([]));
   }, []);
+
+  useEffect(() => {
+    api.get('/api/auth/2fa').then(r => setTwoFaEnabled(!!r.data.enabled)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.get('/api/settings').then(r => { setPlatformSettings(r.data); setPlatformLocal(r.data); }).catch(() => {});
+    api.get('/api/health').then(r => setHealth(r.data)).catch(() => {});
+  }, [isAdmin]);
+
+  const updatePlatform = (k: string, v: string) => setPlatformLocal(p => ({ ...p, [k]: v }));
+
+  const savePlatformSettings = async (subset?: Record<string, string>) => {
+    setPlatformSaving(true);
+    try {
+      await api.put('/api/settings', subset || platformLocal);
+      success('Settings saved');
+      const { data } = await api.get('/api/settings');
+      setPlatformSettings(data); setPlatformLocal(data);
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setPlatformSaving(false); }
+  };
+
+  const startTwoFaSetup = async () => {
+    setTwoFaLoading(true);
+    try {
+      const { data } = await api.post('/api/auth/2fa/setup');
+      setTwoFaSetup(data);
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setTwoFaLoading(false); }
+  };
+
+  const confirmTwoFaSetup = async () => {
+    if (!twoFaCode) return;
+    setTwoFaLoading(true);
+    try {
+      await api.post('/api/auth/2fa/verify', { code: twoFaCode });
+      setTwoFaEnabled(true);
+      setTwoFaSetup(null);
+      setTwoFaCode('');
+      success('Two-factor authentication enabled');
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setTwoFaLoading(false); }
+  };
+
+  const cancelTwoFaSetup = () => { setTwoFaSetup(null); setTwoFaCode(''); };
+
+  const disableTwoFa = async () => {
+    if (!disablePw) return;
+    setDisablingTwoFa(true);
+    try {
+      await api.post('/api/auth/2fa/disable', { password: disablePw });
+      setTwoFaEnabled(false);
+      setDisablePw('');
+      success('Two-factor authentication disabled');
+    } catch (err) { showError(parseApiError(err)); }
+    finally { setDisablingTwoFa(false); }
+  };
 
   const up = (key: string, value: any) => setForm(f => ({ ...f, [key]: value }));
 
@@ -640,13 +763,18 @@ export default function Profile() {
   const initials = ((displayName || data.username || '?').slice(0, 2)).toUpperCase();
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'account',       label: 'Account',       icon: <User size={15} /> },
+    { id: 'account',       label: 'Settings',      icon: <User size={15} /> },
     { id: 'notifications', label: 'Notifications', icon: <Bell size={15} /> },
     { id: 'feature-flags', label: 'Feature Flags', icon: <Flag size={15} /> },
     { id: 'tokens',        label: 'Tokens',        icon: <Key size={15} /> },
     { id: 'ssh-keys',      label: 'SSH Keys',      icon: <Terminal size={15} /> },
     { id: 'apps',          label: 'Apps',          icon: <LayoutGrid size={15} /> },
     { id: 'security',      label: 'Security',      icon: <Lock size={15} /> },
+    ...(isAdmin ? [
+      { id: 'platform' as Tab, label: 'Platform', icon: <Globe size={15} /> },
+      { id: 'ai'       as Tab, label: 'AI',       icon: <Bot size={15} /> },
+      { id: 'system'   as Tab, label: 'System',   icon: <Server size={15} /> },
+    ] : []),
   ];
 
   return (
@@ -994,6 +1122,70 @@ export default function Profile() {
             </div>
           </Card>
 
+          <Card style={{ animation: 'float-up 250ms ease-out 40ms both' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: '14px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck size={16} color={twoFaEnabled ? 'var(--accent-green)' : 'var(--text-muted)'} />
+                Two-Factor Authentication
+              </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 'var(--r-pill)',
+                background: twoFaEnabled ? 'var(--accent-green-dim)' : 'var(--bg-elevated)',
+                color: twoFaEnabled ? 'var(--accent-green)' : 'var(--text-muted)',
+                border: `1px solid ${twoFaEnabled ? 'rgba(16,185,129,.3)' : 'var(--border)'}`,
+              }}>
+                {twoFaEnabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.6 }}>
+              Require a 6-digit code from an authenticator app (Google Authenticator, Authy, 1Password…) in addition to your password when signing in.
+            </p>
+
+            {twoFaEnabled && !twoFaSetup && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 360 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <Smartphone size={13} color="var(--text-muted)" /> Enter your password to disable 2FA
+                </div>
+                <Input type="password" placeholder="Current password" value={disablePw} onChange={e => setDisablePw(e.target.value)} />
+                <Button size="sm" variant="danger" loading={disablingTwoFa} disabled={!disablePw} onClick={disableTwoFa} style={{ alignSelf: 'flex-start' }}>
+                  Disable 2FA
+                </Button>
+              </div>
+            )}
+
+            {!twoFaEnabled && !twoFaSetup && (
+              <Button variant="primary" size="sm" icon={<ShieldCheck size={13} />} loading={twoFaLoading} onClick={startTwoFaSetup}>
+                Set Up Two-Factor Authentication
+              </Button>
+            )}
+
+            {twoFaSetup && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 400 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  1. Add a new account in your authenticator app and enter this key manually:
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <code style={{
+                    flex: 1, padding: '10px 14px', background: 'var(--bg-elevated)', borderRadius: 'var(--r-md)',
+                    fontSize: 14, fontFamily: 'var(--font-mono)', letterSpacing: '.08em', color: 'var(--text-primary)',
+                    border: '1px solid var(--border-glow)', textAlign: 'center', wordBreak: 'break-all',
+                  }}>
+                    {twoFaSetup.secret}
+                  </code>
+                  <Button size="sm" icon={<Copy size={12} />} onClick={() => { navigator.clipboard.writeText(twoFaSetup.secret); success('Copied!'); }} />
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>2. Enter the 6-digit code it generates:</div>
+                <Input placeholder="123456" value={twoFaCode} onChange={e => setTwoFaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Button variant="primary" size="sm" icon={<Check size={13} />} loading={twoFaLoading} disabled={twoFaCode.length !== 6} onClick={confirmTwoFaSetup}>
+                    Verify & Enable
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={cancelTwoFaSetup}>Cancel</Button>
+                </div>
+              </div>
+            )}
+          </Card>
+
           <Card style={{ borderColor: 'rgba(239,68,68,0.3)', animation: 'float-up 250ms ease-out 80ms both' }}>
             <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent-red)', marginBottom: 6 }}>Danger Zone</div>
             <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.6 }}>
@@ -1043,6 +1235,143 @@ export default function Profile() {
           </Card>
         </div>
       </TabPanel>
+
+      {isAdmin && (
+        <TabPanel active={tab === 'platform'}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <PlatformSection title="Platform" description="Basic configuration shown in UI and emails">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <Input label="Platform Name" value={platformLocal.platform_name || ''} onChange={e => updatePlatform('platform_name', e.target.value)} hint="Shown in the browser tab and emails" />
+                <Input label="CORS Origins" value={platformLocal.cors_origins || ''} onChange={e => updatePlatform('cors_origins', e.target.value)} hint="Comma-separated list of allowed origins for API access" />
+              </div>
+            </PlatformSection>
+
+            <PlatformSection title="JWT Configuration" description="Authentication token signing and session duration">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <MaskedInput settingKey="jwt_secret" label="JWT Secret" placeholder="long-random-string…" local={platformLocal} update={updatePlatform}
+                  hint="Must be at least 32 characters. Changing this will log all users out." />
+                <Input label="Session Expiry" value={platformLocal.jwt_expiry || '7d'} onChange={e => updatePlatform('jwt_expiry', e.target.value)}
+                  hint="Format: 7d, 24h, 30m. Default: 7d" />
+              </div>
+            </PlatformSection>
+
+            <PlatformSection title="Access Control" description="Security headers and request logging">
+              <div>
+                <ToggleRow
+                  label="Helmet security headers"
+                  description="Add security headers to all API responses (strongly recommended for production)"
+                  checked={platformLocal.helmet_enabled !== 'false'}
+                  onChange={v => updatePlatform('helmet_enabled', v ? 'true' : 'false')}
+                />
+                <ToggleRow
+                  label="Request logging"
+                  description="Log all incoming HTTP requests to console for debugging"
+                  checked={platformLocal.request_logging !== 'false'}
+                  onChange={v => updatePlatform('request_logging', v ? 'true' : 'false')}
+                />
+              </div>
+            </PlatformSection>
+
+            <Button variant="primary" icon={<Save size={13} />} loading={platformSaving} onClick={() => savePlatformSettings()} style={{ alignSelf: 'flex-start' }}>
+              Save Platform Settings
+            </Button>
+          </div>
+        </TabPanel>
+      )}
+
+      {isAdmin && (
+        <TabPanel active={tab === 'ai'}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '14px 16px', background: 'rgba(99,102,241,0.08)', border: '1px solid var(--border-glow)', borderRadius: 'var(--r-lg)' }}>
+              <div style={{ width: 32, height: 32, borderRadius: 'var(--r-md)', background: 'rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Bot size={15} color="var(--accent-blue-2)" />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3 }}>AI features are active</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  AI features are powered by an API key configured as a server environment variable (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>GROQ_API_KEY</code>). It is not visible or editable here for security reasons.
+                </div>
+              </div>
+            </div>
+
+            <PlatformSection title="Model" description="Which AI provider and model Podium's AI tools call">
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                Root cause analysis, incident reports, and the AI assistant chat run on <strong style={{ color: 'var(--text-primary)' }}>Groq</strong>'s free tier
+                (<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>openai/gpt-oss-120b</code>).
+                Change the model via the <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--bg-elevated)', padding: '1px 5px', borderRadius: 3 }}>AI_MODEL</code> env var on the server.
+              </div>
+            </PlatformSection>
+          </div>
+        </TabPanel>
+      )}
+
+      {isAdmin && health && (
+        <TabPanel active={tab === 'system'}>
+          {(() => {
+            const runtimeRows: { icon: React.ReactNode; label: string; value: any }[] = [
+              { icon: <Server size={13} />, label: 'Node.js', value: health.nodeVersion },
+              { icon: <Database size={13} />, label: 'Database', value: `${(health.dbSize / 1024).toFixed(1)} KB (SQLite)` },
+              { icon: <Clock size={13} />, label: 'Uptime', value: health.uptimeHuman },
+              { icon: <Cpu size={13} />, label: 'Memory', value: `${health.memory?.free} MB free / ${health.memory?.total} MB total` },
+              { icon: <Users size={13} />, label: 'Users', value: health.userCount },
+              { icon: <Globe size={13} />, label: 'Platform', value: health.platform },
+            ];
+            const serviceRows: { name: string; status: string; icon: React.ReactNode }[] = [
+              { name: 'API Server', status: 'operational', icon: <Activity size={13} /> },
+              { name: 'Database', status: 'operational', icon: <Database size={13} /> },
+              { name: 'Metrics Collection', status: 'operational', icon: <BarChart2 size={13} /> },
+              { name: 'AI (Groq)', status: 'operational', icon: <Bot size={13} /> },
+            ];
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '18px 20px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', overflow: 'hidden', position: 'relative' }}>
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg,#6366f1,#a855f7,#22d3ee)' }} />
+                  <div style={{ width: 44, height: 44, borderRadius: 'var(--r-lg)', background: 'linear-gradient(135deg,#6366f1,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--glow-blue)' }}>
+                    <Zap size={20} color="#fff" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>Podium v4.0.0</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>AIOps Platform for DevOps teams</div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', padding: '4px 12px', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 'var(--r-pill)', fontSize: 11, fontWeight: 700, color: '#10b981', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+                    All systems operational
+                  </div>
+                </div>
+
+                <PlatformSection title="Runtime Information" description="Server environment details">
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {runtimeRows.map((row, i, arr) => (
+                      <div key={row.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border-muted)' : 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '13px' }}>
+                          {row.icon}{row.label}
+                        </div>
+                        <span style={{ fontSize: '13px', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </PlatformSection>
+
+                <PlatformSection title="Service Status" description="All subsystems and their current state">
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {serviceRows.map((s, i, arr) => (
+                      <div key={s.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border-muted)' : 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-secondary)' }}>
+                          {s.icon}{s.name}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 'var(--r-pill)', background: s.status === 'operational' ? 'rgba(16,185,129,0.1)' : 'var(--bg-elevated)', border: `1px solid ${s.status === 'operational' ? 'rgba(16,185,129,0.25)' : 'var(--border)'}` }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: s.status === 'operational' ? '#10b981' : 'var(--text-muted)', display: 'inline-block' }} />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: s.status === 'operational' ? '#10b981' : 'var(--text-muted)', textTransform: 'capitalize' }}>{s.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </PlatformSection>
+              </div>
+            );
+          })()}
+        </TabPanel>
+      )}
 
         </div>
       </div>
