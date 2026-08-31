@@ -619,6 +619,13 @@ export default function Profile() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = (searchParams.get('tab') as Tab) || 'account';
   const [tab, setTabState] = useState<Tab>(initialTab);
+  // Sidebar links point at /profile?tab=X — since that's the same route, React
+  // Router won't remount this component when jumping between tabs, so keep
+  // local state in sync with the URL whenever it changes underneath us.
+  useEffect(() => {
+    const urlTab = (searchParams.get('tab') as Tab) || 'account';
+    setTabState(prev => (prev === urlTab ? prev : urlTab));
+  }, [searchParams]);
   const setTab = (t: Tab) => {
     setTabState(t);
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', t); return next; }, { replace: true });

@@ -128,7 +128,7 @@ export class DeploymentExecutor {
       INSERT INTO cloud_deployments
         (id, provider, name, region, status, config, logs, repo_url, branch, user_id, source_type)
       VALUES (?, ?, ?, ?, 'building', ?, '[]', ?, ?, ?, 'ai-deploy')
-    `).run(cloudId, plan.provider, name, 'auto', config, plan.repoUrl, plan.branch, userId);
+    `).run(cloudId, plan.provider, name, opts.region || null, config, plan.repoUrl, plan.branch, userId);
 
     onUpdate({ type: 'log', message: `[podium] Creating deployment "${name}" on ${plan.provider}...`, level: 'info' });
     appendCloudLog(cloudId, `Creating deployment "${name}" on ${plan.provider}`);

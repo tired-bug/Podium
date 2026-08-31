@@ -178,8 +178,11 @@ export class VercelProvider implements IProvider {
       };
       if (opts.buildCommand) payload.buildCommand = opts.buildCommand;
       if (opts.outputDirectory) payload.outputDirectory = opts.outputDirectory;
-      if (opts.rootDirectory) payload.rootDirectory = opts.rootDirectory;
       if (opts.framework) payload.framework = opts.framework;
+      // NOTE: rootDirectory is a *project* setting (set via ensureProject above),
+      // not a valid field on the deployment payload itself — the Vercel API
+      // rejects POST /v13/deployments with "should NOT have additional
+      // property `rootDirectory`" if it's included here.
     } else {
       // No repo URL: deploy as a static/empty deployment (Vercel still needs a source)
       payload = {

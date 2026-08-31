@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Github, ScrollText, BarChart2,
   Bot, Users, ChevronLeft, ChevronRight,
   Zap, User, Plug, DollarSign, Cpu,
+  Bell, Flag, Key, Terminal, LayoutGrid, Lock, Globe, Server,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
 
@@ -34,7 +35,19 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
     ]},
   { section: 'Settings',
     items: [
-      { to: '/profile', icon: <User size={14} />, label: 'Settings' },
+      { to: '/profile?tab=account',       icon: <User size={14} />,       label: 'Settings' },
+      { to: '/profile?tab=notifications', icon: <Bell size={14} />,       label: 'Notifications' },
+      { to: '/profile?tab=feature-flags', icon: <Flag size={14} />,       label: 'Feature Flags' },
+      { to: '/profile?tab=tokens',        icon: <Key size={14} />,        label: 'Tokens' },
+      { to: '/profile?tab=ssh-keys',      icon: <Terminal size={14} />,   label: 'SSH Keys' },
+      { to: '/profile?tab=apps',          icon: <LayoutGrid size={14} />, label: 'Apps' },
+      { to: '/profile?tab=security',      icon: <Lock size={14} />,       label: 'Security' },
+      ...(isAdmin ? [
+        { to: '/profile?tab=team',   icon: <Users size={14} />,  label: 'Team' },
+        { to: '/profile?tab=platform', icon: <Globe size={14} />, label: 'Platform' },
+        { to: '/profile?tab=ai',       icon: <Bot size={14} />,   label: 'AI' },
+        { to: '/profile?tab=system',   icon: <Server size={14} />, label: 'System' },
+      ] : []),
     ]},
 ];
 
@@ -45,8 +58,10 @@ function NavItem({ to, icon, label, collapsed, index }: {
   const location = useLocation();
   const [hovered, setHov] = useState(false);
 
-  const active = location.pathname === to ||
-    (to !== '/dashboard' && location.pathname.startsWith(to));
+  const [toPath, toQuery] = to.split('?');
+  const active = toQuery
+    ? location.pathname === toPath && new URLSearchParams(location.search).get('tab') === new URLSearchParams(toQuery).get('tab')
+    : location.pathname === to || (to !== '/dashboard' && location.pathname.startsWith(to));
 
   return (
     <div

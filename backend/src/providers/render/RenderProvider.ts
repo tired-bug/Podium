@@ -60,7 +60,10 @@ export class RenderProvider implements IProvider {
 
     const runtime = opts.runtime || 'node';
     const plan = opts.plan || 'free';
-    const region = opts.region || 'oregon';
+    const RENDER_REGIONS = ['oregon', 'ohio', 'virginia', 'frankfurt', 'singapore'];
+    // Guard against stale/placeholder region values (e.g. 'auto') that Render's
+    // API rejects outright — fall back to the default rather than failing.
+    const region = opts.region && RENDER_REGIONS.includes(opts.region) ? opts.region : 'oregon';
 
     console.log(`[render] Creating service name=${opts.name} ownerId=${ownerId} region=${region} runtime=${runtime} plan=${plan}`);
 
