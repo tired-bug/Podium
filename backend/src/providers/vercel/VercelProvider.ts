@@ -1,6 +1,21 @@
 import axios, { AxiosInstance } from 'axios';
 import { IProvider, DeployOptions, DeployResult, ProviderStatus, ProviderLog } from '../IProvider';
 
+// Map Podium's internal framework identifiers (used across all providers,
+// e.g. by the AI framework detector) to Vercel's actual accepted enum
+// values. Anything not in this map — including unknowns like 'static',
+// 'docker', 'php', 'unknown', or the frontend's 'other' placeholder — is
+// left out of the payload entirely so Vercel falls back to zero-config
+// auto-detection instead of rejecting the request outright.
+const VERCEL_FRAMEWORK_MAP: Record<string, string> = {
+  nextjs: 'nextjs', nuxt: 'nuxtjs', nuxtjs: 'nuxtjs', sveltekit: 'sveltekit',
+  svelte: 'svelte', vite: 'vite', vue: 'vue', angular: 'angular',
+  nestjs: 'nestjs', fastify: 'fastify', express: 'express', node: 'node',
+  python: 'python', fastapi: 'fastapi', django: 'django', flask: 'flask',
+  go: 'go', rust: 'rust', gatsby: 'gatsby', remix: 'remix', astro: 'astro',
+  'create-react-app': 'create-react-app', hugo: 'hugo',
+};
+
 export class VercelProvider implements IProvider {
   readonly id = 'vercel';
   readonly name = 'Vercel';
@@ -151,9 +166,9 @@ export class VercelProvider implements IProvider {
     const teamId = creds.vercel_team_id || undefined;
     const params = teamId ? `?teamId=${teamId}` : '';
     const branch = opts.branch || 'main';
-    // 'other' is a Podium-only placeholder meaning "no specific framework" —
-    // Vercel's API rejects it outright since it's not in their framework enum.
-    const framework = opts.framework && opts.framework !== 'other' ? opts.framework : undefined;
+    // Translate our internal framework identifier to Vercel's accepted enum
+    // (or drop it) — see VERCEL_FRAMEWORK_MAP above.
+    const framework = opts.framework ? VERCEL_FRAMEWORK_MAP[opts.framework] : undefined;
 
     // Build deployment payload
     const envVars = opts.envVars || {};

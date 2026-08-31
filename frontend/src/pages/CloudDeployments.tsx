@@ -248,6 +248,11 @@ function DepRow({ dep, onRefresh }: { dep: CloudDep; onRefresh: () => void }) {
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No deploy history yet — history is recorded from your next deploy onward.</span>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {versions.length === 1 && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: 2 }}>
+                  Only the current version is recorded — nothing earlier to roll back to yet. Redeploy or make another change to build up history.
+                </span>
+              )}
               {versions.map((v, i) => (
                 <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)', borderRadius: 'var(--r-md)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>

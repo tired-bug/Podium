@@ -114,13 +114,15 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
           WHERE id=?
         `).run(result.status, result.url || null, result.deploymentId, localId);
 
-        if (result.status === 'live' || result.status === 'building' || result.status === 'deploying') {
-          db.prepare(`
-            INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
-            VALUES (?, ?, 'initial deploy', ?, ?, ?, ?, ?, ?)
-          `).run(uuidv4(), localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
-            image || null, repoUrl || null, result.status, result.deploymentId || null, userId);
-        }
+        // Record this as a version regardless of outcome — a failed initial
+        // deploy still needs to show up in history so later successful
+        // redeploys have something to roll back *from*, and so the config
+        // that failed isn't silently lost.
+        db.prepare(`
+          INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
+          VALUES (?, ?, 'initial deploy', ?, ?, ?, ?, ?, ?)
+        `).run(uuidv4(), localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
+          image || null, repoUrl || null, result.status, result.deploymentId || null, userId);
 
         console.log(`[providers] Deploy success localId=${localId} providerDepId=${result.deploymentId} status=${result.status}`);
       } catch (err: any) {
@@ -132,6 +134,15 @@ router.post('/deploy', requireAuth, requireRole('admin', 'developer'), async (re
           SET status='failed', logs=?, provider_error=?, updated_at=datetime('now')
           WHERE id=?
         `).run(logs, errMsg, localId);
+
+        // Still record the version so the config isn't lost — this deploy
+        // never got a provider_deployment_id, but a later successful
+        // redeploy can still exist alongside it in history.
+        db.prepare(`
+          INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
+          VALUES (?, ?, 'initial deploy', ?, ?, ?, 'failed', NULL, ?)
+        `).run(uuidv4(), localId, JSON.stringify({ repoUrl, branch, image, envVars: envVars || {}, buildCommand, startCommand, ownerId, runtime, plan, projectName, workspaceId, framework, rootDirectory, outputDirectory }),
+          image || null, repoUrl || null, userId);
       }
     })();
 
@@ -253,10 +264,12 @@ router.post('/deployments/:id/redeploy', requireAuth, requireRole('admin', 'deve
   } catch (err: any) {
     const errMsg = err?.message || String(err);
     db.prepare(`UPDATE cloud_deployments SET status='failed', provider_error=?, updated_at=datetime('now') WHERE id=?`).run(errMsg, row.id);
+    db.prepare(`
+      INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
+      VALUES (?, ?, 'redeploy', ?, ?, ?, 'failed', NULL, ?)
+    `).run(uuidv4(), row.id, JSON.stringify(cfg), row.docker_image || null, row.repo_url || null, userId);
   }
 });
-
-// POST /api/providers/deployments/:id/rollback — redeploy at a prior version's config
 router.post('/deployments/:id/rollback', requireAuth, requireRole('admin', 'developer'), async (req: AuthRequest, res: Response) => {
   const { version_id } = req.body || {};
   if (!version_id) return res.status(400).json({ error: 'version_id is required' });
@@ -290,6 +303,10 @@ router.post('/deployments/:id/rollback', requireAuth, requireRole('admin', 'deve
   } catch (err: any) {
     const errMsg = err?.message || String(err);
     db.prepare(`UPDATE cloud_deployments SET status='failed', provider_error=?, updated_at=datetime('now') WHERE id=?`).run(errMsg, row.id);
+    db.prepare(`
+      INSERT INTO deployment_versions (id, deployment_id, label, config, docker_image, repo_url, status, provider_deployment_id, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, 'failed', NULL, ?)
+    `).run(uuidv4(), row.id, `rollback to ${timeAgoLabel(version.created_at)}`, JSON.stringify(cfg), version.docker_image || null, version.repo_url || null, userId);
   }
 });
 
