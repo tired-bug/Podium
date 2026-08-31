@@ -72,6 +72,12 @@ const SEVERITY_BG: Record<string, string> = {
   low:    'var(--accent-blue-dim)',
 };
 
+const SEVERITY_LABEL: Record<string, string> = {
+  high:   'High impact — likely costing you money right now; act on this first.',
+  medium: 'Medium impact — worth fixing soon, but not urgent.',
+  low:    'Low impact — a suggestion or best practice, no immediate cost risk.',
+};
+
 function fmt(n: number) { return n === 0 ? 'Free' : `$${n.toFixed(2)}`; }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -224,7 +230,8 @@ function RecommendationCard({ r, index }: { r: Recommendation; index: number }) 
               padding: '2px 7px', borderRadius: 'var(--r-pill)',
               background: bg, color,
               textTransform: 'uppercase', letterSpacing: '.05em',
-            }}>{r.severity}</span>
+              cursor: 'help',
+            }} title={SEVERITY_LABEL[r.severity]}>{r.severity}</span>
             {r.provider && (
               <span style={{
                 fontSize: '10px', padding: '2px 7px', borderRadius: 'var(--r-pill)',
@@ -509,6 +516,23 @@ export default function FinOps() {
           {/* Recommendations tab */}
           {tab === 'recommendations' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {data.recommendations.length > 0 && (
+                <div style={{
+                  display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center',
+                  padding: '8px 12px', borderRadius: 'var(--r-md)',
+                  background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)',
+                  fontSize: '11px', color: 'var(--text-muted)',
+                }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>Severity:</span>
+                  {(['high', 'medium', 'low'] as const).map(s => (
+                    <span key={s} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEVERITY_COLOR[s], flexShrink: 0 }} />
+                      <strong style={{ color: SEVERITY_COLOR[s], textTransform: 'uppercase' }}>{s}</strong>
+                      <span>{SEVERITY_LABEL[s].split('—')[1]?.trim()}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               {data.recommendations.length === 0 ? (
                 <EmptyState
                   icon={<CheckCircle size={28} color="var(--accent-green)" />}

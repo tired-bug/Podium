@@ -197,10 +197,15 @@ export default function Dashboard() {
     if (reportsRes.status === 'fulfilled') setReports(reportsRes.value.data);
     if (cloudRes.status === 'fulfilled') setCloudDeps(cloudRes.value.data);
 
-    const days = Array.from({ length: 7 }, (_, i) => ({
-      timestamp: Date.now() - (6 - i) * 86_400_000,
-      successRate: 82 + Math.random() * 18,
-    }));
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      d.setHours(0, 0, 0, 0);
+      return {
+        timestamp: d.getTime(),
+        successRate: 82 + Math.random() * 18,
+      };
+    });
     setMetrics(days);
     setLoading(false);
   }, []);
@@ -245,16 +250,42 @@ export default function Dashboard() {
       {}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16 }}>
         {}
-        <Card style={{ animation: 'float-up 350ms ease-out 240ms both' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div style={{ fontSize: '14px', fontWeight: 700 }}>Deployment Health</div>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Last 7 days</span>
+        <Card style={{ animation: 'float-up 350ms ease-out 240ms both', position: 'relative', overflow: 'hidden' }}>
+          <div style={{
+            position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(48,209,88,0.18) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, position: 'relative' }}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 700 }}>Deployment Health</div>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Last 7 days</span>
+            </div>
+            {metrics.length > 0 && (() => {
+              const last = metrics[metrics.length - 1].successRate;
+              const prev = metrics.length > 1 ? metrics[metrics.length - 2].successRate : last;
+              const delta = last - prev;
+              const up = delta >= 0;
+              return (
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--accent-green)', lineHeight: 1, fontFamily: 'var(--font-mono)', textShadow: '0 0 16px rgba(48,209,88,0.5)' }}>
+                    {last.toFixed(1)}%
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3, justifyContent: 'flex-end', marginTop: 3, fontSize: '11px', fontWeight: 700, color: up ? 'var(--accent-green)' : 'var(--accent-red)' }}>
+                    {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+                    {Math.abs(delta).toFixed(1)}pt vs prior day
+                  </div>
+                </div>
+              );
+            })()}
           </div>
-          <MetricChart
-            data={metrics}
-            lines={[{ key: 'successRate', label: 'Success Rate', color: 'var(--accent-green)' }]}
-            type="area" unit="%" height={160} yDomain={[0, 100]}
-          />
+          <div style={{ filter: 'drop-shadow(0 0 6px rgba(48,209,88,0.35))', position: 'relative' }}>
+            <MetricChart
+              data={metrics}
+              lines={[{ key: 'successRate', label: 'Success Rate', color: 'var(--accent-green)' }]}
+              type="area" unit="%" height={190} yDomain={[0, 100]} animate
+            />
+          </div>
         </Card>
 
         {}

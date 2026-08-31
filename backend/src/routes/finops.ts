@@ -166,41 +166,50 @@ function buildFinOpsData() {
   }
 
   // 6. Always surface something — if no cost/waste issues were found, fall back
-  // to proactive housekeeping/best-practice suggestions so the panel never reads as "unused".
+  // to proactive best-practice suggestions grounded in the actual estimated
+  // spend, so the panel never reads as generic filler.
   if (recommendations.length === 0 && all.length > 0) {
+    const totalCostSoFar = +providerSummaries.reduce((s, p) => s + p.estimatedMonthlyCost, 0).toFixed(2);
+    const activeCount = totalActiveFromAll(all);
+    const costBreakdown = providerSummaries
+      .filter(p => p.estimatedMonthlyCost > 0)
+      .map(p => `${p.provider} $${p.estimatedMonthlyCost.toFixed(2)}/mo`)
+      .join(', ') || 'entirely on free tiers';
+
     const noMonitoring = providerSummaries.every(p => p.recentBuilds === 0);
     if (noMonitoring) {
       recommendations.push({
-        type: 'housekeeping',
+        type: 'best_practice',
         severity: 'low',
         title: 'No deploys in the last 30 days',
-        description: 'Nothing has redeployed recently. Confirm your CI/CD triggers are still wired up correctly, or archive services you no longer maintain.',
+        description: `Nothing has redeployed recently, yet you're still paying an estimated $${totalCostSoFar.toFixed(2)}/mo (${costBreakdown}) for ${activeCount} active service${activeCount === 1 ? '' : 's'}. Confirm your CI/CD triggers are still wired up, or archive services you no longer maintain.`,
         estimatedSaving: 0,
       });
     }
     if (providerSummaries.length === 1) {
+      const only = providerSummaries[0];
       recommendations.push({
-        type: 'housekeeping',
+        type: 'best_practice',
         severity: 'low',
         title: 'Single-provider setup — consider a cost/uptime baseline',
-        description: `All services run on ${providerSummaries[0].provider}. Set a monthly cost alert threshold now, before usage grows, so a spike is caught early.`,
-        provider: providerSummaries[0].provider,
+        description: `All ${only.deploymentCount} service${only.deploymentCount === 1 ? '' : 's'} run on ${only.provider} at an estimated $${only.estimatedMonthlyCost.toFixed(2)}/mo. Set a monthly budget alert around that figure now, before usage grows, so a spike is caught early.`,
+        provider: only.provider,
         estimatedSaving: 0,
       });
     } else {
       recommendations.push({
-        type: 'housekeeping',
+        type: 'best_practice',
         severity: 'low',
         title: 'Set spend alerts across providers',
-        description: `You're spread across ${providerSummaries.length} providers with no current waste detected. Configure a monthly budget alert per provider so cost growth is visible before it compounds.`,
+        description: `Current estimated spend is $${totalCostSoFar.toFixed(2)}/mo across ${providerSummaries.length} providers (${costBreakdown}). No waste detected yet — set a budget alert per provider at roughly 20% above today's number so cost growth is visible before it compounds.`,
         estimatedSaving: 0,
       });
     }
     recommendations.push({
-      type: 'housekeeping',
+      type: 'best_practice',
       severity: 'low',
       title: 'Nothing to optimize right now — establish a baseline instead',
-      description: `${totalActiveFromAll(all)} services are active and healthy. Revisit this panel after your next growth spike; free-tier limits (e.g. Render's 1 free service, Vercel's free hobby tier) are the most common source of surprise charges as usage increases.`,
+      description: `${activeCount} service${activeCount === 1 ? ' is' : 's are'} active and healthy at a combined $${totalCostSoFar.toFixed(2)}/mo. Revisit this panel after your next growth spike; free-tier limits (e.g. Render's 1 free service, Vercel's free hobby tier) are the most common source of surprise charges as usage increases.`,
       estimatedSaving: 0,
     });
   }
