@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Github, ScrollText, BarChart2,
   Bot, Users, ChevronLeft, ChevronRight,
   Zap, User, Plug, DollarSign, Cpu,
-  Bell, Flag, Key, Terminal, LayoutGrid, Lock, Globe, Server,
+  Bell, Flag, Key, Terminal, LayoutGrid, Lock,
 } from 'lucide-react';
 import { useRole } from '../../hooks/useRole';
 
@@ -44,9 +44,6 @@ const buildNav = (isDeveloper: boolean, isAdmin: boolean): NavSection[] => [
       { to: '/profile?tab=security',      icon: <Lock size={14} />,       label: 'Security' },
       ...(isAdmin ? [
         { to: '/profile?tab=team',   icon: <Users size={14} />,  label: 'Team' },
-        { to: '/profile?tab=platform', icon: <Globe size={14} />, label: 'Platform' },
-        { to: '/profile?tab=ai',       icon: <Bot size={14} />,   label: 'AI' },
-        { to: '/profile?tab=system',   icon: <Server size={14} />, label: 'System' },
       ] : []),
     ]},
 ];
