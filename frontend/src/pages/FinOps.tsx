@@ -2,11 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, TrendingDown, AlertCircle, CheckCircle,
   RefreshCw, ChevronDown, ChevronUp, Zap, Activity,
-  Server, BarChart2, Cloud,
+  Server, PieChart, Cloud,
 } from 'lucide-react';
 import { Card, Badge, EmptyState, Skeleton } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { MetricBarChart } from '../components/charts/MetricChart';
 import api from '../lib/api';
 import { parseApiError } from '../lib/utils';
 import { useToast } from '../contexts/ToastContext';
@@ -263,63 +262,12 @@ function RecommendationCard({ r, index }: { r: Recommendation; index: number }) 
   );
 }
 
-// ISO-week key like "2026-W35"
-function isoWeekKey(d: Date) {
-  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const dayNum = dt.getUTCDay() || 7;
-  dt.setUTCDate(dt.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
-  return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
-}
-
-type Granularity = 'day' | 'week' | 'month';
-
-function aggregateTimeline(data: BuildPoint[], granularity: Granularity): BuildPoint[] {
-  if (granularity === 'day') return data;
-  const buckets: Record<string, number> = {};
-  for (const d of data) {
-    const date = new Date(d.date);
-    const key = granularity === 'week'
-      ? isoWeekKey(date)
-      : date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
-    buckets[key] = (buckets[key] || 0) + d.count;
-  }
-  return Object.entries(buckets).map(([date, count]) => ({ date, count }));
-}
-
-function GranularityToggle({ value, onChange }: { value: Granularity; onChange: (g: Granularity) => void }) {
-  const opts: { id: Granularity; label: string }[] = [
-    { id: 'day', label: 'Daily' },
-    { id: 'week', label: 'Weekly' },
-    { id: 'month', label: 'Monthly' },
-  ];
-  return (
-    <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 'var(--r-md)', background: 'var(--bg-elevated)', border: '1px solid var(--border-muted)' }}>
-      {opts.map(o => (
-        <button
-          key={o.id}
-          onClick={() => onChange(o.id)}
-          style={{
-            padding: '4px 10px', borderRadius: 'var(--r-sm)', border: 'none', cursor: 'pointer',
-            fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-sans)',
-            background: value === o.id ? 'var(--accent)' : 'transparent',
-            color: value === o.id ? '#fff' : 'var(--text-muted)',
-            transition: 'all 150ms',
-          }}
-        >{o.label}</button>
-      ))}
-    </div>
-  );
-}
-
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function FinOps() {
   const [data, setData]       = useState<FinOpsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
   const [tab, setTab]         = useState<'overview' | 'recommendations' | 'providers'>('overview');
-  const [granularity, setGranularity] = useState<Granularity>('week');
   const { toast } = useToast();
 
   const load = useCallback(async () => {
@@ -429,31 +377,48 @@ export default function FinOps() {
                 />
               </div>
 
-              {/* Build timeline */}
+              {/* Cost breakdown by provider */}
               <Card>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <BarChart2 size={14} color="var(--accent)" />
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      Deploy Activity {granularity === 'day' ? '(30 days)' : granularity === 'week' ? '(by week)' : '(by month)'}
-                    </span>
-                  </div>
-                  <GranularityToggle value={granularity} onChange={setGranularity} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <PieChart size={14} color="var(--accent)" />
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    Cost Breakdown by Provider
+                  </span>
                 </div>
-                {data.buildTimeline.length > 0 ? (() => {
-                  const aggregated = aggregateTimeline(data.buildTimeline, granularity);
-                  return (
-                    <MetricBarChart
-                      data={aggregated}
-                      dataKey="count"
-                      labelKey="date"
-                      color="var(--accent)"
-                      unit=" deploys"
-                      height={180}
-                    />
-                  );
-                })() : (
-                  <EmptyState icon={<BarChart2 size={22} />} title="No deploys yet" />
+                {data.providerSummaries.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {data.providerSummaries
+                      .slice()
+                      .sort((a, b) => b.estimatedMonthlyCost - a.estimatedMonthlyCost)
+                      .map(p => {
+                        const max = Math.max(...data.providerSummaries.map(x => x.estimatedMonthlyCost), 1);
+                        const pct = Math.max(3, (p.estimatedMonthlyCost / max) * 100);
+                        const color = PROVIDER_COLOR[p.provider] ?? 'var(--accent)';
+                        return (
+                          <div key={p.provider}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', textTransform: 'capitalize' }}>
+                                  {p.provider}
+                                </span>
+                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                  · {p.activeServices} active
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '12px', fontWeight: 700, color: p.estimatedMonthlyCost === 0 ? 'var(--accent-green)' : 'var(--text-primary)' }}>
+                                {fmt(p.estimatedMonthlyCost)}<span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-muted)' }}>/mo</span>
+                              </span>
+                            </div>
+                            <div style={{ height: 6, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3, transition: 'width 500ms ease' }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  <EmptyState icon={<PieChart size={22} />} title="No cost data yet" />
                 )}
               </Card>
 

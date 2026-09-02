@@ -17,18 +17,10 @@ import api from '../lib/api';
 
 const LOGOS: Record<string, React.ReactNode> = {
   render: (
-    <svg viewBox="0 0 40 40" width="32" height="32" fill="none">
-      <rect width="40" height="40" rx="10" fill="#46E3B7" />
-      <path d="M20 10 L28 20 L20 30 L12 20 Z" fill="#fff" fillOpacity=".9" />
-    </svg>
+    <img src="/logos/render.png" alt="Render" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />
   ),
   railway: (
-    <svg viewBox="0 0 40 40" width="32" height="32" fill="none">
-      <rect width="40" height="40" rx="10" fill="#0B0D0E" />
-      <rect x="8" y="17" width="24" height="3" rx="1.5" fill="#fff" />
-      <rect x="12" y="10" width="3" height="20" rx="1.5" fill="#fff" />
-      <rect x="25" y="10" width="3" height="20" rx="1.5" fill="#fff" />
-    </svg>
+    <img src="/logos/railway.png" alt="Railway" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />
   ),
   vercel: (
     <svg viewBox="0 0 40 40" width="32" height="32" fill="none">

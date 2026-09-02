@@ -805,44 +805,32 @@ export default function Profile() {
         {}
         <div style={{
           height: 110, position: 'relative', overflow: 'hidden',
-          background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #ec4899 100%)',
-          backgroundSize: '200% 200%',
-          animation: 'gradient-shift 6s ease infinite',
+          background: 'var(--bg-secondary)',
+          borderBottom: '1px solid var(--border)',
         }}>
           {}
           <div style={{
-            position: 'absolute', inset: 0, opacity: 0.15,
-            backgroundImage: 'linear-gradient(rgba(255,255,255,.4) 1px, transparent 1px), linear-gradient(90deg,rgba(255,255,255,.4) 1px, transparent 1px)',
+            position: 'absolute', inset: 0, opacity: 0.5,
+            backgroundImage: 'linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg,rgba(255,255,255,.05) 1px, transparent 1px)',
             backgroundSize: '28px 28px',
           }} />
-          {}
-          {[
-            { w: 120, h: 120, t: -30, l: '10%', opacity: 0.2 },
-            { w: 80,  h: 80,  t: 20,  l: '60%', opacity: 0.15 },
-            { w: 60,  h: 60,  t: -10, l: '80%', opacity: 0.18 },
-          ].map((o, i) => (
-            <div key={i} style={{
-              position: 'absolute', top: o.t, left: o.l,
-              width: o.w, height: o.h, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.2)',
-              backdropFilter: 'blur(10px)',
-              opacity: o.opacity,
-              animation: `orbit ${8 + i * 3}s linear infinite`,
-            }} />
-          ))}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'radial-gradient(circle at 20% 0%, rgba(99,102,241,0.12) 0%, transparent 55%)',
+          }} />
         </div>
 
         <div style={{ padding: '0 28px 24px' }}>
           {}
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: -48 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: -54 }}>
             {}
             <div style={{
-              width: 90, height: 90, borderRadius: '50%',
+              width: 96, height: 96, borderRadius: '50%',
               background: p.avatar ? 'transparent' : GRADIENTS[gradIdx],
               border: '4px solid var(--bg-card)',
               overflow: 'hidden', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 0 2px var(--border-glow), var(--glow-blue)',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
               animation: 'scale-in 400ms cubic-bezier(0.34,1.56,0.64,1) 100ms both',
             }}>
               {p.avatar

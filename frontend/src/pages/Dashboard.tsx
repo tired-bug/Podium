@@ -261,7 +261,7 @@ export default function Dashboard() {
               const lastWeek = buildTimeline.slice(-7).reduce((s, d) => s + d.count, 0);
               return (
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--accent-blue)', lineHeight: 1, fontFamily: 'var(--font-mono)', textShadow: '0 0 16px rgba(99,102,241,0.5)' }}>
+                  <div style={{ fontSize: '26px', fontWeight: 900, color: 'var(--accent-blue)', lineHeight: 1, fontFamily: 'var(--font-mono)' }}>
                     {total}
                   </div>
                   <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', marginTop: 3 }}>
@@ -271,7 +271,7 @@ export default function Dashboard() {
               );
             })()}
           </div>
-          <div style={{ filter: 'drop-shadow(0 0 6px rgba(99,102,241,0.35))', position: 'relative' }}>
+          <div style={{ position: 'relative' }}>
             {buildTimeline.length > 0 ? (
               <MetricBarChart
                 data={buildTimeline}

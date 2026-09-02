@@ -86,17 +86,21 @@ function GranularityToggle({ value, onChange }: { value: Granularity; onChange: 
     { id: 'month', label: 'Monthly' },
   ];
   return (
-    <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 'var(--radius-md)', background: 'var(--bg-tertiary)', border: '1px solid var(--border-muted)' }}>
+    <div style={{
+      display: 'flex', gap: 2, padding: 3, borderRadius: 'var(--radius-pill, 999px)',
+      background: 'var(--bg-tertiary)', border: '1px solid var(--border-muted)',
+    }}>
       {opts.map(o => (
         <button
           key={o.id}
           onClick={() => onChange(o.id)}
           style={{
-            padding: '3px 10px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
-            fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-sans)',
+            padding: '5px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+            fontSize: '11px', fontWeight: 600, fontFamily: 'var(--font-sans)', letterSpacing: '.01em',
             background: value === o.id ? 'var(--accent-blue)' : 'transparent',
             color: value === o.id ? '#fff' : 'var(--text-muted)',
-            transition: 'all 150ms',
+            boxShadow: value === o.id ? '0 2px 8px rgba(99,102,241,0.35)' : 'none',
+            transition: 'all 150ms ease',
           }}
         >{o.label}</button>
       ))}
