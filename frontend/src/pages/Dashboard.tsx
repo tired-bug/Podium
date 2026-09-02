@@ -245,13 +245,8 @@ export default function Dashboard() {
       {}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 16 }}>
         {}
-        <Card style={{ animation: 'float-up 350ms ease-out 240ms both', position: 'relative', overflow: 'hidden' }}>
-          <div style={{
-            position: 'absolute', top: -60, right: -60, width: 200, height: 200, borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          }} />
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, position: 'relative' }}>
+        <Card style={{ animation: 'float-up 350ms ease-out 240ms both' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
             <div>
               <div style={{ fontSize: '14px', fontWeight: 700 }}>Deploy Activity</div>
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Last 14 days</span>

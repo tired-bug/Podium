@@ -29,28 +29,13 @@ const LOGOS: Record<string, React.ReactNode> = {
     </svg>
   ),
   aws: (
-    <svg viewBox="0 0 40 40" width="32" height="32" fill="none">
-      <rect width="40" height="40" rx="10" fill="#232F3E" />
-      <path d="M12 22c0 2.2 1.8 4 4 4h8c2.2 0 4-1.8 4-4s-1.8-4-4-4h-1a5 5 0 0 0-10 0c-1.1.4-2 1.5-2 2.8v1.2z" fill="#FF9900" />
-      <path d="M10 28l2-2m18 2l-2-2" stroke="#FF9900" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
+    <img src="/logos/aws.png" alt="AWS" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />
   ),
   azure: (
-    <svg viewBox="0 0 40 40" width="32" height="32" fill="none">
-      <rect width="40" height="40" rx="10" fill="#0078D4" />
-      <path d="M12 28 L20 12 L24 20 L18 20 L26 28 Z" fill="#fff" fillOpacity=".9" />
-    </svg>
+    <img src="/logos/azure.png" alt="Microsoft Azure" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />
   ),
   gcp: (
-    <svg viewBox="0 0 40 40" width="32" height="32" fill="none">
-      <rect width="40" height="40" rx="10" fill="#fff" />
-      <path d="M20 10a10 10 0 0 1 0 20 10 10 0 0 1 0-20z" fill="none" stroke="#4285F4" strokeWidth="3" />
-      <path d="M20 10 A10 10 0 0 1 30 20" stroke="#EA4335" strokeWidth="3" fill="none" />
-      <path d="M30 20 A10 10 0 0 1 20 30" stroke="#FBBC04" strokeWidth="3" fill="none" />
-      <circle cx="20" cy="10" r="2.5" fill="#4285F4" />
-      <circle cx="30" cy="20" r="2.5" fill="#EA4335" />
-      <circle cx="20" cy="30" r="2.5" fill="#34A853" />
-    </svg>
+    <img src="/logos/gcp.png" alt="Google Cloud Platform" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />
   ),
 };
 

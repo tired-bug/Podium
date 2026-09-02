@@ -46,12 +46,29 @@ const GRADIENTS = [
 
 type Tab = 'account' | 'notifications' | 'feature-flags' | 'tokens' | 'ssh-keys' | 'apps' | 'security' | 'platform' | 'ai' | 'system' | 'team';
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ checked, onChange, accent = 'var(--accent-blue)' }: {
+  checked: boolean; onChange: (v: boolean) => void; accent?: string;
+}) {
   return (
-    <label className="toggle-switch">
-      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
-      <span className="toggle-slider" />
-    </label>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', flexShrink: 0,
+        background: checked ? accent : 'var(--bg-elevated)',
+        position: 'relative', transition: 'background 200ms',
+        boxShadow: checked ? `0 0 10px ${accent}55` : 'inset 0 0 0 1px var(--border)',
+        padding: 0,
+      }}
+    >
+      <span style={{
+        position: 'absolute', top: 3, left: checked ? 21 : 3, width: 16, height: 16,
+        borderRadius: '50%', background: '#fff', transition: 'left 200ms',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
+      }} />
+    </button>
   );
 }
 
@@ -805,9 +822,8 @@ export default function Profile() {
         {}
         <div style={{
           height: 110, position: 'relative', overflow: 'hidden',
-          background: 'var(--bg-secondary)',
-          borderBottom: '1px solid var(--border)',
         }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-secondary)' }} />
           {}
           <div style={{
             position: 'absolute', inset: 0, opacity: 0.5,
@@ -820,17 +836,19 @@ export default function Profile() {
           }} />
         </div>
 
-        <div style={{ padding: '0 28px 24px' }}>
+        <div style={{ padding: '0 28px 24px', position: 'relative' }}>
           {}
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: -54 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
             {}
             <div style={{
               width: 96, height: 96, borderRadius: '50%',
-              background: p.avatar ? 'transparent' : GRADIENTS[gradIdx],
+              marginTop: -54,
+              background: p.avatar ? 'var(--bg-card)' : GRADIENTS[gradIdx],
               border: '4px solid var(--bg-card)',
               overflow: 'hidden', flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+              position: 'relative', zIndex: 1,
               animation: 'scale-in 400ms cubic-bezier(0.34,1.56,0.64,1) 100ms both',
             }}>
               {p.avatar
@@ -903,10 +921,9 @@ export default function Profile() {
           </div>
 
           {}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginTop: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 10, marginTop: 20 }}>
             <StatCard label="Member since" value={timeAgo(data.created_at)} delay={200} />
-            <StatCard label="Last login"   value={data.last_login ? timeAgo(data.last_login) : 'Just now'} delay={260} />
-            <StatCard label="Role"         value={data.role || ''} delay={320} />
+            <StatCard label="Role"         value={data.role || ''} delay={260} />
           </div>
         </div>
       </div>

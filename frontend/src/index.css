@@ -263,3 +263,45 @@ h1, h2, h3, h4, h5, h6 {
 /* ── Chart container ──────────────────────────────────────────────────────── */
 .recharts-wrapper { font-family: var(--font-sans) !important; }
 .recharts-cartesian-axis-tick-value { font-size: 11px !important; }
+
+/* ── Checkboxes ───────────────────────────────────────────────────────────── */
+/* Native checkboxes throughout the app: dark, rounded, accent-colored — no
+   more default browser squares. `accent-color` is supported by all evergreen
+   browsers and keeps the box's own check glyph instead of needing an SVG. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin: 0;
+  border-radius: 5px;
+  border: 1.5px solid var(--border-bright);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  position: relative;
+  transition: background 120ms, border-color 120ms;
+  accent-color: var(--accent);
+}
+input[type="checkbox"]:hover {
+  border-color: var(--accent-2);
+}
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

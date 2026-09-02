@@ -2,8 +2,25 @@ export function cn(...classes: (string | undefined | false | null)[]): string {
   return classes.filter(Boolean).join(' ');
 }
 
+// Backend timestamps come from SQLite's datetime('now'), formatted as
+// "YYYY-MM-DD HH:MM:SS" in UTC but with no timezone marker. JS's Date parser
+// treats a string like that as *local* time, not UTC — so in any timezone
+// ahead of UTC (e.g. UTC+1), every timestamp silently shifts into the future
+// and "time ago" math ends up looking an hour (or more) behind. Normalize
+// such strings to explicit UTC before parsing; ISO strings that already carry
+// a timezone (a trailing Z or +hh:mm) are left untouched.
+function toUtcDate(date: string | number | Date): Date {
+  if (typeof date === 'string') {
+    const hasTz = /Z$|[+-]\d{2}:\d{2}$/.test(date);
+    if (!hasTz && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(date)) {
+      return new Date(date.replace(' ', 'T') + 'Z');
+    }
+  }
+  return new Date(date);
+}
+
 export function formatDate(date: string | number | Date, options?: Intl.DateTimeFormatOptions): string {
-  const d = new Date(date);
+  const d = toUtcDate(date);
   if (isNaN(d.getTime())) return 'Unknown';
   return d.toLocaleString('en-US', options || {
     year: 'numeric', month: 'short', day: 'numeric',
@@ -12,7 +29,7 @@ export function formatDate(date: string | number | Date, options?: Intl.DateTime
 }
 
 export function timeAgo(date: string | number | Date): string {
-  const d = new Date(date);
+  const d = toUtcDate(date);
   if (isNaN(d.getTime())) return 'Unknown';
   const diff = Date.now() - d.getTime();
   const s = Math.floor(diff / 1000);
