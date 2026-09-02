@@ -15,6 +15,7 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (token: string, user: User) => void;
+  loginWithToken: (token: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   isAdmin: boolean;
@@ -64,12 +65,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser);
   }, []);
 
+  // Used by the OAuth callback page — we only get a token back from the
+  // redirect (not a full user object), so store it and let refreshUser()
+  // fetch /api/auth/me to populate the user.
+  const loginWithToken = useCallback(async (newToken: string) => {
+    localStorage.setItem('podium_token', newToken);
+    setToken(newToken);
+    setLoading(true);
+    await refreshUser();
+  }, [refreshUser]);
+
   return (
     <AuthContext.Provider value={{
       user,
       token,
       loading,
       login,
+      loginWithToken,
       logout,
       refreshUser,
       isAdmin: user?.role === 'admin',

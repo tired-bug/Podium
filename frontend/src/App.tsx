@@ -12,6 +12,7 @@ const Login        = lazy(() => import('./pages/Login'));
 const VerifyEmail  = lazy(() => import('./pages/VerifyEmail'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword  = lazy(() => import('./pages/ResetPassword'));
+const OAuthCallback  = lazy(() => import('./pages/OAuthCallback'));
 const Dashboard    = lazy(() => import('./pages/Dashboard'));
 const GitHub       = lazy(() => import('./pages/GitHub'));
 const Logs         = lazy(() => import('./pages/Logs'));
@@ -73,6 +74,7 @@ export default function App() {
                   <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/forgot-password" element={<ForgotPassword />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/oauth-callback" element={<OAuthCallback />} />
                   {/* Protected app routes */}
                   {PROTECTED_ROUTES.map(({ path, el }) => (
                     <Route key={path} path={path} element={

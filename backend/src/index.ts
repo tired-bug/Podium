@@ -10,6 +10,7 @@ import { ensureDeploymentUserIdColumn } from './routes/providers';
 
 
 import authRouter from './routes/auth';
+import oauthRouter from './routes/oauth';
 import invitesRouter from './routes/invites';
 import metricsRouter from './routes/metrics';
 import logsRouter from './routes/logs';
@@ -41,6 +42,7 @@ if (process.env.NODE_ENV !== 'test') app.use(morgan('dev'));
 
 app.get('/api/health', healthHandler);
 app.use('/api/auth', authRouter);
+app.use('/api/auth/oauth', oauthRouter);
 app.use('/api/invites', invitesRouter);
 app.use('/api/metrics', metricsRouter);
 app.use('/api/logs', logsRouter);
