@@ -4,6 +4,7 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/index';
 import { signToken, hashPassword } from '../auth';
+import { createNotification } from './notifications';
 
 const router = Router();
 
@@ -150,6 +151,13 @@ async function findOrCreateOAuthUser(opts: {
 
   if (role === 'admin') {
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_initialized', 'true')").run();
+  } else {
+    // Let the rest of the team know someone new joined via OAuth (the very
+    // first admin account has no team yet, so this only fires afterward).
+    const teammates = db.prepare('SELECT id FROM users WHERE id != ?').all(id) as Array<{ id: string }>;
+    for (const t of teammates) {
+      createNotification(t.id, 'team', 'New team member', `${username} joined the team via ${opts.provider === 'github' ? 'GitHub' : 'Google'}.`, '/team');
+    }
   }
 
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;

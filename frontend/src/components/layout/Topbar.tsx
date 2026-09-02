@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sun, Moon, Bell, ChevronDown, LogOut, User, Settings, Trash2, ExternalLink } from 'lucide-react';
+import { Sun, Moon, Bell, ChevronDown, LogOut, User, Trash2, ExternalLink, X, Circle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useProfile } from '../../contexts/ProfileContext';
@@ -19,13 +19,14 @@ const GRADIENTS = [
 export function Topbar() {
   const { user, logout }        = useAuth();
   const { toggleTheme, isDark } = useTheme();
-  const { avatar, displayName } = useProfile();
+  const { avatar, displayName, activityStatus, setActivityStatus, profile } = useProfile();
   const navigate                = useNavigate();
 
-  const [menuOpen,  setMenuOpen]  = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [notifs,    setNotifs]    = useState<any[]>([]);
-  const [unread,    setUnread]    = useState(0);
+  const [menuOpen,    setMenuOpen]    = useState(false);
+  const [notifOpen,   setNotifOpen]   = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [notifs,      setNotifs]      = useState<any[]>([]);
+  const [unread,      setUnread]      = useState(0);
 
   const menuRef  = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -273,8 +274,37 @@ export function Topbar() {
                   </div>
                 </div>
               </div>
-              {dropdownItem(<User size={12} />, 'My Profile', () => { navigate('/profile'); setMenuOpen(false); })}
-              {dropdownItem(<Settings size={12} />, 'Settings', () => { navigate('/settings'); setMenuOpen(false); })}
+              {dropdownItem(<User size={12} />, 'My Profile', () => { setProfileOpen(true); setMenuOpen(false); })}
+
+              {/* Activity status switch — replaces the old Settings entry */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '9px 14px', fontSize: '13px', color: 'var(--text-secondary)',
+                fontFamily: 'var(--font-sans)', letterSpacing: '-0.01em',
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                  <Circle size={8} fill={activityStatus === 'active' ? '#30d158' : 'var(--text-muted)'}
+                    color={activityStatus === 'active' ? '#30d158' : 'var(--text-muted)'} />
+                  {activityStatus === 'active' ? 'Active' : 'Away'}
+                </span>
+                <button
+                  aria-label="Toggle activity status"
+                  onClick={() => setActivityStatus(activityStatus === 'active' ? 'away' : 'active')}
+                  style={{
+                    width: 34, height: 19, borderRadius: 999, border: 'none', cursor: 'pointer',
+                    background: activityStatus === 'active' ? '#30d158' : 'var(--bg-glass-light)',
+                    position: 'relative', transition: 'background 150ms', padding: 0,
+                    outline: activityStatus === 'active' ? 'none' : '1px solid var(--border)',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 2, left: activityStatus === 'active' ? 17 : 2,
+                    width: 15, height: 15, borderRadius: '50%', background: '#fff',
+                    transition: 'left 150ms', boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                  }} />
+                </button>
+              </div>
+
               <div style={{ borderTop: '1px solid var(--border-muted)' }}>
                 {dropdownItem(<LogOut size={12} />, 'Sign out', handleLogout, true)}
               </div>
@@ -282,6 +312,80 @@ export function Topbar() {
           )}
         </div>
       </div>
+
+      {/* Profile popup */}
+      {profileOpen && (
+        <div
+          onClick={() => setProfileOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 2000,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: 340, background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-xl)', overflow: 'hidden',
+              animation: 'slide-down 140ms ease-out',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 10px 0' }}>
+              <button onClick={() => setProfileOpen(false)} aria-label="Close"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}>
+                <X size={14} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 24px 24px', textAlign: 'center' }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: '50%', flexShrink: 0,
+                background: avatar ? 'transparent' : GRADIENTS[gradIdx],
+                overflow: 'hidden',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '20px', fontWeight: 700, color: '#fff', marginBottom: 14,
+                position: 'relative',
+              }}>
+                {avatar ? <img src={avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}
+                <span style={{
+                  position: 'absolute', bottom: 1, right: 1, width: 13, height: 13, borderRadius: '50%',
+                  background: activityStatus === 'active' ? '#30d158' : 'var(--text-muted)',
+                  border: '2px solid var(--bg-elevated)',
+                }} />
+              </div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>{label}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 2 }}>{user?.email}</div>
+              <div style={{
+                marginTop: 10, fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)',
+                textTransform: 'capitalize', background: 'var(--bg-glass-light)',
+                border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: '3px 10px',
+              }}>
+                {user?.role}
+              </div>
+
+              {(profile?.profile?.job_title || profile?.profile?.company) && (
+                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: 12 }}>
+                  {[profile?.profile?.job_title, profile?.profile?.company].filter(Boolean).join(' · ')}
+                </div>
+              )}
+              {profile?.profile?.bio && (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.5 }}>{profile.profile.bio}</div>
+              )}
+
+              <button
+                onClick={() => { navigate('/profile'); setProfileOpen(false); }}
+                style={{
+                  marginTop: 20, width: '100%', padding: '9px', borderRadius: 10,
+                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  fontWeight: 600, fontSize: '13px', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                View full profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

@@ -81,6 +81,22 @@ router.put('/', requireAuth, (req: AuthRequest, res: Response) => {
   res.json({ ok: true });
 });
 
+// Quick toggle used by the topbar user menu — doesn't require resending
+// the whole profile form.
+router.put('/status', requireAuth, (req: AuthRequest, res: Response) => {
+  const { activity_status } = req.body;
+  if (activity_status !== 'active' && activity_status !== 'away') {
+    return res.status(400).json({ error: "activity_status must be 'active' or 'away'" });
+  }
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO user_profiles (user_id, activity_status, updated_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(user_id) DO UPDATE SET activity_status = excluded.activity_status, updated_at = datetime('now')
+  `).run(req.user!.sub, activity_status);
+  res.json({ ok: true, activity_status });
+});
+
 router.put('/avatar', requireAuth, (req: AuthRequest, res: Response) => {
   const { avatar } = req.body; 
   if (!avatar) return res.status(400).json({ error: 'avatar required' });

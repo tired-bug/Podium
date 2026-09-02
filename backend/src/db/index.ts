@@ -232,6 +232,8 @@ async function applyMigrationsToTurso() {
     // Short commit SHA recorded per deployment version so rollback/redeploy
     // targets can be identified by code instead of a generic label.
     `ALTER TABLE deployment_versions ADD COLUMN commit_sha TEXT`,
+    // Activity status shown in the topbar user menu (active / away)
+    `ALTER TABLE user_profiles ADD COLUMN activity_status TEXT DEFAULT 'active'`,
   ];
 
   for (const sql of migrations) {
@@ -538,6 +540,8 @@ function applyMigrations() {
     // Short commit SHA recorded per deployment version so rollback/redeploy
     // targets can be identified by code instead of a generic label.
     `ALTER TABLE deployment_versions ADD COLUMN commit_sha TEXT`,
+    // Activity status shown in the topbar user menu (active / away)
+    `ALTER TABLE user_profiles ADD COLUMN activity_status TEXT DEFAULT 'active'`,
   ];
   for (const sql of migrations) {
     try {

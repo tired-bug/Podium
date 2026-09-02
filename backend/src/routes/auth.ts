@@ -116,9 +116,9 @@ router.post('/signup', async (req, res) => {
   // All accounts (not just admin) now auto-login on signup.
   const token = signToken({ sub: id, username, role });
 
-  // Notify the rest of the team when someone new joins (invite-based signups
-  // only — the very first admin account has no team to notify yet).
-  if (inviteId) {
+  // Notify the rest of the team when someone new joins (the very first
+  // admin account has no team yet, so the loop below is naturally empty then).
+  if (role !== 'admin') {
     const teammates = db.prepare('SELECT id FROM users WHERE id != ?').all(id) as Array<{ id: string }>;
     for (const t of teammates) {
       createNotification(t.id, 'team', 'New team member', `${username} joined the team.`, '/team');
