@@ -45,8 +45,8 @@ type Stage = 'select' | 'analyzing' | 'plan' | 'env' | 'deploying' | 'done' | 'f
 
 // ── Provider logos ─────────────────────────────────────────────────────────────
 const LOGOS: Record<string, React.ReactNode> = {
-  render: <svg viewBox="0 0 32 32" width="28" height="28" fill="none"><rect width="32" height="32" rx="8" fill="#46E3B7"/><path d="M16 8L22 16L16 24L10 16Z" fill="#fff" fillOpacity=".9"/></svg>,
-  railway: <svg viewBox="0 0 32 32" width="28" height="28" fill="none"><rect width="32" height="32" rx="8" fill="#0B0D0E"/><rect x="6" y="14" width="20" height="3" rx="1.5" fill="#fff"/><rect x="10" y="8" width="3" height="16" rx="1.5" fill="#fff"/><rect x="19" y="8" width="3" height="16" rx="1.5" fill="#fff"/></svg>,
+  render: <img src="/logos/render.png" alt="Render" width={28} height={28} style={{ borderRadius: 7, display: 'block' }} />,
+  railway: <img src="/logos/railway.png" alt="Railway" width={28} height={28} style={{ borderRadius: 7, display: 'block' }} />,
   vercel: <svg viewBox="0 0 32 32" width="28" height="28" fill="none"><rect width="32" height="32" rx="8" fill="#000"/><path d="M16 8L26 24H6Z" fill="#fff"/></svg>,
 };
 

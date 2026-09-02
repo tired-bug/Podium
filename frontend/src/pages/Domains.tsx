@@ -34,16 +34,10 @@ const LOGOS: Record<string, React.ReactNode> = {
     </svg>
   ),
   render: (
-    <svg viewBox="0 0 24 24" width="22" height="22">
-      <circle cx="12" cy="12" r="10" fill="#46E3B7"/>
-      <path d="M8 8h5a3 3 0 010 6H8V8zm0 6h3l3 4H11l-3-4z" fill="#fff"/>
-    </svg>
+    <img src="/logos/render.png" alt="Render" width={22} height={22} style={{ borderRadius: 5, display: 'block' }} />
   ),
   railway: (
-    <svg viewBox="0 0 24 24" width="22" height="22">
-      <rect width="24" height="24" rx="5" fill="#0B0D0E"/>
-      <path d="M6 17.5c0-4.8 3.4-8.5 8-8.5m-8 8.5h13M6 17.5l3-7M19 17.5l-3-7m-7 7l3.5-7" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
-    </svg>
+    <img src="/logos/railway.png" alt="Railway" width={22} height={22} style={{ borderRadius: 5, display: 'block' }} />
   ),
   gcp: (
     <svg viewBox="0 0 24 24" width="22" height="22">

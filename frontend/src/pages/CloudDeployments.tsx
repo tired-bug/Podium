@@ -29,19 +29,19 @@ interface ProviderMeta {
 
 // ── Provider logos ────────────────────────────────────────────────────────────
 const LOGOS: Record<string, React.ReactNode> = {
-  render: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#46E3B7"/><path d="M20 10 L28 20 L20 30 L12 20 Z" fill="#fff" fillOpacity=".9"/></svg>,
-  railway: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#0B0D0E"/><rect x="8" y="17" width="24" height="3" rx="1.5" fill="#fff"/><rect x="12" y="10" width="3" height="20" rx="1.5" fill="#fff"/><rect x="25" y="10" width="3" height="20" rx="1.5" fill="#fff"/></svg>,
+  render: <img src="/logos/render.png" alt="Render" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />,
+  railway: <img src="/logos/railway.png" alt="Railway" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />,
   vercel: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#000"/><path d="M20 10 L32 30 H8 Z" fill="#fff"/></svg>,
-  aws: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#232F3E"/><path d="M12 22c0 2.2 1.8 4 4 4h8c2.2 0 4-1.8 4-4s-1.8-4-4-4h-1a5 5 0 0 0-10 0c-1.1.4-2 1.5-2 2.8v1.2z" fill="#FF9900"/></svg>,
-  azure: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#0078D4"/><path d="M12 28 L20 12 L24 20 L18 20 L26 28 Z" fill="#fff" fillOpacity=".9"/></svg>,
-  gcp: <svg viewBox="0 0 40 40" width="32" height="32" fill="none"><rect width="40" height="40" rx="10" fill="#fff"/><path d="M20 10a10 10 0 0 1 0 20 10 10 0 0 1 0-20z" fill="none" stroke="#4285F4" strokeWidth="3"/><path d="M20 10 A10 10 0 0 1 30 20" stroke="#EA4335" strokeWidth="3" fill="none"/><path d="M30 20 A10 10 0 0 1 20 30" stroke="#FBBC04" strokeWidth="3" fill="none"/></svg>,
+  aws: <img src="/logos/aws.png" alt="AWS" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />,
+  azure: <img src="/logos/azure.png" alt="Microsoft Azure" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />,
+  gcp: <img src="/logos/gcp.png" alt="Google Cloud Platform" width={32} height={32} style={{ borderRadius: 10, display: 'block' }} />,
 };
 
 const LOGOS_SM: Record<string, React.ReactNode> = {
-  render: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#46E3B7"/><path d="M10 5 L14 10 L10 15 L6 10 Z" fill="#fff" fillOpacity=".9"/></svg>,
-  railway: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#0B0D0E"/><rect x="4" y="9" width="12" height="2" rx="1" fill="#fff"/><rect x="6" y="5" width="2" height="10" rx="1" fill="#fff"/><rect x="12" y="5" width="2" height="10" rx="1" fill="#fff"/></svg>,
+  render: <img src="/logos/render.png" alt="Render" width={18} height={18} style={{ borderRadius: 5, display: 'block' }} />,
+  railway: <img src="/logos/railway.png" alt="Railway" width={18} height={18} style={{ borderRadius: 5, display: 'block' }} />,
   vercel: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#000"/><path d="M10 5 L16 15 H4 Z" fill="#fff"/></svg>,
-  aws: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#232F3E"/><text x="3" y="13" fontSize="8" fill="#FF9900" fontWeight="700">AWS</text></svg>,
+  aws: <img src="/logos/aws.png" alt="AWS" width={18} height={18} style={{ borderRadius: 5, display: 'block' }} />,
   azure: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#0078D4"/><path d="M6 14 L10 6 L12 10 L9 10 L13 14 Z" fill="#fff" fillOpacity=".9"/></svg>,
   gcp: <svg viewBox="0 0 20 20" width="18" height="18"><rect width="20" height="20" rx="5" fill="#fff"/><circle cx="10" cy="10" r="6" fill="none" stroke="#4285F4" strokeWidth="2.5"/></svg>,
 };
