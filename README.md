@@ -113,6 +113,43 @@ Output: `dist-electron/Podium-Setup-4.0.0.exe`
 
 ---
 
+## Testing & CI
+
+- `cd backend && npm test` — Jest + Supertest. Unit tests for the auth/token/hashing
+  logic, plus integration tests that hit the real `/api/auth` routes against a
+  throwaway temp SQLite database (no mocking of the DB layer).
+- `cd frontend && npm test` — Vitest + Testing Library. Covers `src/lib/utils.ts`,
+  including a regression test for the SQLite-timestamp/UTC parsing bug.
+- `.github/workflows/ci.yml` runs both suites (plus type-checks, builds, and a
+  non-blocking `npm audit`) on every push and pull request to `main`. Render and
+  Cloudflare Pages already auto-deploy on push (see `DEPLOY.md`), so this CI
+  workflow is the missing piece: it catches broken builds/tests *before* they
+  reach `main` and get auto-deployed.
+
+## Security hardening notes
+
+A few gaps were fixed as part of adding this test/CI setup — worth knowing about
+if you're writing this up:
+
+- **`JWT_SECRET` fallback removed in production.** The code previously fell back
+  to a hardcoded default secret (`podium-dev-secret-change-in-production`) if the
+  env var wasn't set. Since the source is on GitHub, anyone could read that
+  string and forge a valid admin JWT. The backend now refuses to start in
+  `NODE_ENV=production` if `JWT_SECRET` is missing (mirrors the existing
+  fail-fast pattern already used for the Turso DB credentials).
+- **Rate limiting added to `/api/auth/login` and `/api/auth/signup`.** These had
+  no limit on attempts, so an attacker could script unlimited password guesses.
+  Added `express-rate-limit` (20 requests / 15 min per IP).
+- **`npm audit` runs in CI** (non-blocking for now) so dependency vulnerabilities
+  show up on every PR instead of only when someone remembers to check.
+
+Worth doing next, if you want to keep hardening for the writeup: input
+validation with `zod` on request bodies, CSRF protection if you ever move auth
+to cookies, and turning the `npm audit` CI step from non-blocking to blocking
+once the current vulnerabilities are triaged.
+
+---
+
 ## Project Structure
 
 ```

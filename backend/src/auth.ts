@@ -3,6 +3,15 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { getDb } from './db/index';
 
+// ── CRITICAL: Fail fast if JWT_SECRET is missing in production ─────────────
+// A hardcoded fallback secret means anyone who reads the source (or the
+// public GitHub repo) can forge valid tokens for any user, including admins.
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  console.error('[auth] FATAL: JWT_SECRET must be set in production.');
+  console.error('[auth] Refusing to start with a default/guessable secret.');
+  process.exit(1);
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'podium-dev-secret-change-in-production';
 const JWT_EXPIRY = '7d';
 

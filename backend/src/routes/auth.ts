@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { getDb } from '../db/index';
 import { signToken, hashPassword, comparePassword, requireAuth, requireRole, AuthRequest } from '../auth';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../utils/email';
@@ -9,12 +10,25 @@ import { generateSecret, generateTotp, verifyTotp, otpauthUrl } from '../utils/t
 
 const router = Router();
 
+// Brute-force protection: without this, /login and /signup have no limit on
+// attempts, so an attacker can script unlimited password guesses or spam
+// account creation. Disabled under NODE_ENV=test so integration tests aren't
+// throttled.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === 'test',
+  message: { error: 'Too many attempts, please try again later' },
+});
+
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
 
 // ── Login ─────────────────────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   const { username, password, totpCode } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password required' });
@@ -52,7 +66,7 @@ router.post('/login', async (req, res) => {
 });
 
 // ── Signup ─────────────────────────────────────────────────────────────────────
-router.post('/signup', async (req, res) => {
+router.post('/signup', authLimiter, async (req, res) => {
   const { username, email, password, inviteCode } = req.body;
 
   if (!username || !email || !password) {
